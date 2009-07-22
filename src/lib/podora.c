@@ -21,9 +21,26 @@
  */
 
 #include "podora.h"
-#include "pfildes.h"
+
+char response_headers[ ] = "\
+HTTP/%s %s\r\n\
+Date: %s\r\n\
+Server: Podora/%s\r\n\
+Content-Length: %ld\r\n\
+Content-Type: %s\r\n\
+Connection: keep-alive\r\n\
+Accept-Ranges: bytes\r\n\
+\r\n";
+
+typedef struct {
+	char page_type[ 10 ];
+	void* (*page_handler)( response_t*, const char*, void* );
+	void* udata;
+} page_handler_t;
 
 static int res_fd;
+static int page_handler_count = 0;
+static page_handler_t page_handlers[ 100 ];
 
 const char* podora_version( ) {
 	return PODORA_VERSION;
@@ -151,19 +168,32 @@ int podora_website_stop( website_t* website ) {
 	return 1;
 }
 
+void podora_website_set_request_handler ( website_t* website, void* (*request_handler)( void* ) ) {
+	website_data_t* website_data = (website_data_t*) website->data;
+	website_data->request_handler = request_handler;
+}
+
+void podora_website_unset_request_handler ( website_t* website ) {
+	website_data_t* website_data = (website_data_t*) website->data;
+	website_data->request_handler = NULL;
+}
+
+void podora_website_set_pubdir ( website_t* website, const char* pubdir ) {
+	website_data_t* website_data = (website_data_t*) website->data;
+	if ( website_data->pubdir ) free( website_data->pubdir );
+	website_data->pubdir = strdup( pubdir );
+}
+
 void podora_request_handler( int req_fd, website_t* website ) {
-	int fd;
 
 	pcom_transport_t* transport = pcom_open( req_fd, PCOM_RO, 0, 0 );
+	request_t request;
+
 	pcom_read( transport );
 
-	printf( "%s\n", (char*) transport->message );
+	request = request_create( website, transport->header->id, transport->message, transport->header->size );
 
-	if ( ( fd = open( "in/1.in", O_RDONLY ) ) < 0 ) {
-		return;
-	}
-
-	pfd_set( fd, PFD_TYPE_FILE, pcom_open( res_fd, PCOM_WO, transport->header->id, website->id ) );
+	podora_response_serve_file( &request.response, request.url, 1 );
 
 	pcom_close( transport );
 }
@@ -182,4 +212,107 @@ void podora_file_handler( int fd, pcom_transport_t* transport ) {
 		pfd_clr( fd );
 		close( fd );
 	}
+}
+
+void podora_response_flush_headers( pcom_transport_t* transport, response_t* response, int size, char* mime ) {
+	char headers[ 256 ];
+	time_t now;
+	char now_str[ 80 ];
+
+	time( &now );
+	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
+
+	sprintf( headers, response_headers, response->http_version,
+	  response_status( response->http_status ), PODORA_VERSION, now_str, size, mime );
+
+	pcom_write( transport, (void*) headers, strlen( headers ) );
+}
+
+/*void podora_response_serve( response_t* response, void* message, int size ) {
+	pcom_transport* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->wesbite->id );
+
+	response_set_status( response, 200 );
+	podora_response_flush_headers( transport, response, size, mime_get_type( ".html" ) );
+
+	pcom_write( transport, (void*) message, size );
+	pcom_close( transport );
+}*/
+
+void podora_response_serve_file( response_t* response, char* filepath, unsigned char use_pubdir ) {
+	struct stat file_stat;
+	char full_filepath[ 256 ];
+	char* extension;
+	int i;
+
+
+	if ( use_pubdir )
+		strcpy( full_filepath, ((website_data_t*) response->website->data)->pubdir );
+
+	strcat( full_filepath, filepath );
+
+	if ( stat( full_filepath, &file_stat ) ) {
+
+		pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->id );
+
+		response_set_status( response, 404 );
+		podora_response_flush_headers( transport, response, 48, mime_get_type( ".html" ) );
+
+		pcom_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
+		pcom_close( transport );
+
+		return;
+	}
+
+	if ( S_ISDIR( file_stat.st_mode ) ) {
+
+		if ( full_filepath + strlen( filepath ) != (char*) "/" )
+			strcat( full_filepath, "/" );
+
+		strcat( full_filepath, "default.html" );
+	}
+
+	extension = strrchr( full_filepath, '.' );
+
+	if ( extension != NULL && *( extension + 1 ) != '\0' ) {
+		extension++;
+
+		for ( i = 0; i < page_handler_count; i++ ) {
+			if ( strcmp( page_handlers[ i ].page_type, extension ) == 0 ) {
+				page_handlers[ i ].page_handler( response, full_filepath, page_handlers[ i ].udata );
+				break;
+			}
+		}
+
+	} else {
+		i = page_handler_count;
+	}
+
+	if ( i == page_handler_count )
+		podora_response_default_page_handler( response, full_filepath );
+
+}
+
+void podora_response_register_page_handler( const char* page_type, void* (*page_handler)( response_t*, const char*, void* ), void* udata ) {
+	strcpy( page_handlers[ page_handler_count ].page_type, page_type );
+	page_handlers[ page_handler_count ].page_handler = page_handler;
+	page_handlers[ page_handler_count ].udata = udata;
+	page_handler_count++;
+}
+
+void podora_response_default_page_handler( response_t* response, char* filepath ) {
+	int fd;
+	struct stat file_stat;
+	pcom_transport_t* transport;
+
+	if ( ( fd = open( filepath, O_RDONLY ) ) < 0 ) {
+		return;
+	}
+
+	fstat( fd, &file_stat );
+
+	transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->id );
+	response_set_status( response, 200 );
+	podora_response_flush_headers( transport, response, file_stat.st_size, mime_get_type( filepath ) );
+	pfd_set( fd, PFD_TYPE_FILE, transport );
+
 }

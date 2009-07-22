@@ -9,7 +9,7 @@ OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
 
-OBJS        = general.o pcom.o website.o pfildes.o
+OBJS        = general.o pcom.o website.o pfildes.o request.o response.o mime.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 
 EXECS       = podora podora-website
@@ -31,7 +31,7 @@ OBJ_COMPILE  = $(CC) $(CFLAGS) $(TARGET_ARCH) $(OUTPUT) $<
 ##### USER BUILD COMMANDS #####
 ###############################
 
-make debug beta: $(EXECS)
+make debug beta: $(SHARED_OBJS) $(EXECS)
 
 tests: $(TEST_EXECS)
 
@@ -44,12 +44,12 @@ clean:
 podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o
 	$(EXEC_COMPILE)
 
-podora-website: $(EXEC_DEPENDS) libpodora.so
+podora-website: $(EXEC_DEPENDS)
 	$(EXEC_COMPILE) $(LDPODORA)
 
 ##### SHARED OBJS #####
 
-libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o
+libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o mime.o request.o response.o
 	$(EXEC_COMPILE) $(SHARED)
 
 ##### OBJS ######

@@ -18,25 +18,12 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
  *
+ *
  */
 
-#ifndef _PD_WEBSITE_H
-#define _PD_WEBSITE_H
+#ifndef _PD_MIME_H
+#define _PD_MIME_H
 
-#include "general.h"
-
-typedef struct website {
-	char* url;
-	int id;
-	struct website* next;
-	struct website* prev;
-	void* data;
-} website_t;
-
-website_t* website_add ( int, char* );
-void website_remove ( website_t* );
-website_t* website_get_by_url( char* url );
-website_t* website_get_by_id( int );
-website_t* website_get_root( );
+char *mime_get_type( const char *filename );
 
 #endif

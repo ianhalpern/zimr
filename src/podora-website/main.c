@@ -33,18 +33,23 @@ void quitproc( ) {
 }
 
 int main( int argc, char *argv[ ] ) {
-	website_t* website;
-
-	if ( argc < 2 )
-		return EXIT_FAILURE;
+	website_t* website1,* website2;
 
 	signal( SIGINT, quitproc );
 
 	podora_init( );
 
-	website = podora_website_create( argv[ 1 ] );
+	if ( argc < 2 ) {
+		website1 = podora_website_create( "localhost:8081" );
+		website2 = podora_website_create( "podora:8081" );
 
-	podora_website_start( website );
+		podora_website_start( website1 );
+		podora_website_start( website2 );
+	} else {
+		website1 = podora_website_create( argv[ 1 ] );
+		podora_website_set_pubdir( website1, "test_website/" );
+		podora_website_start( website1 );
+	}
 
 	podora_start( );
 

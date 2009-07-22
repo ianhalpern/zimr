@@ -70,7 +70,7 @@
 
 /****** socket config ********/
 
-#define SOCK_N_PENDING 5
+#define SOCK_N_PENDING 25
 
 /*************************/
 
@@ -88,5 +88,7 @@
 #define HTTPS_DEFAULT_PORT 443
 
 /*************************/
+
+#define PAGE_HANDLER void* (*)( response_t*, const char*, void* )
 
 #endif

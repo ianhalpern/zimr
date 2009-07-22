@@ -18,25 +18,28 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
  *
+ *
  */
 
-#ifndef _PD_WEBSITE_H
-#define _PD_WEBSITE_H
+#ifndef _PD_RESPONSE_H
+#define _PD_RESPONSE_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "general.h"
+#include "website.h"
 
-typedef struct website {
-	char* url;
-	int id;
-	struct website* next;
-	struct website* prev;
-	void* data;
-} website_t;
+typedef struct response {
+	int sockfd;
+	char http_version[ 4 ];
+	short http_status;
+	website_t* website;
+} response_t;
 
-website_t* website_add ( int, char* );
-void website_remove ( website_t* );
-website_t* website_get_by_url( char* url );
-website_t* website_get_by_id( int );
-website_t* website_get_root( );
+const char* response_status( short );
 
+response_t response_create( int descriptor, website_t* website, char http_version[ ] );
+void response_set_status( response_t* response, short status );
 #endif

@@ -230,7 +230,8 @@ void command_handler( pcom_transport_t* transport ) {
 
 void response_handler( int res_fd, pcom_transport_t* transport ) {
 
-	pcom_read( transport );
+	if ( !pcom_read( transport ) )
+		return;
 
 	if ( PCOM_MSG_IS_FIRST( transport ) ) {
 		if ( transport->header->id < 0 ) {
@@ -239,8 +240,10 @@ void response_handler( int res_fd, pcom_transport_t* transport ) {
 		}
 	}
 
-	if ( write( transport->header->id, transport->message, transport->header->size ) != transport->header->size )
+	if ( write( transport->header->id, transport->message, transport->header->size ) != transport->header->size ) {
 		perror( "[error] response_handler: write failed" );
+		return;
+	}
 
 	if ( PCOM_MSG_IS_LAST( transport ) ) {
 		pfd_clr( transport->header->id );
