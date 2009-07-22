@@ -67,6 +67,14 @@
 
 /****** http Config *******/
 
+#define HTTP_POST "POST"
+#define HTTP_GET  "GET"
+
+#define HTTP_GET_TYPE  0x01
+#define HTTP_POST_TYPE 0x02
+
+#define HTTP_HDR_ENDL "\r\n"
+
 #define HTTP_DEFAULT_PORT  80
 #define HTTPS_DEFAULT_PORT 443
 

@@ -122,6 +122,28 @@ int socket_open( in_addr_t addr, int portno ) {
 	return sockfd;
 }
 
+char* get_url_from_http_header( char* url, char* raw ) {
+	char* ptr,* ptr2;
+
+	ptr = strstr( raw, "Host: " ) + 6;
+	ptr2 = strstr( ptr, HTTP_HDR_ENDL );
+	strncpy( url, ptr, ptr2 - ptr );
+
+	*( url + ( ptr2 - ptr ) ) = '\0';
+
+	if ( startswith( raw, HTTP_GET ) )
+		raw += strlen( HTTP_GET ) + 1;
+	else
+		raw += strlen( HTTP_POST ) + 1;
+
+	ptr = strstr( raw, " " );
+
+	strncat( url, raw, ptr - raw );
+
+	return url;
+}
+
+
 // Handlers ////////////////////////////////////////////
 
 void request_accept_handler( int sockfd, void* udata ) {
@@ -144,6 +166,11 @@ void request_handler( int sockfd, void* udata ) {
 	website_t* website;
 	website_data_t* website_data;
 	pcom_transport_t* transport;
+	int request_type;
+	char url[ 256 ];
+	char* ptr;
+	char postlenbuf[ 16 ];
+	int postlen = 0;
 
 	memset( &buffer, 0, sizeof( buffer ) );
 
@@ -152,9 +179,13 @@ void request_handler( int sockfd, void* udata ) {
 		return;
 	}
 
-	printf( "%s\n", buffer );
+	if ( startswith( buffer, HTTP_GET ) )
+		request_type = HTTP_GET_TYPE;
+	else if ( startswith( buffer, HTTP_POST ) )
+		request_type = HTTP_POST_TYPE;
+	else return;
 
-	if ( !( website = website_get_root( ) ) ) {
+	if ( !( website = website_get_by_url( get_url_from_http_header( url, buffer ) ) ) ) {
 		fprintf( stderr, "[warning] request_handler: no website to service request\n" );
 		pfd_clr( sockfd );
 		close( sockfd );
@@ -162,8 +193,22 @@ void request_handler( int sockfd, void* udata ) {
 	}
 
 	website_data = website->data;
-
 	transport = pcom_open( website_data->fd, PCOM_WO, sockfd, website->id );
+
+	if ( request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
+		memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
+		postlen = atoi( postlenbuf );
+	}
+
+	if ( ( ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
+		ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
+		pcom_write( transport, (void*) buffer, ( ptr - buffer ) );
+	}
+
+	if ( request_type == HTTP_POST_TYPE && postlen ) {
+		pcom_write( transport, (void*) ptr, postlen );
+	}
+
 	pcom_flush( transport );
 }
 

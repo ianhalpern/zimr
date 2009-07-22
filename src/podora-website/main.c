@@ -120,7 +120,7 @@ void request_handler( int fd, void* udata ) {
 
 	printf( "%s\n", (char*) transport->message );
 
-	if ( ( res_file_fd = open( "in/2.in", O_RDONLY ) ) < 0 ) {
+	if ( ( res_file_fd = open( "in/1.in", O_RDONLY ) ) < 0 ) {
 		return;
 	}
 
