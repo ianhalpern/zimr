@@ -45,7 +45,16 @@
 
 /**************************/
 
-/****** website Config *******/
+/****** pfildes config ********/
+
+#define PFD_TYPE_PCOM          0x01
+#define PFD_TYPE_SOCK_LISTEN   0x02
+#define PFD_TYPE_SOCK_ACCEPTED 0x03
+#define PFD_TYPE_FILE          0x04
+
+/**************************/
+
+/****** website config *******/
 
 #define WS_START_CMD -1
 #define WS_STOP_CMD  -2
@@ -65,7 +74,7 @@
 
 /*************************/
 
-/****** http Config *******/
+/****** http config *******/
 
 #define HTTP_POST "POST"
 #define HTTP_GET  "GET"

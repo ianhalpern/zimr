@@ -44,12 +44,12 @@ clean:
 podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o
 	$(EXEC_COMPILE)
 
-podora-website: $(EXEC_DEPENDS) general.o pcom.o pfildes.o
-	$(EXEC_COMPILE)
+podora-website: $(EXEC_DEPENDS) libpodora.so
+	$(EXEC_COMPILE) $(LDPODORA)
 
 ##### SHARED OBJS #####
 
-libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o website.o
+libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o
 	$(EXEC_COMPILE) $(SHARED)
 
 ##### OBJS ######

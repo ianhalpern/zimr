@@ -20,34 +20,32 @@
  *
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
+#ifndef _PD_PODORA_H
+#define _PD_PODORA_H
 
-#include "podora.h"
+#include "website.h"
+#include "pcom.h"
 
-void quitproc( ) {
-	podora_shutdown( );
-	printf( "quit\n" );
-}
+typedef struct website_data {
+	char* pubdir;
+	int req_fd;
+	char status;
+} website_data_t;
 
-int main( int argc, char *argv[ ] ) {
-	website_t* website;
+const char* podora_version( );
+const char* podora_build_date( );
+int podora_init( );
+void podora_shutdown( );
+int podora_read_server_info( int* pid, int* res_fn );
+void podora_start( );
+void podora_send_cmd( int cmd, int key, void* message, int size );
 
-	if ( argc < 2 )
-		return EXIT_FAILURE;
+void podora_request_handler( int req_fd, website_t* website );
+void podora_file_handler( int fd, pcom_transport_t* transport );
 
-	signal( SIGINT, quitproc );
+website_t* podora_website_create( char* url );
+void podora_website_destroy( website_t* website );
+int podora_website_start( website_t* website );
+int podora_website_stop( website_t* website );
 
-	podora_init( );
-
-	website = podora_website_create( argv[ 1 ] );
-
-	podora_website_start( website );
-
-	podora_start( );
-
-	return 0;
-}
-
+#endif
