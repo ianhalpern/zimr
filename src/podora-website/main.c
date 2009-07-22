@@ -1,3 +1,25 @@
+/*   Podora - Next Generation Web Server
+ *
+ *+  Copyright (c) 2009 Ian Halpern
+ *@  http://Podora.org
+ *
+ *   This file is part of Podora.
+ *
+ *   Podora is free software: you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation, either version 3 of the License, or
+ *   (at your option) any later version.
+ *
+ *   Podora is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
+ *
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,23 +27,20 @@
 
 #include "general.h"
 #include "pcom.h"
+#include "pfildes.h"
 
-fd_set read_fd_set;
-void* fd_data[ 256 ];
 int res_pd, req_pd;
 int key;
 
 void start_website( );
+void request_handler( int fd, void* udata );
+void file_handler( int fd, void* udata );
 
 void quitproc( ) {
 	printf( "quit\n" );
 }
 
 int main( int argc, char *argv[ ] ) {
-	char buffer[ 2048 ];
-	char filename[ 100 ];
-	int fd;
-	int n, i;
 
 	key = randkey( );
 
@@ -35,57 +54,18 @@ int main( int argc, char *argv[ ] ) {
 		return EXIT_FAILURE;
 	}
 
-	FD_ZERO( &read_fd_set );
-
 	if ( ( req_pd = pcom_create( ) ) < 0 ) {
 		return EXIT_FAILURE;
 	}
 
-	FD_SET( req_pd, &read_fd_set );
+	pfd_register_type( 1, &request_handler );
+	pfd_register_type( 2, &file_handler );
+
+	pfd_set( req_pd, 1, NULL );
 
 	start_website( );
 
-	while ( 1 ) {
-
-		if ( select( FD_SETSIZE, &read_fd_set, NULL, NULL, NULL ) < 0 ) {
-			perror( "main: select() failed" );
-			return 0;
-		}
-
-		for ( i = 0; i < FD_SETSIZE; i++ )
-			if ( FD_ISSET( i, &read_fd_set ) ) {
-
-				if ( i == req_pd ) {
-					pcom_transport_t* transport = pcom_open( req_pd, PCOM_RO, 0, 0 );
-					pcom_read( transport );
-					printf( "requested: %d\n", transport->header->id );
-
-					sprintf( filename, "in/%d.in", transport->header->id );
-					if ( ( fd = open( filename, O_RDONLY ) ) < 0 ) {
-						return EXIT_FAILURE;
-					}
-
-					FD_SET( fd, &read_fd_set );
-
-					fd_data[ fd ] = pcom_open( res_pd, PCOM_WO, transport->header->id, key );
-
-					pcom_close( transport );
-				} else {
-					if ( ( n = read( i, buffer, sizeof( buffer ) ) ) ) {
-						if ( !pcom_write( fd_data[ i ], buffer, n ) ) {
-							fprintf( stderr, "[error] main: pcom_write() failed\n" );
-							exit( EXIT_FAILURE );
-						}
-					} else {
-						pcom_close( fd_data[ i ] );
-						FD_CLR( i, &read_fd_set );
-						close( i );
-					}
-				}
-
-			}
-
-	}
+	pfd_start( );
 
 	return 0;
 }
@@ -102,4 +82,38 @@ void start_website( ) {
 	memcpy( message, &pid, sizeof( int ) );
 	memcpy( message + sizeof( int ), &req_pd, sizeof( int ) );
 	send_cmd( -1, message, sizeof( message ) );
+}
+
+void request_handler( int fd, void* udata ) {
+	char filename[ 100 ];
+
+	pcom_transport_t* transport = pcom_open( fd, PCOM_RO, 0, 0 );
+	pcom_read( transport );
+
+	printf( "requested: %d\n", transport->header->id );
+
+	sprintf( filename, "in/%d.in", transport->header->id );
+	if ( ( fd = open( filename, O_RDONLY ) ) < 0 ) {
+		return;
+	}
+
+	pfd_set( fd, 2, pcom_open( res_pd, PCOM_WO, transport->header->id, key ) );
+
+	pcom_close( transport );
+}
+
+void file_handler( int fd, void* transport ) {
+	int n;
+	char buffer[ 2048 ];
+
+	if ( ( n = read( fd, buffer, sizeof( buffer ) ) ) ) {
+		if ( !pcom_write( transport, buffer, n ) ) {
+			fprintf( stderr, "[fatal] file_handler: pcom_write() failed\n" );
+			exit( EXIT_FAILURE );
+		}
+	} else {
+		pcom_close( transport );
+		pfd_clr( fd );
+		close( fd );
+	}
 }

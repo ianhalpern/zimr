@@ -57,10 +57,9 @@
 
 /*************************/
 
-/****** pfildes config *******/
+/****** socket config ********/
 
-#define PFD_TYPE_PCOM 0x01
-#define PFD_TYPE_FILE 0x02
+#define SOCK_N_PENDING 5
 
 /*************************/
 

@@ -41,10 +41,10 @@ clean:
 ##### EXECS #####
 #################
 
-podora: $(EXEC_DEPENDS) general.o pcom.o
+podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o
 	$(EXEC_COMPILE)
 
-podora-website: $(EXEC_DEPENDS) general.o pcom.o
+podora-website: $(EXEC_DEPENDS) general.o pcom.o pfildes.o
 	$(EXEC_COMPILE)
 
 ##### SHARED OBJS #####
