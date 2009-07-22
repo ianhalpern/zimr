@@ -19,6 +19,7 @@
  *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
  *
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,26 +31,40 @@
 
 #include "pcom.h"
 #include "pfildes.h"
+#include "website.h"
 
-int fds[ 1024 ][ 1024 ];
+typedef struct website_data {
+	int fd;
+} website_data_t;
 
-int socket_open( in_addr_t addr, int portno );
+int res_fd;
+
+void save_podora_info( );
+int  socket_open( in_addr_t addr, int portno );
+
 void request_accept_handler( int sockfd, void* udata );
 void request_handler( int sockfd, void* udata );
 void response_handler( int fd, pcom_transport_t* transport );
 
+void start_website( pcom_transport_t* transport );
+void stop_website( pcom_transport_t* transport );
+
 int main( ) {
-	int pd, sockfd;
+	int sockfd;
+
+	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n\n" );
 
 	pfd_register_type( 1, PFD_TYPE_HDLR response_handler );
 	pfd_register_type( 2, PFD_TYPE_HDLR request_accept_handler );
 	pfd_register_type( 3, PFD_TYPE_HDLR request_handler );
 
-	if ( ( pd = pcom_create( ) ) < 0 ) {
+	if ( ( res_fd = pcom_create( ) ) < 0 ) {
 		return EXIT_FAILURE;
 	}
 
-	pfd_set( pd, 1, pcom_open( pd, PCOM_RO, 0, 0 ) );
+	save_podora_info( );
+
+	pfd_set( res_fd, 1, pcom_open( res_fd, PCOM_RO, 0, 0 ) );
 
 	sockfd = socket_open( INADDR_ANY, 8081 );
 
@@ -60,6 +75,19 @@ int main( ) {
 	return 1;
 }
 
+void save_podora_info( ) {
+	int pid = getpid( ), fd;
+
+	if ( ( fd = creat( PD_INFO_FILE, 0644 ) ) < 0 ) {
+		perror( "[fatal] save_podora_info: creat() failed" );
+		exit( EXIT_FAILURE );
+	}
+
+	write( fd, &pid, sizeof( pid ) );
+	write( fd, &res_fd, sizeof( pid ) );
+	close( fd );
+}
+
 int socket_open( in_addr_t addr, int portno ) {
 	int sockfd = socket( AF_INET, SOCK_STREAM, 0 );
 	struct sockaddr_in serv_addr;
@@ -67,7 +95,7 @@ int socket_open( in_addr_t addr, int portno ) {
 
 	if ( sockfd < 0 ) {
 		perror( "[error] psocket_open: socket() failed" );
-		return 0;
+		return -1;
 	}
 
 	memset( &serv_addr, 0, sizeof( serv_addr ) );
@@ -81,16 +109,20 @@ int socket_open( in_addr_t addr, int portno ) {
 	if ( bind( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
 		perror( "[error] psocket_open: bind() failed" );
 		close( sockfd );
-		return 0;
+		return -1;
 	}
 
 	if ( listen( sockfd, SOCK_N_PENDING ) < 0 ) {
 		perror( "[error] psocket_open: listen() failed" );
-		return 0;
+		return -1;
 	}
+
+	printf( "[socket] started socket \"http://%s:%d\"\n", "0.0.0.0", portno );
 
 	return sockfd;
 }
+
+// Handlers ////////////////////////////////////////////
 
 void request_accept_handler( int sockfd, void* udata ) {
 	struct sockaddr_in cli_addr;
@@ -99,11 +131,9 @@ void request_accept_handler( int sockfd, void* udata ) {
 
 	/* Connection request on original socket.  */
 	if ( ( newsockfd = accept( sockfd, (struct sockaddr *) &cli_addr, &cli_len ) ) < 0 ) {
-		perror("[error] request_accept_handler: accept() failed");
+		perror( "[error] request_accept_handler: accept() failed" );
 		return;
 	}
-
-	printf( "accepted\n" );
 
 	pfd_set( newsockfd, 3, NULL );
 }
@@ -111,40 +141,49 @@ void request_accept_handler( int sockfd, void* udata ) {
 void request_handler( int sockfd, void* udata ) {
 	char buffer[ PCOM_MSG_SIZE ];
 	int n;
+	website_t* website;
+	website_data_t* website_data;
+	pcom_transport_t* transport;
 
 	memset( &buffer, 0, sizeof( buffer ) );
 
-	if ( ( n = read( sockfd, buffer, sizeof( buffer ) ) ) > 0 ) {
-		printf( "%s\n", buffer );
-		pfd_clr( sockfd );
-		close( sockfd );
-	} else {
-		pfd_clr( sockfd );
-		close( sockfd );
+	if ( ( n = read( sockfd, buffer, sizeof( buffer ) ) ) < 0 ) {
+		perror( "[error] request_handler: read() failed" );
+		return;
 	}
 
+	printf( "%s\n", buffer );
+
+	if ( !( website = website_get_root( ) ) ) {
+		fprintf( stderr, "[warning] request_handler: no website to service request\n" );
+		pfd_clr( sockfd );
+		close( sockfd );
+		return;
+	}
+
+	website_data = website->data;
+
+	transport = pcom_open( website_data->fd, PCOM_WO, sockfd, website->id );
+	pcom_flush( transport );
 }
 
 void command_handler( pcom_transport_t* transport ) {
 
-	printf( "%d: %d:%d\n", transport->header->key, *(int*) transport->message, *(int*) ( transport->message + sizeof( int ) ) );
-	int req_pd = pcom_connect( *(int*) transport->message, *(int*) ( transport->message + sizeof( int ) ) );
+	switch ( transport->header->id ) {
 
-	pcom_transport_t* transport2 = pcom_open( req_pd, PCOM_WO, 1, transport->header->key );
-	pcom_close( transport2 );
+		case WS_START_CMD:
+			start_website( transport );
+			break;
 
-	transport2 = pcom_open( req_pd, PCOM_WO, 2, transport->header->key );
-	pcom_close( transport2 );
+		case WS_STOP_CMD:
+			stop_website( transport );
+			break;
 
-	transport2 = pcom_open( req_pd, PCOM_WO, 3, transport->header->key );
-	pcom_close( transport2 );
+	}
 
-	close( req_pd );
 }
 
 void response_handler( int res_fd, pcom_transport_t* transport ) {
-	char filename[ 100 ];
-	int fd;
 
 	pcom_read( transport );
 
@@ -153,24 +192,66 @@ void response_handler( int res_fd, pcom_transport_t* transport ) {
 			command_handler( transport );
 			return;
 		}
-
-		sprintf( filename, "out/%d", transport->header->key );
-		mkdir( filename, 0777 );
-		sprintf( filename, "out/%d/%d.out", transport->header->key, transport->header->id );
-		if ( ( fd = creat( filename, 0644 ) ) < 0 ) {
-			perror( "[error] main: creat() could not create file" );
-			return;
-		}
-		fds[ transport->header->key ][ transport->header->id ] = fd;
-		printf( "%d: create %d\n", transport->header->key, transport->header->id );
 	}
 
-	if ( write( fds[ transport->header->key ][ transport->header->id ], transport->message, transport->header->size ) != transport->header->size )
-		perror( "[error] main: write failed" );
+	if ( write( transport->header->id, transport->message, transport->header->size ) != transport->header->size )
+		perror( "[error] response_handler: write failed" );
 
 	if ( PCOM_MSG_IS_LAST( transport ) ) {
-		pfd_clr( fds[ transport->header->key ][ transport->header->id ] );
-		close( fds[ transport->header->key ][ transport->header->id ] );
-		printf( "%d: close %d\n", transport->header->key, transport->header->id );
+		pfd_clr( transport->header->id );
+		close( transport->header->id );
 	}
+}
+
+////////////////////////////////////////////////////////////////
+
+void start_website( pcom_transport_t* transport ) {
+	website_t* website;
+	website_data_t* website_data;
+
+	int pid = *(int*) transport->message;
+	int fd = *(int*) ( transport->message + sizeof( int ) );
+	char* url = transport->message + sizeof( int ) * 2;
+
+	if ( website_get_by_id( transport->header->key ) ) {
+		fprintf( stderr, "[warning] start_website: tried to add website that already exists" );
+		return;
+	}
+
+	if ( !( website = website_add( transport->header->key, url ) ) ) {
+		fprintf( stderr, "[error] start_website: website_add() failed starting website \"%s\"", url );
+		return;
+	}
+
+	printf( "[website] starting \"http://%s\"\n", website->url );
+
+	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
+
+	website->data = website_data;
+
+	if ( !( website_data->fd = pcom_connect( pid, fd ) ) ) {
+		fprintf( stderr, "[error] start_website: pcom_connect() failed for website \"%s\"\n", website->url );
+		//stop_website( website->id );
+		return;
+	}
+
+}
+
+void stop_website( pcom_transport_t* transport ) {
+	website_t* website;
+	website_data_t* website_data;
+
+	if ( !( website = website_get_by_id( transport->header->key ) ) ) {
+		fprintf( stderr, "[warning] stop_website: tried to stop a nonexisting website\n" );
+		return;
+	}
+
+	printf( "[website] stopping \"http://%s\"\n", website->url );
+
+	website_data = (website_data_t*) website->data;
+
+	close( website_data->fd );
+
+	free( website_data );
+	website_remove( website );
 }

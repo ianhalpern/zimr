@@ -41,7 +41,7 @@ clean:
 ##### EXECS #####
 #################
 
-podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o
+podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o
 	$(EXEC_COMPILE)
 
 podora-website: $(EXEC_DEPENDS) general.o pcom.o pfildes.o

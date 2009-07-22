@@ -31,26 +31,35 @@
 
 int res_pd, req_pd;
 int key;
+char* url;
 
 void start_website( );
+void stop_website( );
+
 void request_handler( int fd, void* udata );
 void file_handler( int fd, void* udata );
+void read_podora_info( int* pid, int* res_fd );
 
 void quitproc( ) {
+	stop_website( );
 	printf( "quit\n" );
 }
 
 int main( int argc, char *argv[ ] ) {
+	int pid, res_fn;
+
+	read_podora_info( &pid, &res_fn );
+
+	if ( argc < 2 )
+		return EXIT_FAILURE;
+
+	url = argv[ 1 ];
 
 	key = randkey( );
 
-	if ( argc < 2 ) {
-		return EXIT_FAILURE;
-	}
-
 	signal( SIGINT, quitproc );
 
-	if ( ( res_pd = pcom_connect( atoi( argv[ 1 ] ), 3 ) ) < 0 ) {
+	if ( ( res_pd = pcom_connect( pid, res_fn ) ) < 0 ) {
 		return EXIT_FAILURE;
 	}
 
@@ -70,6 +79,20 @@ int main( int argc, char *argv[ ] ) {
 	return 0;
 }
 
+void read_podora_info( int* pid, int* res_fn ) {
+	int fd;
+
+	if ( ( fd = open( PD_INFO_FILE, O_RDONLY ) ) < 0 ) {
+		perror( "[fatal] read_podora_info: open() failed" );
+		exit( EXIT_FAILURE );
+	}
+
+	read( fd, pid, sizeof( *pid ) );
+	read( fd, res_fn, sizeof( *res_fn ) );
+
+	close( fd );
+}
+
 void send_cmd( int cmd, void* message, int size ) {
 	pcom_transport_t* transport = pcom_open( res_pd, PCOM_WO, cmd, key );
 	pcom_write( transport, message, size );
@@ -78,26 +101,30 @@ void send_cmd( int cmd, void* message, int size ) {
 
 void start_website( ) {
 	int pid = getpid( );
-	char message[ sizeof( int ) * 2 ];
+	char message[ sizeof( int ) * 2 + strlen( url ) + 1 ];
 	memcpy( message, &pid, sizeof( int ) );
 	memcpy( message + sizeof( int ), &req_pd, sizeof( int ) );
-	send_cmd( -1, message, sizeof( message ) );
+	memcpy( message + sizeof( int ) * 2, url, strlen( url ) + 1 );
+	send_cmd( WS_START_CMD, message, sizeof( message ) );
+}
+
+void stop_website( ) {
+	send_cmd( WS_STOP_CMD, NULL, 0 );
 }
 
 void request_handler( int fd, void* udata ) {
-	char filename[ 100 ];
+	int res_file_fd;
 
 	pcom_transport_t* transport = pcom_open( fd, PCOM_RO, 0, 0 );
 	pcom_read( transport );
 
-	printf( "requested: %d\n", transport->header->id );
+	printf( "%s\n", (char*) transport->message );
 
-	sprintf( filename, "in/%d.in", transport->header->id );
-	if ( ( fd = open( filename, O_RDONLY ) ) < 0 ) {
+	if ( ( res_file_fd = open( "in/2.in", O_RDONLY ) ) < 0 ) {
 		return;
 	}
 
-	pfd_set( fd, 2, pcom_open( res_pd, PCOM_WO, transport->header->id, key ) );
+	pfd_set( res_file_fd, 2, pcom_open( res_pd, PCOM_WO, transport->header->id, key ) );
 
 	pcom_close( transport );
 }

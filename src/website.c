@@ -28,7 +28,6 @@ website_t* website_add( int id, char* url ) {
 	website_t* w = (website_t* ) malloc( sizeof( website_t ) );
 
 	w->id = id;
-	w->shmkey = url2int( url );
 	w->url = strdup( url );
 
 	w->next = root_website_node;
@@ -40,7 +39,6 @@ website_t* website_add( int id, char* url ) {
 	root_website_node = w;
 
 	return w;
-
 }
 
 void website_remove( website_t* w ) {

@@ -23,6 +23,8 @@
 #ifndef _PD_CONFIG_H
 #define _PD_CONFIG_H
 
+#define PD_INFO_FILE "podora.info"
+
 /****** pcom config *******/
 
 #define PCOM_MSG_SIZE ( PCOM_BUF_SIZE - PCOM_HDR_SIZE )
