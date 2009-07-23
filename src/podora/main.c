@@ -40,7 +40,7 @@ int res_fd;
 void save_podora_info( );
 
 void request_accept_handler( int sockfd, void* udata );
-void request_handler( int sockfd, void* udata );
+void request_handler( int sockfd, int* orig_sockfd );
 void response_handler( int fd, pcom_transport_t* transport );
 
 void start_website( pcom_transport_t* transport );
@@ -55,6 +55,7 @@ int main( ) {
 
 	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n\n" );
 
+	// TODO: switch to sighandler
 	signal( SIGPIPE, broken_pipe );
 	signal( SIGINT, quit );
 
@@ -138,12 +139,12 @@ void start_website( pcom_transport_t* transport ) {
 	char* url = transport->message + sizeof( int ) * 2;
 
 	if ( website_get_by_url( url ) ) {
-		fprintf( stderr, "[warning] start_website: tried to add website that already exists" );
+		fprintf( stderr, "[warning] start_website: tried to add website that already exists\n" );
 		return;
 	}
 
 	if ( !( website = website_add( transport->header->key, url ) ) ) {
-		fprintf( stderr, "[error] start_website: website_add() failed starting website \"%s\"", url );
+		fprintf( stderr, "[error] start_website: website_add() failed starting website \"%s\"\n", url );
 		return;
 	}
 
@@ -209,10 +210,12 @@ void request_accept_handler( int sockfd, void* udata ) {
 		return;
 	}
 
-	pfd_set( newsockfd, 3, NULL );
+	int* ptr = (int*) malloc( sizeof( int ) );
+	memcpy( ptr, &sockfd, sizeof( int ) );
+	pfd_set( newsockfd, PFD_TYPE_SOCK_ACCEPTED, ptr ); //TODO: <= this might be a bug passing sockfd by reference
 }
 
-void request_handler( int sockfd, void* udata ) {
+void request_handler( int sockfd, int* orig_sockfd ) {
 	char buffer[ PCOM_MSG_SIZE ];
 	int n;
 	website_t* website;
@@ -231,6 +234,11 @@ void request_handler( int sockfd, void* udata ) {
 		return;
 	}
 
+	if ( !n ) { // if no data was read, the socket has been closed from the other end
+		pfd_clr( sockfd );
+		close( sockfd );
+	}
+
 	if ( startswith( buffer, HTTP_GET ) )
 		request_type = HTTP_GET_TYPE;
 	else if ( startswith( buffer, HTTP_POST ) )
@@ -245,6 +253,14 @@ void request_handler( int sockfd, void* udata ) {
 	}
 
 	website_data = website->data;
+
+	if ( website_data->socket->sockfd != *orig_sockfd ) {
+		fprintf( stderr, "[warning] request_handler: no website to service request\n" );
+		pfd_clr( sockfd );
+		close( sockfd );
+		return;
+	}
+
 	transport = pcom_open( website_data->fd, PCOM_WO, sockfd, website->key );
 
 	if ( request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
@@ -270,6 +286,7 @@ void request_handler( int sockfd, void* udata ) {
 		}
 	}
 
+	free( orig_sockfd );
 	pcom_free( transport );
 }
 

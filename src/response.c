@@ -83,6 +83,7 @@ response_t response_create( int sockfd, website_t* website, char http_version[ ]
 	response_t response;
 	response.sockfd = sockfd;
 	response.website = website;
+	response.headers.num = 0;
 	memcpy( response.http_version, http_version, sizeof( http_version ) );
 	return response;
 }

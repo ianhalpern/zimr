@@ -61,21 +61,19 @@ request_t request_create( website_t* website, int sockfd, char* raw, size_t size
 	r.http_version[ tmp - raw ] = '\0';
 	raw = tmp + 2;
 
-	//printf( "version: \"%s\"\n", r.version );
+	//printf( "version: \"%s\"\n", r.http_version );
 
-	/*
+
 	// headers
 	r.headers = headers_parse( raw );
 
-	for ( i = 0; i < r.headers.n; i++ ) {
-		printf( "%s: %s\n", r.headers.list[ i ].name, r.headers.list[ i ].value );
-	}
+	//int i;
+	//for ( i = 0; i < r.headers.num; i++ ) {
+	//	printf( "%s: %s\n", r.headers.list[ i ].name, r.headers.list[ i ].value );
+	//}
 
-	raw += r.headers.size + r.headers.n*  4 + 2;
-*/
+
 	// body
-
-
 	if ( r.type == HTTP_POST_TYPE ) {
 		if ( ( tmp = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
 			tmp += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
@@ -86,6 +84,7 @@ request_t request_create( website_t* website, int sockfd, char* raw, size_t size
 
 	r.website = website;
 	r.response = response_create( r.sockfd, r.website, r.http_version );
+
 	return r;
 }
 

@@ -57,7 +57,8 @@ int  podora_website_stop( website_t* website );
 void podora_website_set_pubdir ( website_t* website, const char* pubdir );
 
 void podora_response_register_page_handler( const char* page_type, void* (*page_handler)( response_t*, const char*, void* ), void* udata );
-void podora_response_flush_headers( pcom_transport_t* transport, response_t* response, int size, char* mime );
+void podora_response_send_status( pcom_transport_t* transport, response_t* response );
+void podora_response_send_headers( pcom_transport_t* transport, response_t* response );
 void podora_response_serve_file( response_t* response, char* filepath, unsigned char use_pubdir );
 void podora_response_serve( response_t* response, void* message, int size );
 void podora_response_default_page_handler( response_t* response, char* filepath );

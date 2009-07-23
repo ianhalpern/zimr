@@ -30,16 +30,19 @@
 
 #include "general.h"
 #include "website.h"
+#include "headers.h"
 
 typedef struct response {
 	int sockfd;
 	char http_version[ 4 ];
 	short http_status;
 	website_t* website;
+	headers_t  headers;
 } response_t;
 
 const char* response_status( short );
 
-response_t response_create( int descriptor, website_t* website, char http_version[ ] );
+response_t response_create( int sockfd, website_t* website, char http_version[ ] );
 void response_set_status( response_t* response, short status );
+
 #endif

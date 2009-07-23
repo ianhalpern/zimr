@@ -22,16 +22,6 @@
 
 #include "podora.h"
 
-char response_headers[ ] = "\
-HTTP/%s %s\r\n\
-Date: %s\r\n\
-Server: Podora/%s\r\n\
-Content-Length: %ld\r\n\
-Content-Type: %s\r\n\
-Connection: keep-alive\r\n\
-Accept-Ranges: bytes\r\n\
-\r\n";
-
 typedef struct {
 	char page_type[ 10 ];
 	void* (*page_handler)( response_t*, const char*, void* );
@@ -193,6 +183,10 @@ void podora_request_handler( int req_fd, website_t* website ) {
 
 	request = request_create( website, transport->header->id, transport->message, transport->header->size );
 
+	// To ensure thier position at the top of the headers
+	headers_set_header( &request.response.headers, "Date", "" );
+	headers_set_header( &request.response.headers, "Server", "" );
+
 	podora_response_serve_file( &request.response, request.url, 1 );
 
 	pcom_close( transport );
@@ -214,25 +208,39 @@ void podora_file_handler( int fd, pcom_transport_t* transport ) {
 	}
 }
 
-void podora_response_flush_headers( pcom_transport_t* transport, response_t* response, int size, char* mime ) {
-	char headers[ 256 ];
+void podora_response_send_status( pcom_transport_t* transport, response_t* response ) {
+	char status_line[ 100 ];
+	sprintf( status_line, "HTTP/%s %s" HTTP_HDR_ENDL, response->http_version, response_status( response->http_status ) );
+
+	pcom_write( transport, status_line, strlen( status_line ) );
+}
+
+void podora_response_send_headers( pcom_transport_t* transport, response_t* response ) {
 	time_t now;
 	char now_str[ 80 ];
 
 	time( &now );
 	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
 
-	sprintf( headers, response_headers, response->http_version,
-	  response_status( response->http_status ), now_str, PODORA_VERSION, size, mime );
+	headers_set_header( &response->headers, "Date", now_str );
+	headers_set_header( &response->headers, "Server", "Podora/" PODORA_VERSION );
+
+	const char* headers = headers_to_string( &response->headers );
 
 	pcom_write( transport, (void*) headers, strlen( headers ) );
+	free( (char*) headers );
 }
 
 void podora_response_serve( response_t* response, void* message, int size ) {
+	char sizebuf[ 10 ];
 	pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
 
 	response_set_status( response, 200 );
-	podora_response_flush_headers( transport, response, size, mime_get_type( ".html" ) );
+	sprintf( sizebuf, "%d", size );
+	headers_set_header( &response->headers, "Content-Length", sizebuf );
+
+	podora_response_send_status( transport, response );
+	podora_response_send_headers( transport, response );
 
 	pcom_write( transport, (void*) message, size );
 	pcom_close( transport );
@@ -240,10 +248,10 @@ void podora_response_serve( response_t* response, void* message, int size ) {
 
 void podora_response_serve_file( response_t* response, char* filepath, unsigned char use_pubdir ) {
 	struct stat file_stat;
+	char sizebuf[ 10 ];
 	char full_filepath[ 256 ];
 	char* extension;
 	int i;
-
 
 	if ( use_pubdir )
 		strcpy( full_filepath, ((website_data_t*) response->website->data)->pubdir );
@@ -255,7 +263,12 @@ void podora_response_serve_file( response_t* response, char* filepath, unsigned 
 		pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
 
 		response_set_status( response, 404 );
-		podora_response_flush_headers( transport, response, 48, mime_get_type( ".html" ) );
+		headers_set_header( &response->headers, "Content-Type", mime_get_type( ".html" ) );
+		sprintf( sizebuf, "%d", 48 );
+		headers_set_header( &response->headers, "Content-Length", sizebuf );
+
+		podora_response_send_status( transport, response );
+		podora_response_send_headers( transport, response );
 
 		pcom_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
 		pcom_close( transport );
@@ -302,6 +315,7 @@ void podora_response_register_page_handler( const char* page_type, void* (*page_
 void podora_response_default_page_handler( response_t* response, char* filepath ) {
 	int fd;
 	struct stat file_stat;
+	char sizebuf[ 10 ];
 	pcom_transport_t* transport;
 
 	if ( ( fd = open( filepath, O_RDONLY ) ) < 0 ) {
@@ -311,8 +325,15 @@ void podora_response_default_page_handler( response_t* response, char* filepath 
 	fstat( fd, &file_stat );
 
 	transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
-	response_set_status( response, 200 );
-	podora_response_flush_headers( transport, response, file_stat.st_size, mime_get_type( filepath ) );
-	pfd_set( fd, PFD_TYPE_FILE, transport );
 
+	response_set_status( response, 200 );
+	headers_set_header( &response->headers, "Content-Type", mime_get_type( filepath ) );
+
+	sprintf( sizebuf, "%d", (int) file_stat.st_size );
+	headers_set_header( &response->headers, "Content-Length", sizebuf );
+
+	podora_response_send_status( transport, response );
+	podora_response_send_headers( transport, response );
+
+	pfd_set( fd, PFD_TYPE_FILE, transport );
 }

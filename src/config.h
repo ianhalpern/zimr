@@ -56,15 +56,12 @@
 
 /****** website config *******/
 
+// Commands must be negative
 #define WS_START_CMD -1
 #define WS_STOP_CMD  -2
 
 #define WS_STATUS_STOPPED  0x01
 #define WS_STATUS_STARTED  0x02
-#define WS_STATUS_STOPPING 0x03
-
-#define WS_TYPE_SERVER 0x01
-#define WS_TYPE_CLIENT 0x02
 
 /*************************/
 
@@ -85,7 +82,15 @@
 #define HTTP_HDR_ENDL "\r\n"
 
 #define HTTP_DEFAULT_PORT  80
-#define HTTPS_DEFAULT_PORT 443
+
+/*************************/
+
+/******* headers config *******/
+
+#define HEADERS_MAX_NUM 32
+
+#define HEADER_NAME_MAX_LEN  128
+#define HEADER_VALUE_MAX_LEN 512
 
 /*************************/
 
