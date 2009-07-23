@@ -150,7 +150,7 @@ int podora_website_start( website_t* website ) {
 	memcpy( message + sizeof( int ), &website_data->req_fd, sizeof( int ) );
 	memcpy( message + sizeof( int ) * 2, website->url, strlen( website->url ) + 1 );
 
-	podora_send_cmd( WS_START_CMD, website->id, message, sizeof( message ) );
+	podora_send_cmd( WS_START_CMD, website->key, message, sizeof( message ) );
 
 	website_data->status = WS_STATUS_STARTED;
 
@@ -163,7 +163,7 @@ int podora_website_stop( website_t* website ) {
 	if ( website_data->status == WS_STATUS_STOPPED )
 		return 0;
 
-	podora_send_cmd( WS_STOP_CMD, website->id, NULL, 0 );
+	podora_send_cmd( WS_STOP_CMD, website->key, NULL, 0 );
 
 	return 1;
 }
@@ -223,20 +223,20 @@ void podora_response_flush_headers( pcom_transport_t* transport, response_t* res
 	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
 
 	sprintf( headers, response_headers, response->http_version,
-	  response_status( response->http_status ), PODORA_VERSION, now_str, size, mime );
+	  response_status( response->http_status ), now_str, PODORA_VERSION, size, mime );
 
 	pcom_write( transport, (void*) headers, strlen( headers ) );
 }
 
-/*void podora_response_serve( response_t* response, void* message, int size ) {
-	pcom_transport* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->wesbite->id );
+void podora_response_serve( response_t* response, void* message, int size ) {
+	pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
 
 	response_set_status( response, 200 );
 	podora_response_flush_headers( transport, response, size, mime_get_type( ".html" ) );
 
 	pcom_write( transport, (void*) message, size );
 	pcom_close( transport );
-}*/
+}
 
 void podora_response_serve_file( response_t* response, char* filepath, unsigned char use_pubdir ) {
 	struct stat file_stat;
@@ -252,7 +252,7 @@ void podora_response_serve_file( response_t* response, char* filepath, unsigned 
 
 	if ( stat( full_filepath, &file_stat ) ) {
 
-		pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->id );
+		pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
 
 		response_set_status( response, 404 );
 		podora_response_flush_headers( transport, response, 48, mime_get_type( ".html" ) );
@@ -310,7 +310,7 @@ void podora_response_default_page_handler( response_t* response, char* filepath 
 
 	fstat( fd, &file_stat );
 
-	transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->id );
+	transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
 	response_set_status( response, 200 );
 	podora_response_flush_headers( transport, response, file_stat.st_size, mime_get_type( filepath ) );
 	pfd_set( fd, PFD_TYPE_FILE, transport );

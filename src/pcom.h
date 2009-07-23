@@ -28,7 +28,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
-//#include <stropts.h>
+#include <errno.h>
 
 #include "config.h"
 
@@ -53,9 +53,10 @@ int pcom_connect( int pid, int pd );
 
 pcom_transport_t* pcom_open( int pd, int io_type, int id, int key );
 void pcom_reset_header( pcom_transport_t* transport, int flags );
-int pcom_read( pcom_transport_t* transport );
-int pcom_write( pcom_transport_t* transport, void* message, int size );
-int pcom_flush( pcom_transport_t* transport );
-int pcom_close( pcom_transport_t* transport );
+int  pcom_read( pcom_transport_t* transport );
+int  pcom_write( pcom_transport_t* transport, void* message, int size );
+int  pcom_flush( pcom_transport_t* transport );
+int  pcom_close( pcom_transport_t* transport );
+void pcom_free( pcom_transport_t* transport );
 
 #endif

@@ -1,3 +1,4 @@
+
 /*   Podora - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
@@ -20,23 +21,34 @@
  *
  */
 
-#ifndef _PD_WEBSITE_H
-#define _PD_WEBSITE_H
+#ifndef _PD_PSOCKET_H
+#define _PD_PSOCKET_H
 
-#include "general.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
 
-typedef struct website {
-	char* url;
-	int key;
-	struct website* next;
-	struct website* prev;
-	void* data;
-} website_t;
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
-website_t* website_add ( int, char* );
-void website_remove ( website_t* );
-website_t* website_get_by_url( char* url );
-website_t* website_get_by_key( int );
-website_t* website_get_root( );
+#include "config.h"
+
+typedef struct psocket {
+	int sockfd;
+	in_addr_t addr;
+	int portno;
+	int n_open;
+	struct psocket* next;
+	struct psocket* prev;
+} psocket_t;
+
+psocket_t* psocket_open( in_addr_t addr, int portno );
+int psocket_init( in_addr_t addr, int portno );
+psocket_t* psocket_create( int sockfd, in_addr_t addr, int portno );
+void psocket_remove( psocket_t* p );
+psocket_t* psocket_get_by_info( in_addr_t addr, int portno );
+psocket_t* psocket_get_by_sockfd( int sockfd );
 
 #endif

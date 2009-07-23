@@ -103,11 +103,15 @@ int pcom_write( pcom_transport_t* transport, void* message, int size ) {
 }
 
 int pcom_flush( pcom_transport_t* transport ) {
+	int n;
 
 	transport->lock.l_type = F_WRLCK;
 	fcntl( transport->pd, F_SETLKW, &transport->lock );
 
-	int n = write( transport->pd, transport->buffer, PCOM_BUF_SIZE );
+	if ( ( n = write( transport->pd, transport->buffer, PCOM_BUF_SIZE ) ) < 0 ) {
+		if ( errno == EPIPE )
+			return 0;
+	}
 
 	transport->lock.l_type = F_UNLCK;
 	fcntl( transport->pd, F_SETLKW, &transport->lock );
@@ -118,6 +122,8 @@ int pcom_flush( pcom_transport_t* transport ) {
 	}
 
 	pcom_reset_header( transport, 0 );
+
+	errno = 0; // just in case EPIPE errno was set but not from this call
 
 	return n;
 }
@@ -130,6 +136,10 @@ int pcom_close( pcom_transport_t* transport ) {
 		ret = pcom_flush( transport );
 	}
 
-	free( transport );
+	pcom_free( transport );
 	return ret;
+}
+
+void pcom_free( pcom_transport_t* transport ) {
+	free( transport );
 }

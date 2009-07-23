@@ -53,7 +53,8 @@ void pfd_start( ) {
 		read_fd_set = active_fd_set;
 
 		if ( select( FD_SETSIZE, &read_fd_set, NULL, NULL, NULL ) < 0 ) {
-			perror( "[error] pfd_start: select() failed" );
+			if ( errno != EINTR )
+				perror( "[error] pfd_start: select() failed" );
 			return;
 		}
 

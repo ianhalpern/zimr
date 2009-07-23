@@ -9,7 +9,7 @@ OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
 
-OBJS        = general.o pcom.o website.o pfildes.o request.o response.o mime.o
+OBJS        = general.o pcom.o website.o pfildes.o request.o response.o mime.o psocket.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 
 EXECS       = podora podora-website
@@ -41,7 +41,7 @@ clean:
 ##### EXECS #####
 #################
 
-podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o
+podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o psocket.o
 	$(EXEC_COMPILE)
 
 podora-website: $(EXEC_DEPENDS)

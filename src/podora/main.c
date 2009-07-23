@@ -25,22 +25,19 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
 #include "pcom.h"
 #include "pfildes.h"
 #include "website.h"
+#include "psocket.h"
 
 typedef struct website_data {
 	int fd;
+	psocket_t* socket;
 } website_data_t;
 
 int res_fd;
 
 void save_podora_info( );
-int  socket_open( in_addr_t addr, int portno );
 
 void request_accept_handler( int sockfd, void* udata );
 void request_handler( int sockfd, void* udata );
@@ -49,14 +46,21 @@ void response_handler( int fd, pcom_transport_t* transport );
 void start_website( pcom_transport_t* transport );
 void stop_website( pcom_transport_t* transport );
 
+void remove_website( website_t* website );
+
+void broken_pipe( ) { }
+void quit( ) { }
+
 int main( ) {
-	int sockfd;
 
 	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n\n" );
 
-	pfd_register_type( 1, PFD_TYPE_HDLR response_handler );
-	pfd_register_type( 2, PFD_TYPE_HDLR request_accept_handler );
-	pfd_register_type( 3, PFD_TYPE_HDLR request_handler );
+	signal( SIGPIPE, broken_pipe );
+	signal( SIGINT, quit );
+
+	pfd_register_type( PFD_TYPE_PCOM,          PFD_TYPE_HDLR response_handler );
+	pfd_register_type( PFD_TYPE_SOCK_LISTEN,   PFD_TYPE_HDLR request_accept_handler );
+	pfd_register_type( PFD_TYPE_SOCK_ACCEPTED, PFD_TYPE_HDLR request_handler );
 
 	if ( ( res_fd = pcom_create( ) ) < 0 ) {
 		return EXIT_FAILURE;
@@ -64,14 +68,11 @@ int main( ) {
 
 	save_podora_info( );
 
-	pfd_set( res_fd, 1, pcom_open( res_fd, PCOM_RO, 0, 0 ) );
-
-	sockfd = socket_open( INADDR_ANY, 8081 );
-
-	pfd_set( sockfd, 2, NULL );
+	pfd_set( res_fd, PFD_TYPE_PCOM, pcom_open( res_fd, PCOM_RO, 0, 0 ) );
 
 	pfd_start( );
 
+	printf( "quit\n" );
 	return 1;
 }
 
@@ -88,40 +89,6 @@ void save_podora_info( ) {
 	close( fd );
 }
 
-int socket_open( in_addr_t addr, int portno ) {
-	int sockfd = socket( AF_INET, SOCK_STREAM, 0 );
-	struct sockaddr_in serv_addr;
-	int on = 1; // used by setsockopt
-
-	if ( sockfd < 0 ) {
-		perror( "[error] psocket_open: socket() failed" );
-		return -1;
-	}
-
-	memset( &serv_addr, 0, sizeof( serv_addr ) );
-
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = addr;
-	serv_addr.sin_port = htons( portno );
-
-	setsockopt( sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof( on ) );
-
-	if ( bind( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
-		perror( "[error] psocket_open: bind() failed" );
-		close( sockfd );
-		return -1;
-	}
-
-	if ( listen( sockfd, SOCK_N_PENDING ) < 0 ) {
-		perror( "[error] psocket_open: listen() failed" );
-		return -1;
-	}
-
-	printf( "[socket] started socket \"http://%s:%d\"\n", "0.0.0.0", portno );
-
-	return sockfd;
-}
-
 char* get_url_from_http_header( char* url, char* raw ) {
 	char* ptr,* ptr2;
 
@@ -131,10 +98,8 @@ char* get_url_from_http_header( char* url, char* raw ) {
 
 	*( url + ( ptr2 - ptr ) ) = '\0';
 
-	if ( startswith( raw, HTTP_GET ) )
-		raw += strlen( HTTP_GET ) + 1;
-	else
-		raw += strlen( HTTP_POST ) + 1;
+	raw = strstr( raw, " " );
+	raw++;
 
 	ptr = strstr( raw, " " );
 
@@ -143,6 +108,93 @@ char* get_url_from_http_header( char* url, char* raw ) {
 	return url;
 }
 
+int get_port_from_url( char* url ) {
+	char* ptr1,* ptr2;
+	char port_str[ 6 ];
+
+	memset( port_str, 0, sizeof( port_str ) );
+
+	ptr1 = strstr( url, ":" );
+	ptr2 = strstr( url, "/" );
+
+	if ( !ptr2 )
+		ptr2 = url + strlen( url );
+
+	if ( !ptr1 || ptr2 < ptr1 )
+		return HTTP_DEFAULT_PORT;
+
+	ptr1++;
+
+	strncpy( port_str, ptr1, ptr2 - ptr1 );
+	return atoi( port_str );
+}
+
+void start_website( pcom_transport_t* transport ) {
+	website_t* website;
+	website_data_t* website_data;
+
+	int pid = *(int*) transport->message;
+	int fd = *(int*) ( transport->message + sizeof( int ) );
+	char* url = transport->message + sizeof( int ) * 2;
+
+	if ( website_get_by_url( url ) ) {
+		fprintf( stderr, "[warning] start_website: tried to add website that already exists" );
+		return;
+	}
+
+	if ( !( website = website_add( transport->header->key, url ) ) ) {
+		fprintf( stderr, "[error] start_website: website_add() failed starting website \"%s\"", url );
+		return;
+	}
+
+	printf( "[website] starting \"http://%s\"\n", website->url );
+
+	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
+
+	website->data = website_data;
+
+	if ( !( website_data->fd = pcom_connect( pid, fd ) ) ) {
+		fprintf( stderr, "[error] start_website: pcom_connect() failed for website \"%s\"\n", website->url );
+		//stop_website( website->id );
+		return;
+	}
+
+	website_data->socket = psocket_open( INADDR_ANY, get_port_from_url( website->url ) );
+
+	if ( !website_data->socket ) {
+		fprintf( stderr, "[error] start_website: psocket_open() failed\n" );
+		remove_website( website );
+		return;
+	}
+
+	pfd_set( website_data->socket->sockfd, PFD_TYPE_SOCK_LISTEN, NULL );
+
+}
+
+void stop_website( pcom_transport_t* transport ) {
+	website_t* website;
+
+	if ( !( website = website_get_by_key( transport->header->key ) ) ) {
+		fprintf( stderr, "[warning] stop_website: tried to stop a nonexisting website\n" );
+		return;
+	}
+
+	remove_website( website );
+}
+
+void remove_website( website_t* website ) {
+	printf( "[website] stopping \"http://%s\"\n", website->url );
+	website_data_t* website_data = (website_data_t*) website->data;
+
+	close( website_data->fd );
+	if ( website_data->socket->n_open == 1 ) {
+		pfd_clr( website_data->socket->sockfd );
+	}
+	psocket_remove( website_data->socket );
+
+	free( website_data );
+	website_remove( website );
+}
 
 // Handlers ////////////////////////////////////////////
 
@@ -193,7 +245,7 @@ void request_handler( int sockfd, void* udata ) {
 	}
 
 	website_data = website->data;
-	transport = pcom_open( website_data->fd, PCOM_WO, sockfd, website->id );
+	transport = pcom_open( website_data->fd, PCOM_WO, sockfd, website->key );
 
 	if ( request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
 		memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
@@ -209,7 +261,16 @@ void request_handler( int sockfd, void* udata ) {
 		pcom_write( transport, (void*) ptr, postlen );
 	}
 
-	pcom_flush( transport );
+	if ( !pcom_flush( transport ) ) {
+		pfd_clr( transport->header->id );
+		close( transport->header->id );
+		if ( errno == EPIPE ) {
+			fprintf( stderr, "[warning] request_handler: pipe broken...removing website\n" );
+			remove_website( website );
+		}
+	}
+
+	pcom_free( transport );
 }
 
 void command_handler( pcom_transport_t* transport ) {
@@ -252,54 +313,3 @@ void response_handler( int res_fd, pcom_transport_t* transport ) {
 }
 
 ////////////////////////////////////////////////////////////////
-
-void start_website( pcom_transport_t* transport ) {
-	website_t* website;
-	website_data_t* website_data;
-
-	int pid = *(int*) transport->message;
-	int fd = *(int*) ( transport->message + sizeof( int ) );
-	char* url = transport->message + sizeof( int ) * 2;
-
-	if ( website_get_by_id( transport->header->key ) ) {
-		fprintf( stderr, "[warning] start_website: tried to add website that already exists" );
-		return;
-	}
-
-	if ( !( website = website_add( transport->header->key, url ) ) ) {
-		fprintf( stderr, "[error] start_website: website_add() failed starting website \"%s\"", url );
-		return;
-	}
-
-	printf( "[website] starting \"http://%s\"\n", website->url );
-
-	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
-
-	website->data = website_data;
-
-	if ( !( website_data->fd = pcom_connect( pid, fd ) ) ) {
-		fprintf( stderr, "[error] start_website: pcom_connect() failed for website \"%s\"\n", website->url );
-		//stop_website( website->id );
-		return;
-	}
-
-}
-
-void stop_website( pcom_transport_t* transport ) {
-	website_t* website;
-	website_data_t* website_data;
-
-	if ( !( website = website_get_by_id( transport->header->key ) ) ) {
-		fprintf( stderr, "[warning] stop_website: tried to stop a nonexisting website\n" );
-		return;
-	}
-
-	printf( "[website] stopping \"http://%s\"\n", website->url );
-
-	website_data = (website_data_t*) website->data;
-
-	close( website_data->fd );
-
-	free( website_data );
-	website_remove( website );
-}
