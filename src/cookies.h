@@ -20,26 +20,28 @@
  *
  */
 
-#ifndef _PD_HEADER_H
-#define _PD_HEADER_H
+#ifndef _PD_COOKIES_H
+#define _PD_COOKIES_H
 
+#include <stdio.h>
 #include <string.h>
 
-#include "general.h"
+#include "config.h"
 
 typedef struct {
 	char name[ HEADER_NAME_MAX_LEN ];
 	char value[ HEADER_VALUE_MAX_LEN ];
-} header_t;
+	char updated;
+} cookie_t;
 
 typedef struct {
 	int num;
-	header_t list[ HEADERS_MAX_NUM ];
-} headers_t;
+	cookie_t list[ HEADERS_MAX_NUM ];
+} cookies_t;
 
-headers_t headers_parse( char* raw );
-char* headers_to_string( headers_t* headers, char* headers_str );
-void headers_set_header( headers_t* headers, char* name, char* value );
-header_t* headers_get_header( headers_t* headers, char* name );
+cookies_t cookies_parse( char* raw );
+void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value );
+cookie_t* cookies_get_cookie( cookies_t* cookies, const char* name );
+char* cookies_to_string( cookies_t* cookies, char* cookies_str );
 
 #endif

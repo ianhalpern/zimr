@@ -4,7 +4,7 @@ LDFLAGS     =
 DBFLAGS     = -ggdb -O0 -pg
 TARGET_ARCH =
 PTHREAD     = -pthread
-DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPODORA_VERSION=\"$(VERNUM)\"
+DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPODORA_VERSION=\"$(VERNUM)\" -DPD_DIR=\"`pwd`/\"
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions -I/usr/include/python$(PYVERSION)
@@ -12,7 +12,7 @@ LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
 
 PYVERSION = 2.6
 
-OBJS        = general.o pcom.o website.o pfildes.o request.o response.o mime.o psocket.o headers.o
+OBJS        = general.o pcom.o website.o pfildes.o psocket.o connection.o mime.o headers.o params.o cookies.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 
 EXECS       = podora podora-website
@@ -55,7 +55,7 @@ podora-website: $(EXEC_DEPENDS) libpodora.so
 
 ##### SHARED OBJS #####
 
-libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o mime.o request.o response.o headers.o
+libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o mime.o connection.o headers.o params.o cookies.o
 	$(EXEC_COMPILE) $(SHARED)
 
 ##### PYTHON MODS #####

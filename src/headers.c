@@ -54,31 +54,18 @@ headers_t headers_parse( char* raw ) {
 	return headers;
 }
 
-const char* headers_to_string( headers_t* headers ) {
-	char* headers_str = (char*) malloc( HEADERS_MAX_NUM * ( HEADER_NAME_MAX_LEN + HEADER_VALUE_MAX_LEN ) );
-	char* ptr = headers_str;
+char* headers_to_string( headers_t* headers, char* headers_str ) {
+	*headers_str = '\0';
 
 	int i;
 	for ( i = 0; i < headers->num; i++ ) {
-
-		strcpy( ptr, headers->list[ i ].name );
-		ptr += strlen( headers->list[ i ].name );
-
-		strcpy( ptr, ": " );
-		ptr += 2;
-
-		strcpy( ptr, headers->list[ i ].value );
-		ptr += strlen( headers->list[ i ].value );
-
-		strcpy( ptr, HTTP_HDR_ENDL );
-		ptr += strlen( HTTP_HDR_ENDL );
-
+		strcat( headers_str, headers->list[ i ].name );
+		strcat( headers_str, ": " );
+		strcat( headers_str, headers->list[ i ].value );
+		strcat( headers_str, HTTP_HDR_ENDL );
 	}
 
-	strcpy( ptr, HTTP_HDR_ENDL );
-	ptr += strlen( HTTP_HDR_ENDL );
-
-	*ptr = '\0';
+	strcat( headers_str, HTTP_HDR_ENDL );
 
 	return headers_str;
 }
@@ -97,7 +84,7 @@ void headers_set_header( headers_t* headers, char* name, char* value ) {
 header_t* headers_get_header( headers_t* headers, char* name ) {
 	int i;
 
-	for( i = 0; i < headers->num; i++ ) {
+	for ( i = 0; i < headers->num; i++ ) {
 		if ( strcmp( headers->list[ i ].name, name ) == 0 )
 			return &headers->list[ i ];
 	}

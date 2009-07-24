@@ -18,31 +18,44 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
  *
- *
  */
 
-#ifndef _PD_REQUEST_H
-#define _PD_REQUEST_H
+#ifndef _PD_CONNECTION_H
+#define _PD_CONNECTION_H
 
-#include "general.h"
 #include "website.h"
-#include "response.h"
 #include "headers.h"
+#include "params.h"
+#include "cookies.h"
 
 typedef struct request {
-	int sockfd;
-	char ip[ 12 ];
-	char hostname[ 128 ];
 	char type;
-	char http_version[ 4 ];
 	char url[ 512 ];
 	char full_url[ 512 ];
 	char post_body[ 1024 ];
-	website_t* website;
-	headers_t  headers;
-	response_t response;
+	headers_t headers;
+	params_t params;
 } request_t;
 
-request_t request_create( website_t*, int, char*, size_t );
+typedef struct response {
+	short http_status;
+	headers_t headers;
+} response_t;
+
+typedef struct {
+	int sockfd;
+	char ip[ 12 ];
+	char hostname[ 128 ];
+	char http_version[ 4 ];
+	website_t* website;
+	request_t  request;
+	response_t response;
+	cookies_t  cookies;
+} connection_t;
+
+connection_t connection_create( website_t*, int, char*, size_t );
+
+const char* response_status( short );
+void response_set_status( response_t* response, short status );
 
 #endif

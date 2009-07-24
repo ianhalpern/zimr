@@ -18,31 +18,27 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
  *
- *
  */
 
-#ifndef _PD_RESPONSE_H
-#define _PD_RESPONSE_H
+#ifndef _PD_PARAMS_H
+#define _PD_PARAMS_H
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-#include "general.h"
-#include "website.h"
-#include "headers.h"
+#include "config.h"
 
-typedef struct response {
-	int sockfd;
-	char http_version[ 4 ];
-	short http_status;
-	website_t* website;
-	headers_t  headers;
-} response_t;
+typedef struct {
+	char name[ PARAM_NAME_MAX_LEN ];
+	char value[ PARAM_VALUE_MAX_LEN ];
+} param_t;
 
-const char* response_status( short );
+typedef struct {
+	int num;
+	param_t list[ PARAMS_MAX_NUM ];
+} params_t;
 
-response_t response_create( int sockfd, website_t* website, char http_version[ ] );
-void response_set_status( response_t* response, short status );
+params_t params_parse_qs( char*, int );
+param_t* params_get_param( params_t* params, const char* name );
 
 #endif

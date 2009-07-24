@@ -29,14 +29,14 @@
 #include "website.h"
 #include "pcom.h"
 #include "pfildes.h"
-#include "request.h"
+#include "connection.h"
 #include "mime.h"
 
 typedef struct website_data {
 	int req_fd;
 	char status;
 	char* pubdir;
-	void (*request_handler)( request_t request );
+	void (*connection_handler)( connection_t connection );
 	void* udata;
 } website_data_t;
 
@@ -48,7 +48,7 @@ int  podora_read_server_info( int* pid, int* res_fn );
 void podora_start( );
 void podora_send_cmd( int cmd, int key, void* message, int size );
 
-void podora_request_handler( int req_fd, website_t* website );
+void podora_connection_handler( int req_fd, website_t* website );
 void podora_file_handler( int fd, pcom_transport_t* transport );
 
 website_t* podora_website_create( char* url );
@@ -57,16 +57,17 @@ int   podora_website_enable( website_t* website );
 int   podora_website_disable( website_t* website );
 void  podora_website_set_pubdir( website_t* website, const char* pubdir );
 char* podora_website_get_pubdir( website_t* website );
-void  podora_website_set_request_handler ( website_t* website, void (*request_handler)( request_t request ) );
-void  podora_website_unset_request_handler( website_t* website );
-void  podora_website_default_request_handler( request_t request );
+void  podora_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t ) );
+void  podora_website_unset_connection_handler( website_t* website );
+void  podora_website_default_connection_handler( connection_t connection );
 
-void podora_response_register_page_handler( const char* page_type, void* (*page_handler)( response_t*, const char*, void* ), void* udata );
-void podora_response_send_status( pcom_transport_t* transport, response_t* response );
-void podora_response_send_headers( pcom_transport_t* transport, response_t* response );
-void podora_response_serve_file( response_t* response, char* filepath, unsigned char use_pubdir );
-void podora_response_serve( response_t* response, void* message, int size );
-void podora_response_serve_error( );
-void podora_response_default_page_handler( response_t* response, char* filepath );
+void podora_connection_send_status( pcom_transport_t* transport, connection_t* connection );
+void podora_connection_send_headers( pcom_transport_t* transport, connection_t* connection );
+void podora_connection_send_file( connection_t* connection, char* filepath, unsigned char use_pubdir );
+void podora_connection_send( connection_t* connection, void* message, int size );
+void podora_connection_send_error( );
+void podora_connection_default_page_handler( connection_t* connection, char* filepath );
+
+void podora_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata );
 
 #endif

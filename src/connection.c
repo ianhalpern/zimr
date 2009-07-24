@@ -18,10 +18,9 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
  *
- *
  */
 
-#include "response.h"
+#include "connection.h"
 
 // Reference: http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
 const char httpstatus[ ][ 40 ] = {
@@ -66,6 +65,71 @@ const char httpstatus[ ][ 40 ] = {
 "505 HTTP Version Not Supported"
 };
 
+connection_t connection_create( website_t* website, int sockfd, char* raw, size_t size ) {
+	connection_t connection;
+	char* tmp, * start = raw;
+	connection.website = website;
+	connection.sockfd  = sockfd;
+
+	// type
+	if ( startswith( raw, HTTP_GET ) ) {
+		connection.request.type = HTTP_GET_TYPE;
+		raw += strlen( HTTP_GET ) + 1;
+	} else if ( startswith( raw, HTTP_POST ) ) {
+		connection.request.type = HTTP_POST_TYPE;
+		raw += strlen( HTTP_POST ) + 1;
+	}
+
+	//printf( "type: \"%s\"\n", RTYPE( r.type ) );
+
+	// url
+	raw++; // skip over forward slash
+	tmp = strstr( raw, "?" );
+	if ( !tmp ) tmp = strstr( raw, " " );
+	memcpy( connection.request.url, raw, tmp - raw );
+	*( connection.request.url + ( tmp - raw ) ) = '\0';
+	//printf( "url: \"%s\"\n", r.url );
+
+	// parse qstring params
+	if ( *tmp == '?' ) {
+		raw = tmp + 1;
+		tmp = strstr( tmp, " " );
+		connection.request.params = params_parse_qs( raw, tmp - raw );
+		raw = tmp + 1;
+	} else
+		raw = strstr( tmp, " " ) + 1;
+
+	// version
+	raw += 5; // skips "HTTP/"
+	tmp = strstr( raw, HTTP_HDR_ENDL );
+	memcpy( connection.http_version, raw, tmp - raw + 1 );
+	connection.http_version[ tmp - raw ] = '\0';
+	raw = tmp + 2;
+
+	// headers
+	connection.request.headers = headers_parse( raw );
+
+	// cookies
+	header_t* header = headers_get_header( &connection.request.headers, "Cookie" );
+	if ( header )
+		connection.cookies = cookies_parse( header->value );
+	else
+		connection.cookies = cookies_parse( "" );
+
+	// body
+	if ( connection.request.type == HTTP_POST_TYPE ) {
+		if ( ( tmp = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
+			tmp += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
+			strncpy( connection.request.post_body, tmp, size - (long) ( tmp - start ) );
+			*( connection.request.post_body + ( size - (long) ( tmp - start ) + 1 ) ) = '\0';
+		}
+	} else connection.request.post_body[ 0 ] = '\0';
+
+	connection.response.headers.num = 0;
+
+	return connection;
+}
+
 const char *response_status( short c ) {
 	char status[ 4 ];
 	int i;
@@ -77,15 +141,6 @@ const char *response_status( short c ) {
 	}
 
 	return NULL;
-}
-
-response_t response_create( int sockfd, website_t* website, char http_version[ ] ) {
-	response_t response;
-	response.sockfd = sockfd;
-	response.website = website;
-	response.headers.num = 0;
-	memcpy( response.http_version, http_version, sizeof( http_version ) );
-	return response;
 }
 
 void response_set_status( response_t* response, short status ) {
