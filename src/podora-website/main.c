@@ -43,7 +43,7 @@ int main( int argc, char *argv[ ] ) {
 	}
 	website = podora_website_create( argv[ 1 ] );
 	podora_website_set_pubdir( website, "test_website/" );
-	podora_website_start( website );
+	podora_website_enable( website );
 
 	podora_start( );
 

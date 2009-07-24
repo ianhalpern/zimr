@@ -36,7 +36,8 @@ typedef struct website_data {
 	int req_fd;
 	char status;
 	char* pubdir;
-	void* (*request_handler)( void* );
+	void (*request_handler)( request_t request );
+	void* udata;
 } website_data_t;
 
 const char* podora_version( );
@@ -51,16 +52,21 @@ void podora_request_handler( int req_fd, website_t* website );
 void podora_file_handler( int fd, pcom_transport_t* transport );
 
 website_t* podora_website_create( char* url );
-void podora_website_destroy( website_t* website );
-int  podora_website_start( website_t* website );
-int  podora_website_stop( website_t* website );
-void podora_website_set_pubdir ( website_t* website, const char* pubdir );
+void  podora_website_destroy( website_t* website );
+int   podora_website_enable( website_t* website );
+int   podora_website_disable( website_t* website );
+void  podora_website_set_pubdir( website_t* website, const char* pubdir );
+char* podora_website_get_pubdir( website_t* website );
+void  podora_website_set_request_handler ( website_t* website, void (*request_handler)( request_t request ) );
+void  podora_website_unset_request_handler( website_t* website );
+void  podora_website_default_request_handler( request_t request );
 
 void podora_response_register_page_handler( const char* page_type, void* (*page_handler)( response_t*, const char*, void* ), void* udata );
 void podora_response_send_status( pcom_transport_t* transport, response_t* response );
 void podora_response_send_headers( pcom_transport_t* transport, response_t* response );
 void podora_response_serve_file( response_t* response, char* filepath, unsigned char use_pubdir );
 void podora_response_serve( response_t* response, void* message, int size );
+void podora_response_serve_error( );
 void podora_response_default_page_handler( response_t* response, char* filepath );
 
 #endif

@@ -105,7 +105,8 @@ website_t* podora_website_create( char* url ) {
 
 	website_data->req_fd = req_fd;
 	website_data->pubdir = strdup( "./" );
-	website_data->status = WS_STATUS_STOPPED;
+	website_data->status = WS_STATUS_DISABLED;
+	website_data->request_handler = NULL;
 
 	pfd_set( website_data->req_fd, PFD_TYPE_PCOM, website );
 
@@ -115,7 +116,7 @@ website_t* podora_website_create( char* url ) {
 void podora_website_destroy( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 
-	podora_website_stop( website );
+	podora_website_disable( website );
 
 	if ( website_data->pubdir )
 		free( website_data->pubdir );
@@ -127,10 +128,10 @@ void podora_website_destroy( website_t* website ) {
 	website_remove( website );
 }
 
-int podora_website_start( website_t* website ) {
+int podora_website_enable( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 
-	if ( website_data->status == WS_STATUS_STARTED )
+	if ( website_data->status == WS_STATUS_ENABLED )
 		return 0;
 
 	int pid = getpid( );
@@ -142,42 +143,53 @@ int podora_website_start( website_t* website ) {
 
 	podora_send_cmd( WS_START_CMD, website->key, message, sizeof( message ) );
 
-	website_data->status = WS_STATUS_STARTED;
+	website_data->status = WS_STATUS_ENABLED;
 
 	return 1;
 }
 
-int podora_website_stop( website_t* website ) {
+int podora_website_disable( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 
-	if ( website_data->status == WS_STATUS_STOPPED )
+	if ( website_data->status == WS_STATUS_DISABLED )
 		return 0;
 
 	podora_send_cmd( WS_STOP_CMD, website->key, NULL, 0 );
 
+	website_data->status = WS_STATUS_DISABLED;
+
 	return 1;
 }
 
-void podora_website_set_request_handler ( website_t* website, void* (*request_handler)( void* ) ) {
+void podora_website_set_request_handler( website_t* website, void (*request_handler)( request_t request ) ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 	website_data->request_handler = request_handler;
 }
 
-void podora_website_unset_request_handler ( website_t* website ) {
+void podora_website_unset_request_handler( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 	website_data->request_handler = NULL;
 }
 
-void podora_website_set_pubdir ( website_t* website, const char* pubdir ) {
+void podora_website_set_pubdir( website_t* website, const char* pubdir ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 	if ( website_data->pubdir ) free( website_data->pubdir );
 	website_data->pubdir = strdup( pubdir );
 }
 
-void podora_request_handler( int req_fd, website_t* website ) {
+char* podora_website_get_pubdir( website_t* website ) {
+	website_data_t* website_data = (website_data_t*) website->data;
+	return website_data->pubdir;
+}
 
+void podora_website_default_request_handler( request_t request ) {
+	podora_response_serve_file( &request.response, request.url, 1 );
+}
+
+void podora_request_handler( int req_fd, website_t* website ) {
 	pcom_transport_t* transport = pcom_open( req_fd, PCOM_RO, 0, 0 );
 	request_t request;
+	website_data_t* website_data = (website_data_t*) website->data;
 
 	pcom_read( transport );
 
@@ -187,7 +199,10 @@ void podora_request_handler( int req_fd, website_t* website ) {
 	headers_set_header( &request.response.headers, "Date", "" );
 	headers_set_header( &request.response.headers, "Server", "" );
 
-	podora_response_serve_file( &request.response, request.url, 1 );
+	if ( website_data->request_handler )
+		website_data->request_handler( request );
+	else
+		podora_website_default_request_handler( request );
 
 	pcom_close( transport );
 }
@@ -248,7 +263,6 @@ void podora_response_serve( response_t* response, void* message, int size ) {
 
 void podora_response_serve_file( response_t* response, char* filepath, unsigned char use_pubdir ) {
 	struct stat file_stat;
-	char sizebuf[ 10 ];
 	char full_filepath[ 256 ];
 	char* extension;
 	int i;
@@ -259,20 +273,7 @@ void podora_response_serve_file( response_t* response, char* filepath, unsigned 
 	strcat( full_filepath, filepath );
 
 	if ( stat( full_filepath, &file_stat ) ) {
-
-		pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
-
-		response_set_status( response, 404 );
-		headers_set_header( &response->headers, "Content-Type", mime_get_type( ".html" ) );
-		sprintf( sizebuf, "%d", 48 );
-		headers_set_header( &response->headers, "Content-Length", sizebuf );
-
-		podora_response_send_status( transport, response );
-		podora_response_send_headers( transport, response );
-
-		pcom_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
-		pcom_close( transport );
-
+		podora_response_serve_error( response );
 		return;
 	}
 
@@ -305,6 +306,23 @@ void podora_response_serve_file( response_t* response, char* filepath, unsigned 
 
 }
 
+void podora_response_serve_error( response_t* response ) {
+	char sizebuf[ 10 ];
+	pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
+
+	response_set_status( response, 404 );
+	headers_set_header( &response->headers, "Content-Type", mime_get_type( ".html" ) );
+	sprintf( sizebuf, "%d", 48 );
+	headers_set_header( &response->headers, "Content-Length", sizebuf );
+
+	podora_response_send_status( transport, response );
+	podora_response_send_headers( transport, response );
+
+	pcom_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
+	pcom_close( transport );
+
+}
+
 void podora_response_register_page_handler( const char* page_type, void* (*page_handler)( response_t*, const char*, void* ), void* udata ) {
 	strcpy( page_handlers[ page_handler_count ].page_type, page_type );
 	page_handlers[ page_handler_count ].page_handler = page_handler;
@@ -318,11 +336,15 @@ void podora_response_default_page_handler( response_t* response, char* filepath 
 	char sizebuf[ 10 ];
 	pcom_transport_t* transport;
 
-	if ( ( fd = open( filepath, O_RDONLY ) ) < 0 ) {
+	if ( stat( filepath, &file_stat ) ) {
+		podora_response_serve_error( response );
 		return;
 	}
 
-	fstat( fd, &file_stat );
+	if ( ( fd = open( filepath, O_RDONLY ) ) < 0 ) {
+		podora_response_serve_error( response );
+		return;
+	}
 
 	transport = pcom_open( res_fd, PCOM_WO, response->sockfd, response->website->key );
 

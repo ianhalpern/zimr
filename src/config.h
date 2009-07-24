@@ -60,8 +60,8 @@
 #define WS_START_CMD -1
 #define WS_STOP_CMD  -2
 
-#define WS_STATUS_STOPPED  0x01
-#define WS_STATUS_STARTED  0x02
+#define WS_STATUS_ENABLED   0x01
+#define WS_STATUS_DISABLED  0x02
 
 /*************************/
 

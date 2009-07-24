@@ -7,7 +7,10 @@ PTHREAD     = -pthread
 DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPODORA_VERSION=\"$(VERNUM)\"
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
+PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions -I/usr/include/python$(PYVERSION)
 LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
+
+PYVERSION = 2.6
 
 OBJS        = general.o pcom.o website.o pfildes.o request.o response.o mime.o psocket.o headers.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
@@ -15,15 +18,18 @@ EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 EXECS       = podora podora-website
 TEST_EXECS  =
 SHARED_OBJS = libpodora.so
+PYMOD_OBJS  = podora.so
 
 SRCDIR     = src
 LIB_SRCDIR = $(SRCDIR)/lib
+PY_SRCDIR  = $(SRCDIR)/python
 
 VERNUM  = `vernum`
 
-OBJ_DEPENDS        = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
-EXEC_DEPENDS       = %: $(SRCDIR)/%/main.c $(SRCDIR)/config.h
-SHARED_OBJ_DEPENDS = lib%.so: $(LIB_SRCDIR)/%.c $(LIB_SRCDIR)/%.h $(SRCDIR)/config.h
+OBJ_DEPENDS         = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
+EXEC_DEPENDS        = %: $(SRCDIR)/%/main.c $(SRCDIR)/config.h
+SHARED_OBJ_DEPENDS  = lib%.so: $(LIB_SRCDIR)/%.c $(LIB_SRCDIR)/%.h $(SRCDIR)/config.h
+PYMOD_DEPENDS       = %.so: $(PY_SRCDIR)/%module.c $(SRCDIR)/config.h
 
 EXEC_COMPILE = $(CC) $(LDFLAGS) $(TARGET_ARCH) $(DSYMBOLS) -I$(SRCDIR) -I$(LIB_SRCDIR) $(OUTPUT) $^
 OBJ_COMPILE  = $(CC) $(CFLAGS) $(TARGET_ARCH) $(OUTPUT) $<
@@ -31,7 +37,7 @@ OBJ_COMPILE  = $(CC) $(CFLAGS) $(TARGET_ARCH) $(OUTPUT) $<
 ##### USER BUILD COMMANDS #####
 ###############################
 
-make debug beta: $(SHARED_OBJS) $(EXECS)
+make debug beta: $(SHARED_OBJS) $(EXECS) $(PYMOD_OBJS)
 
 tests: $(TEST_EXECS)
 
@@ -44,13 +50,18 @@ clean:
 podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o psocket.o
 	$(EXEC_COMPILE)
 
-podora-website: $(EXEC_DEPENDS)
+podora-website: $(EXEC_DEPENDS) libpodora.so
 	$(EXEC_COMPILE) $(LDPODORA)
 
 ##### SHARED OBJS #####
 
 libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o mime.o request.o response.o headers.o
 	$(EXEC_COMPILE) $(SHARED)
+
+##### PYTHON MODS #####
+
+podora.so: $(PYMOD_DEPENDS) libpodora.so
+	$(EXEC_COMPILE) $(PYMOD) $(LDPODORA)
 
 ##### OBJS ######
 #################
