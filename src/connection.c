@@ -86,8 +86,7 @@ connection_t connection_create( website_t* website, int sockfd, char* raw, size_
 	raw++; // skip over forward slash
 	tmp = strstr( raw, "?" );
 	if ( !tmp ) tmp = strstr( raw, " " );
-	memcpy( connection.request.url, raw, tmp - raw );
-	*( connection.request.url + ( tmp - raw ) ) = '\0';
+	url_decode( raw, connection.request.url, tmp - raw );
 	//printf( "url: \"%s\"\n", r.url );
 
 	// parse qstring params
@@ -117,13 +116,13 @@ connection_t connection_create( website_t* website, int sockfd, char* raw, size_
 		connection.cookies = cookies_parse( "" );
 
 	// body
+	memset( connection.request.post_body, 0, sizeof( connection.request.post_body ) );
 	if ( connection.request.type == HTTP_POST_TYPE ) {
 		if ( ( tmp = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
 			tmp += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
 			strncpy( connection.request.post_body, tmp, size - (long) ( tmp - start ) );
-			*( connection.request.post_body + ( size - (long) ( tmp - start ) + 1 ) ) = '\0';
 		}
-	} else connection.request.post_body[ 0 ] = '\0';
+	}
 
 	connection.response.headers.num = 0;
 

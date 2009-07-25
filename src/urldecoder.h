@@ -20,43 +20,14 @@
  *
  */
 
-#ifndef _PD_CONNECTION_H
-#define _PD_CONNECTION_H
+#ifndef _PD_URLDECODER_H
+#define _PD_URLDECODER_H
 
-#include "website.h"
-#include "headers.h"
-#include "params.h"
-#include "cookies.h"
-#include "urldecoder.h"
+#include <stdlib.h>
+#include <string.h>
 
-typedef struct request {
-	char type;
-	char url[ 512 ];
-	char full_url[ 512 ];
-	char post_body[ 1024 ];
-	headers_t headers;
-	params_t params;
-} request_t;
+#include "general.h"
 
-typedef struct response {
-	short http_status;
-	headers_t headers;
-} response_t;
-
-typedef struct {
-	int sockfd;
-	char ip[ 12 ];
-	char hostname[ 128 ];
-	char http_version[ 4 ];
-	website_t* website;
-	request_t  request;
-	response_t response;
-	cookies_t  cookies;
-} connection_t;
-
-connection_t connection_create( website_t*, int, char*, size_t );
-
-const char* response_status( short );
-void response_set_status( response_t* response, short status );
+char* url_decode( char* url, char* buffer, int url_len );
 
 #endif

@@ -29,6 +29,7 @@
 #include <signal.h>
 #include <time.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "config.h"
 
@@ -36,6 +37,7 @@ int randkey( );
 int url2int( const char* );
 void wait_for_kill( );
 int startswith( const char*, const char* );
+int xtoi( const char* xs, unsigned int* result );
 
 #endif
 

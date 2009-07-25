@@ -37,16 +37,14 @@ params_t params_parse_qs( char* raw, int size ) {
 			break;
 		}
 
-		strncpy( params.list[ params.num ].name, raw, tmp - raw );
-		params.list[ params.num ].name[ tmp - raw ] = '\0';
+		url_decode( raw, params.list[ params.num ].name, tmp - raw );
 		size -= ( tmp + 1 ) - raw;
 		raw = tmp + 1;
 
 		// value
 		tmp = strstr( raw, "&" );
 		if ( !tmp || tmp - raw > size ) tmp = raw + size;
-		strncpy( params.list[ params.num ].value, raw, tmp - raw );
-		params.list[ params.num ].value[ tmp - raw ] = '\0';
+		url_decode( raw, params.list[ params.num ].value, tmp - raw );
 
 		size -= tmp - raw;
 		raw = tmp;

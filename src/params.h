@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "urldecoder.h"
 
 typedef struct {
 	char name[ PARAM_NAME_MAX_LEN ];
