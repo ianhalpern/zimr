@@ -50,7 +50,9 @@ cookies_t cookies_parse( char* raw ) {
 		raw = tmp;
 		if ( *tmp == ';' )
 			raw += 2;
-
+		cookies.list[ cookies.num ].domain[ 0 ] = '\0';
+		cookies.list[ cookies.num ].path[ 0 ] = '\0';
+		cookies.list[ cookies.num ].expires[ 0 ] = '\0';
 		cookies.list[ cookies.num ].updated = 0;
 		cookies.num++;
 	}
@@ -58,15 +60,26 @@ cookies_t cookies_parse( char* raw ) {
 	return cookies;
 }
 
-void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value ) {
+void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t* expires, const char* domain, const char* path ) {
 	cookie_t* cookie = cookies_get_cookie( cookies, name );
 
 	if ( !cookie ) {
 		cookie = &cookies->list[ cookies->num++ ];
-		strcpy( cookie->name, strdup( name ) );
+		strcpy( cookie->name, name );
 	}
 
-	strcpy( cookie->value, strdup( value ) );
+	if ( value )
+		strcpy( cookie->value, value );
+
+	if ( expires )
+		strftime( cookie->expires, sizeof( cookie->expires ), "%a, %d-%b-%Y %I:%M:%S %Z", localtime( expires ) );
+
+	if ( domain )
+		strcpy( cookie->domain, domain );
+
+	if ( path )
+		strcpy( cookie->path, path );
+
 	cookie->updated = 1;
 }
 
@@ -90,7 +103,16 @@ char* cookies_to_string( cookies_t* cookies, char* cookies_str ) {
 			strcat( cookies_str, cookies->list[ i ].name );
 			strcat( cookies_str, "=" );
 			strcat( cookies_str, cookies->list[ i ].value );
-			strcat( cookies_str, ";" );
+
+			if ( strlen( cookies->list[ i ].path ) ) {
+				strcat( cookies_str, "; path=" );
+				strcat( cookies_str, cookies->list[ i ].path );
+			}
+
+			if ( strlen( cookies->list[ i ].domain ) ) {
+				strcat( cookies_str, "; domain=" );
+				strcat( cookies_str, cookies->list[ i ].domain );
+			}
 		}
 	}
 

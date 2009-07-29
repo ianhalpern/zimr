@@ -268,15 +268,16 @@ static PyObject* pypodora_connection_get_cookie( pypodora_connection_t* self, Py
 	return PyString_FromString( cookie->value );
 }
 
-static PyObject* pypodora_connection_set_cookie( pypodora_connection_t* self, PyObject* args ) {
-	const char* cookie_name,* cookie_value;
+static PyObject* pypodora_connection_set_cookie( pypodora_connection_t* self, PyObject* args, PyObject* kwargs ) {
+	static char* kwlist[ ] = { "name", "value", "domain", "path", NULL };
+	const char* cookie_name,* cookie_value,* cookie_domain = "",* cookie_path = "";
 
-	if ( !PyArg_ParseTuple( args, "ss", &cookie_name, &cookie_value ) ) {
+	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|sss", kwlist, &cookie_name, &cookie_value, &cookie_domain, &cookie_path ) ) {
 		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
 		return NULL;
 	}
 
-	cookies_set_cookie( &self->_connection.cookies, cookie_name, cookie_value );
+	cookies_set_cookie( &self->_connection.cookies, cookie_name, cookie_value, NULL, cookie_domain, cookie_path );
 
 	Py_RETURN_NONE;
 }
@@ -290,7 +291,7 @@ static PyMemberDef pypodora_connection_members[ ] = {
 };
 
 static PyMethodDef pypodora_connection_methods[ ] = {
-	{ "setCookie", (PyCFunction) pypodora_connection_set_cookie, METH_VARARGS, "Start the website." },
+	{ "setCookie", (PyCFunction) pypodora_connection_set_cookie, METH_VARARGS | METH_KEYWORDS, "Start the website." },
 	{ "getCookie", (PyCFunction) pypodora_connection_get_cookie, METH_VARARGS, "Start the website." },
 	{ "send", (PyCFunction) pypodora_connection_send, METH_VARARGS, "Start the website." },
 	{ "sendFile", (PyCFunction) pypodora_connection_send_file, METH_VARARGS, "Start the website." },
