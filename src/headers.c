@@ -75,10 +75,10 @@ void headers_set_header( headers_t* headers, char* name, char* value ) {
 
 	if ( !header ) {
 		header = &headers->list[ headers->num++ ];
-		strcpy( header->name, strdup( name ) );
+		strcpy( header->name, name );
 	}
 
-	strcpy( header->value, strdup( value ) );
+	strcpy( header->value, value );
 }
 
 header_t* headers_get_header( headers_t* headers, char* name ) {

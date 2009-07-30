@@ -224,6 +224,14 @@ typedef struct {
 	connection_t _connection;
 } pypodora_connection_t;
 
+static void pypodora_connection_dealloc( pypodora_connection_t* self ) {
+	Py_XDECREF( self->client );
+	Py_DECREF( self->response );
+	Py_DECREF( self->request );
+	Py_DECREF( self->website );
+	self->ob_type->tp_free( (PyObject*) self );
+}
+
 static PyObject* pypodora_connection_send( pypodora_connection_t* self, PyObject* args ) {
 	const char* message;
 
@@ -308,7 +316,7 @@ static PyTypeObject pypodora_connection_type = {
 	"podora.connection",             /*tp_name*/
 	sizeof( pypodora_connection_t ),             /*tp_basicsize*/
 	0,                         /*tp_itemsize*/
-	0,//(destructor) pypodora_website_dealloc, /*tp_dealloc*/
+	(destructor) pypodora_connection_dealloc, /*tp_dealloc*/
 	0,                         /*tp_print*/
 	0,                         /*tp_getattr*/
 	0,                         /*tp_setattr*/
@@ -351,15 +359,8 @@ static PyTypeObject pypodora_connection_type = {
 typedef struct {
 	PyObject_HEAD
 	PyObject* connection_handler;
-	struct website* _website;
+	website_t* _website;
 } pypodora_website_t;
-
-static void pypodora_website_dealloc( pypodora_website_t* self ) {
-	podora_website_destroy( self->_website );
-	if ( self->connection_handler )
-		Py_DECREF( self->connection_handler );
-	self->ob_type->tp_free( (PyObject*) self );
-}
 
 void pypodora_website_connection_handler( connection_t _connection ) {
 
@@ -382,10 +383,19 @@ void pypodora_website_connection_handler( connection_t _connection ) {
 
 	PyObject_CallFunctionObjArgs( website->connection_handler, connection, NULL );
 
+	Py_DECREF( connection );
 	if ( PyErr_Occurred( ) ) {
 		PyErr_PrintEx( 0 );
 	}
 
+}
+
+static void pypodora_website_dealloc( pypodora_website_t* self ) {
+	( (website_data_t*) self->_website->data )->udata = NULL;
+	podora_website_destroy( self->_website );
+	if ( self->connection_handler )
+		Py_DECREF( self->connection_handler );
+	self->ob_type->tp_free( (PyObject*) self );
 }
 
 static PyObject* pypodora_website_new( PyTypeObject* type, PyObject* args, PyObject* kwargs ) {
@@ -437,6 +447,7 @@ static int pypdora_website_set_public_directory( pypodora_website_t* self, PyObj
 
 	podora_website_set_pubdir( self->_website, PyString_AsString( value ) );
 
+	Py_DECREF( value );
 	return 0;
 }
 

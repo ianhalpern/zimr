@@ -306,5 +306,6 @@ char* url_decode( char* raw_url, char* buffer, int url_len ) {
 	}
 
 	strcat( buffer, url );
+	free( url );
 	return buffer;
 }
