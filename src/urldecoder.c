@@ -282,9 +282,10 @@ char *urlcodes[ 256 ] = {
 };
 
 char* url_decode( char* raw_url, char* buffer, int url_len ) {
-	char* url = (char*) malloc( url_len + 1 );
-	memset( url, 0, url_len + 1 );
+	char url[ url_len + 1 ],* url_ptr;
+	memset( url, 0, sizeof( url ) );
 	strncpy( url, raw_url, url_len );
+	url_ptr = url;
 
 	char* ptr;
 	char hex[ 2 ];
@@ -292,8 +293,8 @@ char* url_decode( char* raw_url, char* buffer, int url_len ) {
 
 	*buffer = '\0';
 
-	while ( ( ptr = strchr( url, '%' ) ) ) {
-		strncat( buffer, url, ptr - url );
+	while ( ( ptr = strchr( url_ptr, '%' ) ) ) {
+		strncat( buffer, url_ptr, ptr - url_ptr );
 		ptr++;
 
 		if ( *ptr == '\0' || *( ptr + 1 ) == '\0' )
@@ -302,10 +303,9 @@ char* url_decode( char* raw_url, char* buffer, int url_len ) {
 		memcpy( hex, ptr, 2 );
 		xtoi( hex, &i );
 		strcat( buffer, urlcodes[ i ] );
-		url = ptr + 2;
+		url_ptr = ptr + 2;
 	}
 
-	strcat( buffer, url );
-	free( url );
+	strcat( buffer, url_ptr );
 	return buffer;
 }
