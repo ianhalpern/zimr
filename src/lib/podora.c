@@ -65,7 +65,7 @@ void podora_shutdown( ) {
 int podora_read_server_info( int* pid, int* res_fn ) {
 	int fd;
 
-	if ( ( fd = open( PD_DIR PD_INFO_FILE, O_RDONLY ) ) < 0 ) {
+	if ( ( fd = open( PD_TMPDIR "/" PD_INFO_FILE, O_RDONLY ) ) < 0 ) {
 		perror( "[fatal] read_podora_info: open() failed" );
 		return 0;
 	}

@@ -22,22 +22,42 @@
 
 #include "pcom.h"
 
-int pcom_create( ) {
-	int pipe_io[ 2 ];
+static int npds = 0;
 
-	if ( pipe( pipe_io ) ) {
-		perror( "[error] pcom_create: pipe() failed" );
+int pcom_create( ) {
+	int fd;
+	char filename[ 128 ];
+	char filename2[ 128 ];
+
+	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
+	mkdir( filename, S_IRWXU );
+	chmod( filename, S_IRWXU | S_IRWXG | S_IRWXO );
+
+	sprintf( filename, PD_TMPDIR "/%d/%d", getpid( ), npds++ );
+	if ( mkfifo( filename, S_IRWXU ) < 0 ) {
+		fprintf( stderr, "[error] pcom_create: mkfifo() failed creating %s: %s\n", filename, strerror( errno ) );
+		return -1;
+	}
+	chmod( filename, S_IRWXU | S_IRWXG | S_IRWXO );
+
+	if ( ( fd = open( filename, O_RDONLY | O_NONBLOCK ) ) < 0 ) {
+		fprintf( stderr, "[error] pcom_create: open() failed open %s: %s\n", filename, strerror( errno ) );
 		return -1;
 	}
 
-	return pipe_io[ 0 ];
+	open( filename, O_WRONLY ); // TODO: hack!
+
+	sprintf( filename2, PD_TMPDIR "/%d/l%d", getpid( ), fd );
+	symlink( filename, filename2 );
+
+	return fd;
 }
 
-int pcom_connect( int pid, int pd ) {
-	char filename[ 20 ];
+int pcom_connect( int pid, int fd ) {
+	char filename[ 128 ];
 
-	sprintf( filename, "/proc/%d/fd/%d", pid, pd );
-	return open( filename, O_WRONLY | O_SYNC );
+	sprintf( filename, PD_TMPDIR "/%d/l%d", pid, fd );
+	return open( filename, O_WRONLY );
 }
 
 pcom_transport_t* pcom_open( int pd, int io_type, int id, int key ) {

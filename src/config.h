@@ -23,6 +23,7 @@
 #ifndef _PD_CONFIG_H
 #define _PD_CONFIG_H
 
+#define PD_TMPDIR "/tmp/podora"
 #define PD_INFO_FILE "podora.info"
 
 /****** pcom config *******/

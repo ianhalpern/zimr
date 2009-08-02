@@ -33,6 +33,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <openssl/ssl.h>
+
 #include "config.h"
 
 typedef struct psocket {
@@ -40,6 +42,7 @@ typedef struct psocket {
 	in_addr_t addr;
 	int portno;
 	int n_open;
+	SSL_CTX* ssl;
 	struct psocket* next;
 	struct psocket* prev;
 } psocket_t;

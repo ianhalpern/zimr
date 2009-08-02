@@ -277,15 +277,16 @@ static PyObject* pypodora_connection_get_cookie( pypodora_connection_t* self, Py
 }
 
 static PyObject* pypodora_connection_set_cookie( pypodora_connection_t* self, PyObject* args, PyObject* kwargs ) {
-	static char* kwlist[ ] = { "name", "value", "domain", "path", NULL };
+	static char* kwlist[ ] = { "name", "value", "expires", "domain", "path", NULL };
 	const char* cookie_name,* cookie_value,* cookie_domain = "",* cookie_path = "";
+	time_t expires = 0;
 
-	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|sss", kwlist, &cookie_name, &cookie_value, &cookie_domain, &cookie_path ) ) {
+	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|siss", kwlist, &cookie_name, &cookie_value, &expires, &cookie_domain, &cookie_path ) ) {
 		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
 		return NULL;
 	}
 
-	cookies_set_cookie( &self->_connection.cookies, cookie_name, cookie_value, NULL, cookie_domain, cookie_path );
+	cookies_set_cookie( &self->_connection.cookies, cookie_name, cookie_value, &expires, cookie_domain, cookie_path );
 
 	Py_RETURN_NONE;
 }
@@ -576,8 +577,11 @@ static PyObject* pypodora_default_connection_handler( PyObject* self, PyObject* 
 static void pypodora_page_handler( connection_t* connection, const char* filepath, void* udata ) {
 	PyObject* page_handler = udata;
 	PyObject* result;
+	PyObject* pyfilepath =  PyString_FromString( filepath );
 
-	result = PyObject_CallFunctionObjArgs( page_handler, PyString_FromString( filepath ), NULL );
+	result = PyObject_CallFunctionObjArgs( page_handler, pyfilepath, NULL );
+
+	Py_DECREF( pyfilepath );
 
 	if ( result != NULL ) {
 		if ( ! PyString_Check( result ) ) {
@@ -606,7 +610,6 @@ static PyObject* pypodora_register_page_handler( PyObject* self, PyObject* args 
 		return NULL;
 	}
 
-	Py_INCREF( page_handler );
 	podora_register_page_handler( page_type, (PAGE_HANDLER) &pypodora_page_handler, (void*) page_handler );
 
 	Py_RETURN_NONE;

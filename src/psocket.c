@@ -80,6 +80,7 @@ psocket_t* psocket_create( int sockfd, in_addr_t addr, int portno ) {
 	p->addr = addr;
 	p->portno = portno;
 	p->n_open = 0;
+	p->ssl = NULL;
 
 	p->next = root_psocket_node;
 	p->prev = NULL;

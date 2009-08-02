@@ -37,6 +37,7 @@ typedef struct website_data {
 
 int res_fd;
 
+void try_and_create_tmpdir( );
 void save_podora_info( );
 
 void request_accept_handler( int sockfd, void* udata );
@@ -54,6 +55,7 @@ void quit( ) { }
 int main( ) {
 
 	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n\n" );
+	try_and_create_tmpdir( );
 
 	// TODO: switch to sighandler
 	signal( SIGPIPE, broken_pipe );
@@ -77,10 +79,15 @@ int main( ) {
 	return 1;
 }
 
+void try_and_create_tmpdir( ) {
+	mkdir( PD_TMPDIR, S_IRWXU );
+	chmod( PD_TMPDIR, S_IRWXU | S_IRWXG | S_IRWXO );
+}
+
 void save_podora_info( ) {
 	int pid = getpid( ), fd;
 
-	if ( ( fd = creat( PD_INFO_FILE, 0644 ) ) < 0 ) {
+	if ( ( fd = creat( PD_TMPDIR "/" PD_INFO_FILE, 0644 ) ) < 0 ) {
 		perror( "[fatal] save_podora_info: creat() failed" );
 		exit( EXIT_FAILURE );
 	}
@@ -229,14 +236,13 @@ void request_handler( int sockfd, int* orig_sockfd ) {
 
 	memset( &buffer, 0, sizeof( buffer ) );
 
-	if ( ( n = read( sockfd, buffer, sizeof( buffer ) ) ) < 0 ) {
-		perror( "[error] request_handler: read() failed" );
+	if ( ( n = read( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
+		if ( !n ) { // if no data was read, the socket has been closed from the other end
+			pfd_clr( sockfd );
+			close( sockfd );
+		} else
+			perror( "[error] request_handler: read() failed" );
 		return;
-	}
-
-	if ( !n ) { // if no data was read, the socket has been closed from the other end
-		pfd_clr( sockfd );
-		close( sockfd );
 	}
 
 	if ( startswith( buffer, HTTP_GET ) )
