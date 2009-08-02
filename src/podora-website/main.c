@@ -39,10 +39,11 @@ int main( int argc, char *argv[ ] ) {
 	podora_init( );
 
 	if ( argc < 2 ) {
+		fprintf( stderr, "[fatal] website url was not provided.\n" );
 		return EXIT_FAILURE;
 	}
 	website = podora_website_create( argv[ 1 ] );
-	podora_website_set_pubdir( website, "test_website/" );
+	//podora_website_set_pubdir( website, "test_website/" );
 	podora_website_enable( website );
 
 	podora_start( );
