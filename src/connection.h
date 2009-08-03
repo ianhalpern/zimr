@@ -23,29 +23,30 @@
 #ifndef _PD_CONNECTION_H
 #define _PD_CONNECTION_H
 
+#include <arpa/inet.h>
+
 #include "website.h"
 #include "headers.h"
 #include "params.h"
 #include "cookies.h"
 #include "urldecoder.h"
 
-typedef struct request {
+typedef struct {
 	char type;
 	char url[ 512 ];
-	char full_url[ 512 ];
 	char post_body[ 1024 ];
 	headers_t headers;
 	params_t params;
 } request_t;
 
-typedef struct response {
+typedef struct {
 	short http_status;
 	headers_t headers;
 } response_t;
 
 typedef struct {
 	int sockfd;
-	char ip[ 12 ];
+	struct in_addr ip;
 	char hostname[ 128 ];
 	char http_version[ 4 ];
 	website_t* website;

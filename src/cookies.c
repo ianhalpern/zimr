@@ -24,11 +24,13 @@
 
 cookies_t cookies_parse( char* raw ) {
 	cookies_t cookies;
+	memset( &cookies, 0, sizeof( cookies ) );
+	cookie_t* cookie;
 	cookies.num = 0;
-
+	int len;
 	char* tmp = raw;
 	while ( *raw != '\0' ) {
-		//TODO: check string lengths
+		cookie = &cookies.list[ cookies.num ];
 
 		// name
 		tmp = strstr( raw, "=" );
@@ -37,53 +39,63 @@ cookies_t cookies_parse( char* raw ) {
 			break;
 		}
 
-		strncpy( cookies.list[ cookies.num ].name, raw, tmp - raw );
-		cookies.list[ cookies.num ].name[ tmp - raw ] = '\0';
+		len = tmp - raw;
+		if ( len > sizeof( cookie->name ) )
+			len = sizeof( cookie->name );
+
+		strncpy( cookie->name, raw, len );
+		cookie->name[ len ] = '\0';
 		raw = tmp + 1;
 
 		// value
 		tmp = strstr( raw, "; " );
 		if ( !tmp ) tmp = raw + strlen( raw );
-		strncpy( cookies.list[ cookies.num ].value, raw, tmp - raw );
-		cookies.list[ cookies.num ].value[ tmp - raw ] = '\0';
+
+		len = tmp - raw;
+		if ( len > sizeof( cookie->value ) )
+			len = sizeof( cookie->value );
+
+		strncpy( cookie->value, raw, len );
+		cookie->value[ len ] = '\0';
 
 		raw = tmp;
 		if ( *tmp == ';' )
 			raw += 2;
-		cookies.list[ cookies.num ].domain[ 0 ] = '\0';
-		cookies.list[ cookies.num ].path[ 0 ] = '\0';
-		cookies.list[ cookies.num ].expires[ 0 ] = '\0';
-		cookies.list[ cookies.num ].updated = 0;
+
+		cookie->domain[ 0 ] = '\0';
+		cookie->path[ 0 ] = '\0';
+		cookie->expires[ 0 ] = '\0';
+		cookie->updated = 0;
 		cookies.num++;
 	}
 
 	return cookies;
 }
 
-void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t* expires, const char* domain, const char* path ) {
+void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t expires, const char* domain, const char* path ) {
 	cookie_t* cookie = cookies_get_cookie( cookies, name );
 
 	if ( !cookie ) {
 		cookie = &cookies->list[ cookies->num++ ];
-		strncpy( cookie->name, name, sizeof( cookie->name ) );
+		strncpy( cookie->name, name, sizeof( cookie->name ) - 1 );
 		cookie->name[ sizeof( cookie->name ) -1 ] = '\0';
 	}
 
 	if ( value ) {
-		strncpy( cookie->value, value, sizeof( cookie->value ) );
+		strncpy( cookie->value, value, sizeof( cookie->value ) - 1 );
 		cookie->value[ sizeof( cookie->value ) - 1 ] = '\0';
 	}
 
 	if ( expires )
-		strftime( cookie->expires, sizeof( cookie->expires ), "%a, %d-%b-%Y %I:%M:%S %Z", localtime( expires ) );
+		strftime( cookie->expires, sizeof( cookie->expires ), "%a, %d-%b-%Y %I:%M:%S %Z", localtime( &expires ) );
 
 	if ( domain ) {
-		strncpy( cookie->domain, domain, sizeof( cookie->domain ) );
+		strncpy( cookie->domain, domain, sizeof( cookie->domain ) - 1 );
 		cookie->domain[ sizeof( cookie->domain ) - 1 ] = '\0';
 	}
 
 	if ( path ) {
-		strncpy( cookie->path, path, sizeof( cookie->path ) );
+		strncpy( cookie->path, path, sizeof( cookie->path ) - 1 );
 		cookie->path[ sizeof( cookie->path ) - 1 ] = '\0';
 	}
 
@@ -101,29 +113,31 @@ cookie_t* cookies_get_cookie( cookies_t* cookies, const char* name ) {
 	return NULL;
 }
 
-char* cookies_to_string( cookies_t* cookies, char* cookies_str ) {
+char* cookies_to_string( cookies_t* cookies, char* cookies_str, int size ) {
+	cookie_t* cookie;
 	*cookies_str = '\0';
 
 	int i;
 	for ( i = 0; i < cookies->num; i++ ) {
-		if ( cookies->list[ i ].updated ) {
-			strcat( cookies_str, cookies->list[ i ].name );
-			strcat( cookies_str, "=" );
-			strcat( cookies_str, cookies->list[ i ].value );
+		cookie = &cookies->list[ i ];
+		if ( cookie->updated ) {
+			strncat( cookies_str, cookie->name, size ); size -= strlen( cookie->name ); if ( size < 0 ) break;
+			strncat( cookies_str, "=", size ); size--; if ( size < 0 ) break;
+			strncat( cookies_str, cookie->value, size ); size -= strlen( cookie->value ); if ( size < 0 ) break;
 
-			if ( strlen( cookies->list[ i ].expires ) ) {
-				strcat( cookies_str, "; expires=" );
-				strcat( cookies_str, cookies->list[ i ].expires );
+			if ( strlen( cookie->expires ) ) {
+				strncat( cookies_str, "; expires=", size ); size -= 10; if ( size < 0 ) break;
+				strncat( cookies_str, cookie->expires, size ); size -= strlen( cookie->expires ); if ( size < 0 ) break;
 			}
 
-			if ( strlen( cookies->list[ i ].path ) ) {
-				strcat( cookies_str, "; path=" );
-				strcat( cookies_str, cookies->list[ i ].path );
+			if ( strlen( cookie->path ) ) {
+				strncat( cookies_str, "; path=", size ); size -= 7; if ( size < 0 ) break;
+				strncat( cookies_str, cookie->path, size ); size -= strlen( cookie->path ); if ( size < 0 ) break;
 			}
 
-			if ( strlen( cookies->list[ i ].domain ) ) {
-				strcat( cookies_str, "; domain=" );
-				strcat( cookies_str, cookies->list[ i ].domain );
+			if ( strlen( cookie->domain ) ) {
+				strncat( cookies_str, "; domain=", size ); size -= 9; if ( size < 0 ) break;
+				strncat( cookies_str, cookie->domain, size ); size -= strlen( cookie->domain ); if ( size < 0 ) break;
 			}
 		}
 	}

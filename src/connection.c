@@ -67,10 +67,15 @@ const char httpstatus[ ][ 40 ] = {
 
 connection_t connection_create( website_t* website, int sockfd, char* raw, size_t size ) {
 	connection_t connection;
-	char* tmp, * start = raw;
+	char* tmp, * start = raw, urlbuf[ sizeof( connection.request.url ) ];
 	connection.website = website;
 	connection.sockfd  = sockfd;
 
+	memcpy( &connection.ip, raw, sizeof( connection.ip ) );
+	raw += sizeof( connection.ip );
+	strncpy( connection.hostname, raw, sizeof( connection.hostname ) );
+	//printf( "%s %s %d\n", connection.hostname, inet_ntoa( connection.ip ), strlen( raw ) );
+	raw += strlen( raw ) + 1;
 	// type
 	if ( startswith( raw, HTTP_GET ) ) {
 		connection.request.type = HTTP_GET_TYPE;
@@ -78,7 +83,7 @@ connection_t connection_create( website_t* website, int sockfd, char* raw, size_
 	} else if ( startswith( raw, HTTP_POST ) ) {
 		connection.request.type = HTTP_POST_TYPE;
 		raw += strlen( HTTP_POST ) + 1;
-	}
+	} else return connection;
 
 	//printf( "type: \"%s\"\n", RTYPE( r.type ) );
 
@@ -86,7 +91,14 @@ connection_t connection_create( website_t* website, int sockfd, char* raw, size_
 	raw++; // skip over forward slash
 	tmp = strstr( raw, "?" );
 	if ( !tmp ) tmp = strstr( raw, " " );
-	url_decode( raw, connection.request.url, tmp - raw );
+	url_decode( raw, urlbuf, tmp - raw );
+	printf( "%s\n", urlbuf );
+	normalize( connection.request.url, urlbuf );
+
+	while ( startswith( connection.request.url, "../" ) ) {
+		strcpy( urlbuf, connection.request.url + 3 );
+		strcpy( connection.request.url, urlbuf );
+	}
 	//printf( "url: \"%s\"\n", r.url );
 
 	// parse qstring params

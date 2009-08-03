@@ -25,10 +25,12 @@
 params_t params_parse_qs( char* raw, int size ) {
 	params_t params;
 	params.num = 0;
+	param_t* param;
+	int len;
 
 	char* tmp = raw;
-	while ( size ) {
-		//TODO: check string lengths
+	while ( size > 0 ) {
+		param = &params.list[ params.num ];
 
 		// name
 		tmp = strstr( raw, "=" );
@@ -37,14 +39,25 @@ params_t params_parse_qs( char* raw, int size ) {
 			break;
 		}
 
-		url_decode( raw, params.list[ params.num ].name, tmp - raw );
+		len = tmp - raw;
+		if ( len > sizeof( param->name ) )
+			len = sizeof( param->name );
+
+		url_decode( raw, param->name, len );
 		size -= ( tmp + 1 ) - raw;
 		raw = tmp + 1;
+		if ( size <= 0 )
+			break;
 
 		// value
 		tmp = strstr( raw, "&" );
 		if ( !tmp || tmp - raw > size ) tmp = raw + size;
-		url_decode( raw, params.list[ params.num ].value, tmp - raw );
+
+		len = tmp - raw;
+		if ( len > sizeof( param->value ) )
+			len = sizeof( param->value );
+
+		url_decode( raw, param->value, len );
 
 		size -= tmp - raw;
 		raw = tmp;

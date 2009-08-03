@@ -24,24 +24,31 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <netdb.h> // for gethostbyaddr
 
 #include "pcom.h"
 #include "pfildes.h"
 #include "website.h"
 #include "psocket.h"
 
-typedef struct website_data {
+typedef struct {
+	int pid;
 	int fd;
 	psocket_t* socket;
 } website_data_t;
 
+typedef struct {
+	int fd;
+	struct sockaddr_in addr;
+} req_info_t;
+
 int res_fd;
 
-void try_and_create_tmpdir( );
+void create_tmpdir( );
 void save_podora_info( );
 
 void request_accept_handler( int sockfd, void* udata );
-void request_handler( int sockfd, int* orig_sockfd );
+void request_handler( int sockfd, req_info_t* req_info );
 void response_handler( int fd, pcom_transport_t* transport );
 
 void start_website( pcom_transport_t* transport );
@@ -55,7 +62,7 @@ void quit( ) { }
 int main( ) {
 
 	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n\n" );
-	try_and_create_tmpdir( );
+	create_tmpdir( );
 
 	// TODO: switch to sighandler
 	signal( SIGPIPE, broken_pipe );
@@ -79,7 +86,7 @@ int main( ) {
 	return 1;
 }
 
-void try_and_create_tmpdir( ) {
+void create_tmpdir( ) {
 	mkdir( PD_TMPDIR, S_IRWXU );
 	chmod( PD_TMPDIR, S_IRWXU | S_IRWXG | S_IRWXO );
 }
@@ -100,7 +107,11 @@ void save_podora_info( ) {
 char* get_url_from_http_header( char* url, char* raw ) {
 	char* ptr,* ptr2;
 
-	ptr = strstr( raw, "Host: " ) + 6;
+	if ( !( ptr = strstr( raw, "Host: " ) ) )
+		return NULL;
+
+	ptr += 6;
+
 	ptr2 = strstr( ptr, HTTP_HDR_ENDL );
 	strncpy( url, ptr, ptr2 - ptr );
 
@@ -145,9 +156,14 @@ void start_website( pcom_transport_t* transport ) {
 	int fd = *(int*) ( transport->message + sizeof( int ) );
 	char* url = transport->message + sizeof( int ) * 2;
 
-	if ( website_get_by_url( url ) ) {
-		fprintf( stderr, "[warning] start_website: tried to add website that already exists\n" );
-		return;
+	if ( ( website = website_get_by_url( url ) ) ) {
+
+		if ( kill( ((website_data_t*) website->data)->pid, 0 ) == -1 )
+			remove_website( website );
+		else {
+			fprintf( stderr, "[warning] start_website: tried to add website \"%s\" that already exists\n", url );
+			return;
+		}
 	}
 
 	if ( !( website = website_add( transport->header->key, url ) ) ) {
@@ -160,6 +176,8 @@ void start_website( pcom_transport_t* transport ) {
 	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
 
 	website->data = website_data;
+
+	website_data->pid = pid;
 
 	if ( !( website_data->fd = pcom_connect( pid, fd ) ) ) {
 		fprintf( stderr, "[error] start_website: pcom_connect() failed for website \"%s\"\n", website->url );
@@ -195,10 +213,12 @@ void remove_website( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 
 	close( website_data->fd );
-	if ( website_data->socket->n_open == 1 ) {
-		pfd_clr( website_data->socket->sockfd );
+	if ( website_data->socket ) {
+		if ( website_data->socket->n_open == 1 ) {
+			pfd_clr( website_data->socket->sockfd );
+		}
+		psocket_remove( website_data->socket );
 	}
-	psocket_remove( website_data->socket );
 
 	free( website_data );
 	website_remove( website );
@@ -207,6 +227,7 @@ void remove_website( website_t* website ) {
 // Handlers ////////////////////////////////////////////
 
 void request_accept_handler( int sockfd, void* udata ) {
+	req_info_t* req_info;
 	struct sockaddr_in cli_addr;
 	unsigned int cli_len = sizeof ( cli_addr );
 	int newsockfd;
@@ -217,12 +238,13 @@ void request_accept_handler( int sockfd, void* udata ) {
 		return;
 	}
 
-	int* ptr = (int*) malloc( sizeof( int ) );
-	memcpy( ptr, &sockfd, sizeof( int ) );
-	pfd_set( newsockfd, PFD_TYPE_SOCK_ACCEPTED, ptr ); //TODO: <= this might be a bug passing sockfd by reference
+	req_info = (req_info_t*) malloc( sizeof( req_info_t ) );
+	req_info->fd = sockfd;
+	req_info->addr = cli_addr;
+	pfd_set( newsockfd, PFD_TYPE_SOCK_ACCEPTED, req_info );
 }
 
-void request_handler( int sockfd, int* orig_sockfd ) {
+void request_handler( int sockfd, req_info_t* req_info ) {
 	char buffer[ PCOM_MSG_SIZE ];
 	int n;
 	website_t* website;
@@ -233,6 +255,7 @@ void request_handler( int sockfd, int* orig_sockfd ) {
 	char* ptr;
 	char postlenbuf[ 16 ];
 	int postlen = 0;
+	struct hostent* hp;
 
 	memset( &buffer, 0, sizeof( buffer ) );
 
@@ -260,7 +283,7 @@ void request_handler( int sockfd, int* orig_sockfd ) {
 
 	website_data = website->data;
 
-	if ( website_data->socket->sockfd != *orig_sockfd ) {
+	if ( website_data->socket->sockfd != req_info->fd ) {
 		fprintf( stderr, "[warning] request_handler: no website to service request\n" );
 		pfd_clr( sockfd );
 		close( sockfd );
@@ -268,6 +291,11 @@ void request_handler( int sockfd, int* orig_sockfd ) {
 	}
 
 	transport = pcom_open( website_data->fd, PCOM_WO, sockfd, website->key );
+
+	hp = gethostbyaddr( (char*) &req_info->addr.sin_addr.s_addr, sizeof( req_info->addr.sin_addr.s_addr ), AF_INET );
+
+	pcom_write( transport, (void*) &req_info->addr.sin_addr, sizeof( req_info->addr.sin_addr ) );
+	pcom_write( transport, (void*) hp->h_name, strlen( hp->h_name ) + 1 );
 
 	if ( request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
 		memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
@@ -292,7 +320,7 @@ void request_handler( int sockfd, int* orig_sockfd ) {
 		}
 	}
 
-	free( orig_sockfd );
+	free( req_info );
 	pcom_free( transport );
 }
 

@@ -242,7 +242,7 @@ void podora_connection_send_headers( pcom_transport_t* transport, connection_t* 
 	headers_set_header( &connection->response.headers, "Date", now_str );
 	headers_set_header( &connection->response.headers, "Server", "Podora/" PODORA_VERSION );
 
-	char* cookies = cookies_to_string( &connection->cookies, (char*) malloc( 1024 ) );
+	char* cookies = cookies_to_string( &connection->cookies, (char*) malloc( 1024 ), 1024 );
 
 	if ( strlen( cookies ) )
 		headers_set_header( &connection->response.headers, "Set-Cookie", cookies );

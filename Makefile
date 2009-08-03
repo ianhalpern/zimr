@@ -4,7 +4,7 @@ LDFLAGS     =
 DBFLAGS     = -ggdb -O0 -pg
 TARGET_ARCH =
 PTHREAD     = -pthread
-DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPODORA_VERSION=\"$(VERNUM)\" -DPD_DIR=\"`pwd`/\"
+DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPODORA_VERSION=\"$(VERNUM)\"
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions -I/usr/include/python$(PYVERSION)

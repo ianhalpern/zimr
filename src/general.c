@@ -76,6 +76,39 @@ int startswith( const char* s1, const char* s2 ) {
 	return 1;
 }
 
+char* normalize( char* normpath, const char* path ) {
+	char patharr[ 100 ][ 1024 ],* ptr;
+	int i = 0, j, len;
+	normpath[ 0 ] = '\0';
+
+	while ( ( ptr = strstr( path, "/" ) ) || ( ptr = (char*) path + strlen( path ) ) ) {
+		len = ptr - path;
+		if ( len > 1023 ) len = 1023;
+		if ( len ) {
+			strncpy( patharr[ i ], path, len );
+			patharr[ i ][ len ] = '\0';
+			if ( strcmp( patharr[ i ], "." ) != 0 && strcmp( patharr[ i ], ".." ) != 0 ) {
+				i++;
+			} else if ( strcmp( patharr[ i ], ".." ) == 0 ) {
+				if ( !i || strcmp( patharr[ i - 1 ], ".." ) == 0 )
+					i++;
+				else i--;
+			}
+		}
+
+		if ( ptr[ 0 ] == '\0' )
+			break;
+		path = ptr + 1;
+	}
+
+	for ( j = 0; j < i; j++ ) {
+		if ( j ) strcat( normpath, "/" );
+		strcat( normpath, patharr[ j ] );
+	}
+
+	return normpath;
+}
+
 // Converts a hexadecimal string to integer
 // code from http://devpinoy.org/blogs/cvega/archive/2006/06/19/xtoi-hex-to-integer-c-function.aspx
 int xtoi( const char* xs, unsigned int* result ) {

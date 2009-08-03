@@ -37,6 +37,7 @@ int randkey( );
 int url2int( const char* );
 void wait_for_kill( );
 int startswith( const char*, const char* );
+char* normalize( char* normpath, const char* path );
 int xtoi( const char* xs, unsigned int* result );
 
 #endif

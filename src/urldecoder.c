@@ -22,7 +22,7 @@
 
 #include "urldecoder.h"
 
-char *urlcodes[ 256 ] = {
+char* urlcodes[ 256 ] = {
 "",   // %00
 "",   // %01
 "",   // %02

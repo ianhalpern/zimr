@@ -286,7 +286,7 @@ static PyObject* pypodora_connection_set_cookie( pypodora_connection_t* self, Py
 		return NULL;
 	}
 
-	cookies_set_cookie( &self->_connection.cookies, cookie_name, cookie_value, &expires, cookie_domain, cookie_path );
+	cookies_set_cookie( &self->_connection.cookies, cookie_name, cookie_value, expires, cookie_domain, cookie_path );
 
 	Py_RETURN_NONE;
 }

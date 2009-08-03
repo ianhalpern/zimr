@@ -44,8 +44,8 @@ typedef struct {
 } cookies_t;
 
 cookies_t cookies_parse( char* raw );
-void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t* expires, const char* domain, const char* path );
+void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t expires, const char* domain, const char* path );
 cookie_t* cookies_get_cookie( cookies_t* cookies, const char* name );
-char* cookies_to_string( cookies_t* cookies, char* cookies_str );
+char* cookies_to_string( cookies_t* cookies, char* cookies_str, int size );
 
 #endif
