@@ -291,6 +291,14 @@ static PyObject* pypodora_connection_set_cookie( pypodora_connection_t* self, Py
 	Py_RETURN_NONE;
 }
 
+static PyObject* pypodora_connection_get_hostname( pypodora_connection_t* self, void* closure ) {
+	return PyString_FromString( self->_connection.hostname );
+}
+
+static PyObject* pypodora_connection_get_ip( pypodora_connection_t* self, void* closure ) {
+	return PyString_FromString( inet_ntoa( self->_connection.ip ) );
+}
+
 static PyMemberDef pypodora_connection_members[ ] = {
 	{ "client", T_OBJECT_EX, offsetof( pypodora_connection_t, client ), 0, "response object of this request" }, //TODO: temporary
 	{ "response", T_OBJECT_EX, offsetof( pypodora_connection_t, response ), RO, "response object of this request" },
@@ -308,6 +316,18 @@ static PyMethodDef pypodora_connection_methods[ ] = {
 };
 
 static PyGetSetDef pypodora_connection_getseters[ ] = {
+	{
+	  "hostname",
+	  (getter) pypodora_connection_get_hostname,
+	  0,
+	  "the websites public directory", NULL
+	},
+	{
+	  "ip",
+	  (getter) pypodora_connection_get_ip,
+	  0,
+	  "the websites public directory", NULL
+	},
 	{ NULL }  /* Sentinel */
 };
 

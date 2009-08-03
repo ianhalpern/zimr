@@ -92,7 +92,7 @@ connection_t connection_create( website_t* website, int sockfd, char* raw, size_
 	tmp = strstr( raw, "?" );
 	if ( !tmp ) tmp = strstr( raw, " " );
 	url_decode( raw, urlbuf, tmp - raw );
-	printf( "%s\n", urlbuf );
+
 	normalize( connection.request.url, urlbuf );
 
 	while ( startswith( connection.request.url, "../" ) ) {
