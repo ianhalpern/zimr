@@ -53,6 +53,7 @@ typedef struct {
 	request_t  request;
 	response_t response;
 	cookies_t  cookies;
+	void* udata;
 } connection_t;
 
 connection_t connection_create( website_t*, int, char*, size_t );

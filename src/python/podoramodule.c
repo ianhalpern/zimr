@@ -389,6 +389,7 @@ void pypodora_website_connection_handler( connection_t _connection ) {
 
 	pypodora_connection_t* connection = (pypodora_connection_t*) pypodora_connection_type.tp_new( &pypodora_connection_type, NULL, NULL );
 	connection->_connection = _connection;
+	connection->_connection.udata = connection;
 
 	pypodora_request_t* request = (pypodora_request_t*) pypodora_request_type.tp_new( &pypodora_request_type, NULL, NULL );
 	request->_request = &_connection.request;
@@ -597,11 +598,8 @@ static PyObject* pypodora_default_connection_handler( PyObject* self, PyObject* 
 static void pypodora_page_handler( connection_t* connection, const char* filepath, void* udata ) {
 	PyObject* page_handler = udata;
 	PyObject* result;
-	PyObject* pyfilepath =  PyString_FromString( filepath );
 
-	result = PyObject_CallFunctionObjArgs( page_handler, pyfilepath, NULL );
-
-	Py_DECREF( pyfilepath );
+	result = PyObject_CallFunction( page_handler, "sO", filepath, connection->udata );
 
 	if ( result != NULL ) {
 		if ( ! PyString_Check( result ) ) {
