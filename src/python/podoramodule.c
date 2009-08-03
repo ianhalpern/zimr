@@ -25,6 +25,7 @@
 
 #include "podora.h"
 
+static PyObject* m;
 /********** START OF pypodora_response_t *******/
 /**********************************************/
 
@@ -383,7 +384,7 @@ typedef struct {
 	website_t* _website;
 } pypodora_website_t;
 
-void pypodora_website_connection_handler( connection_t _connection ) {
+static void pypodora_website_connection_handler( connection_t _connection ) {
 
 	pypodora_website_t* website = (pypodora_website_t*) ( (website_data_t*) _connection.website->data )->udata;
 
@@ -423,9 +424,6 @@ static void pypodora_website_dealloc( pypodora_website_t* self ) {
 static PyObject* pypodora_website_new( PyTypeObject* type, PyObject* args, PyObject* kwargs ) {
 	pypodora_website_t* self = (pypodora_website_t*) type->tp_alloc( type, 0 );
 
-	Py_INCREF( Py_None );
-	self->connection_handler = Py_None;
-
 	return (PyObject*) self;
 }
 
@@ -437,6 +435,9 @@ static int pypodora_website_init( pypodora_website_t* self, PyObject* args, PyOb
 	self->_website = podora_website_create( url );
 
 	( (website_data_t*) self->_website->data )->udata = self;
+
+	self->connection_handler = PyObject_GetAttrString( m, "defaultConnectionHandler" );
+	podora_website_set_connection_handler( self->_website, pypodora_website_connection_handler );
 
 	return 0;
 }
@@ -480,24 +481,19 @@ static PyObject* pypodora_website_get_connection_handler( pypodora_website_t* se
 
 static int pypdora_website_set_connection_handler( pypodora_website_t* self, PyObject* value, void* closure ) {
 
-	if ( value == NULL ) {
-		Py_DECREF( self->connection_handler );
-		Py_INCREF( Py_None );
-		self->connection_handler = Py_None;
-		podora_website_unset_connection_handler( self->_website );
-		return 0;
-	}
+	if ( value == NULL )
+		value = PyObject_GetAttrString( m, "defaultConnectionHandler" );
+	else
+		Py_INCREF( value );
 
 	if ( ! PyCallable_Check( value ) ) {
 		PyErr_SetString( PyExc_TypeError, "The connection_handler attribute value must be callable" );
+		Py_DECREF( value );
 		return -1;
 	}
 
 	Py_DECREF( self->connection_handler );
-	Py_INCREF( value );
 	self->connection_handler = value;
-
-	podora_website_set_connection_handler( self->_website, pypodora_website_connection_handler );
 
 	return 0;
 }
@@ -642,7 +638,6 @@ static PyMethodDef pypodora_methods[ ] = {
 };
 
 PyMODINIT_FUNC initpodora ( void ) {
-	PyObject* m;
 
 	if ( PyType_Ready( &pypodora_website_type ) < 0 )
 		return;

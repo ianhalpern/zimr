@@ -70,6 +70,7 @@ connection_t connection_create( website_t* website, int sockfd, char* raw, size_
 	char* tmp, * start = raw, urlbuf[ sizeof( connection.request.url ) ];
 	connection.website = website;
 	connection.sockfd  = sockfd;
+	connection.udata   = NULL;
 
 	memcpy( &connection.ip, raw, sizeof( connection.ip ) );
 	raw += sizeof( connection.ip );
