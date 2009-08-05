@@ -222,7 +222,7 @@ int create_tmpdir( ) {
 		return 0;
 	}
 
-	if ( ( r = chmod( filename, 0744 ) ) == -1 ) {
+	if ( ( r = chmod( filename, 0777 ) ) == -1 ) {
 		syslog( LOG_ERR, "could set permissions for %s: %s", filename, strerror( errno ) );
 		return 0;
 	}

@@ -30,11 +30,11 @@ int pcom_create( ) {
 	char filename2[ 128 ];
 
 	sprintf( filename, PD_TMPDIR "/%d/_%d", getpid( ), npds++ );
-	if ( mkfifo( filename, S_IRWXU ) < 0 ) {
+	if ( mkfifo( filename, 0777 ) < 0 ) {
 		fprintf( stderr, "[error] pcom_create: mkfifo() failed creating %s: %s\n", filename, strerror( errno ) );
 		return -1;
 	}
-	chmod( filename, 0744 );
+	chmod( filename, 0777 );
 
 	if ( ( fd = open( filename, O_RDONLY | O_NONBLOCK ) ) < 0 ) {
 		fprintf( stderr, "[error] pcom_create: open() failed open %s: %s\n", filename, strerror( errno ) );
