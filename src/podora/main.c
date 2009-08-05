@@ -35,7 +35,7 @@
 #include "psocket.h"
 #include "daemonize.h"
 
-#define DAEMON_NAME "[podora]"
+#define DAEMON_NAME "podora"
 
 typedef struct {
 	int pid;
@@ -91,7 +91,9 @@ void print_usage( ) {
 }
 
 int main( int argc, char* argv[ ] ) {
-	int make_daemon = 1, ret = EXIT_SUCCESS, daemon_flags = 0;
+	int ret = EXIT_SUCCESS;
+	int make_daemon = 1, daemon_flags = 0;
+	int force_start = 0;
 
 	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n" );
 
@@ -100,9 +102,8 @@ int main( int argc, char* argv[ ] ) {
 	for ( i = 1; i < argc; i++ ) {
 		if ( strcmp( argv[ i ], "--no-daemon" ) == 0 )
 			make_daemon = 0;
-		else if ( "--force" ) {
-			printf( "--force not implimented yet\n" );
-			exit( 0 );
+		else if ( strcmp( argv[ i ], "--force" ) == 0 ) {
+			force_start = 1;
 		} else {
 			if ( strcmp( argv[ i ], "--help" ) != 0 && strcmp( argv[ i ], "-h" ) != 0 )
 				printf( "%s\n", argv[ i ] );
@@ -112,7 +113,9 @@ int main( int argc, char* argv[ ] ) {
 
 	}
 
-	// Setup signal handling before we start
+	// signal handling is also set up in daemonize
+	// but this signal handler will log what signal
+	// was recieved
 	signal( SIGHUP,  signal_handler );
 	signal( SIGTERM, signal_handler );
 	signal( SIGINT,  signal_handler );
@@ -120,7 +123,6 @@ int main( int argc, char* argv[ ] ) {
 
 #if defined(DEBUG)
 	daemon_flags |= D_KEEPSTDF;
-
 
 // Setup syslog logging - see SETLOGMASK(3)
 	setlogmask( LOG_UPTO( LOG_DEBUG ) );
@@ -133,7 +135,7 @@ int main( int argc, char* argv[ ] ) {
 	syslog( LOG_INFO, "starting up" );
 
 	// check if podora is already running
-	if ( check_if_podora_info_file_exitst( ) ) {
+	if ( ! force_start && check_if_podora_info_file_exitst( ) ) {
 		syslog( LOG_ERR, "daemon already running" );
 		printf( "error: podora is already running\n" );
 		ret = EXIT_FAILURE;
@@ -185,10 +187,14 @@ quit:
 	remove_podora_info( );
 	remove_tmpdir( );
 
-	if ( ret == EXIT_FAILURE )
+	if ( ret == EXIT_FAILURE ) {
 		printf( "exit: failure\n" );
+		syslog( LOG_INFO, "exiting. failure" );
+	} else {
+		printf( "exit: success\n" );
+		syslog( LOG_INFO, "exiting. success" );
+	}
 
-	syslog( LOG_INFO, "exiting" );
 	closelog( );
 	return ret;
 }
@@ -249,11 +255,6 @@ int check_if_podora_info_file_exitst( ) {
 
 int save_podora_info( ) {
 	int pid = getpid( ), fd;
-
-	if ( check_if_podora_info_file_exitst( ) ) {
-		syslog( LOG_ERR, "daemon already running" );
-		return 0;
-	}
 
 	if ( ( fd = creat( PD_TMPDIR "/" PD_INFO_FILE, 0644 ) ) < 0 ) {
 		syslog( LOG_ERR, "could set create %s: %s", PD_TMPDIR "/" PD_INFO_FILE, strerror( errno ) );

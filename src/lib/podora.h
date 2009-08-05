@@ -25,12 +25,19 @@
 
 #include <time.h>
 #include <sys/stat.h>
+#include <syslog.h>
+#include <assert.h>
+#include <yaml.h>
 
 #include "website.h"
 #include "pcom.h"
 #include "pfildes.h"
 #include "connection.h"
 #include "mime.h"
+#include "daemonize.h"
+
+#define DAEMON_NAME "podora-website"
+#define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
 
 typedef struct website_data {
 	int req_fd;
@@ -42,9 +49,12 @@ typedef struct website_data {
 
 const char* podora_version( );
 const char* podora_build_date( );
+
 int  podora_init( );
 void podora_shutdown( );
 int  podora_read_server_info( int* pid, int* res_fn );
+int  podora_daemonize( int flags );
+int  podora_cnf_load( );
 void podora_start( );
 void podora_send_cmd( int cmd, int key, void* message, int size );
 

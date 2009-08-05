@@ -25,6 +25,7 @@
 
 #define PD_TMPDIR "/tmp/podora"
 #define PD_INFO_FILE "podora.info"
+#define PD_WS_CONF_FILE "podora.cnf"
 
 /****** pcom config *******/
 
@@ -32,39 +33,8 @@
 #define PCOM_HDR_SIZE ( sizeof( pcom_header_t ) )
 #define PCOM_BUF_SIZE 4096
 
-#define PCOM_RO 0x0001
-#define PCOM_WO 0x0002
-
-#define PCOM_MSG_FIRST 0x0001
-#define PCOM_MSG_LAST  0x0002
-
-#define PCOM_MSG_IS_FIRST(X) ( ((pcom_transport_t *)(X))->header->flags & PCOM_MSG_FIRST )
-#define PCOM_MSG_IS_LAST(X)  ( ((pcom_transport_t *)(X))->header->flags & PCOM_MSG_LAST  )
-
-#define PCOM_NO_SID 0
-#define PCOM_NO_TID 0
-
 /**************************/
 
-/****** pfildes config ********/
-
-#define PFD_TYPE_PCOM          0x01
-#define PFD_TYPE_SOCK_LISTEN   0x02
-#define PFD_TYPE_SOCK_ACCEPTED 0x03
-#define PFD_TYPE_FILE          0x04
-
-/**************************/
-
-/****** website config *******/
-
-// Commands must be negative
-#define WS_START_CMD -1
-#define WS_STOP_CMD  -2
-
-#define WS_STATUS_ENABLED   0x01
-#define WS_STATUS_DISABLED  0x02
-
-/*************************/
 
 /****** socket config ********/
 
@@ -103,13 +73,5 @@
 #define PARAM_VALUE_MAX_LEN 512
 
 /*************************/
-
-/******* params config *******/
-
-#define D_KEEPSTDF 0x01
-
-/*************************/
-
-#define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
 
 #endif

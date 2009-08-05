@@ -34,6 +34,18 @@
 
 #include "config.h"
 
+#define PCOM_MSG_IS_FIRST(X) ( ((pcom_transport_t *)(X))->header->flags & PCOM_MSG_FIRST )
+#define PCOM_MSG_IS_LAST(X)  ( ((pcom_transport_t *)(X))->header->flags & PCOM_MSG_LAST  )
+
+#define PCOM_NO_SID 0
+#define PCOM_NO_TID 0
+
+#define PCOM_RO 0x0001
+#define PCOM_WO 0x0002
+
+#define PCOM_MSG_FIRST 0x0001
+#define PCOM_MSG_LAST  0x0002
+
 typedef struct {
 	int size;
 	int id;

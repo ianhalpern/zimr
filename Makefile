@@ -55,8 +55,8 @@ podora-website: $(EXEC_DEPENDS) libpodora.so
 
 ##### SHARED OBJS #####
 
-libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o mime.o connection.o headers.o params.o cookies.o urldecoder.o
-	$(EXEC_COMPILE) $(SHARED)
+libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o mime.o connection.o headers.o params.o cookies.o urldecoder.o daemonize.o
+	$(EXEC_COMPILE) $(SHARED) -lyaml
 
 ##### PYTHON MODS #####
 

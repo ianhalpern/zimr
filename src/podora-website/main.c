@@ -27,27 +27,16 @@
 
 #include "podora.h"
 
-void quitproc( ) {
-	podora_shutdown( );
-}
-
 int main( int argc, char *argv[ ] ) {
-	website_t* website;
+	assert( podora_daemonize( 0 ) );
 
-	signal( SIGINT, quitproc );
+	assert( podora_init( ) );
 
-	podora_init( );
-
-	if ( argc < 2 ) {
-		fprintf( stderr, "[fatal] website url was not provided.\n" );
-		return EXIT_FAILURE;
-	}
-	website = podora_website_create( argv[ 1 ] );
-	//podora_website_set_pubdir( website, "test_website/" );
-	podora_website_enable( website );
+	assert( podora_cnf_load( ) );
 
 	podora_start( );
 
+	podora_shutdown( );
 	printf( "quit\n" );
 	return 0;
 }

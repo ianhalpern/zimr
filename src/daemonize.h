@@ -28,8 +28,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <signal.h>
 
 #include "config.h"
+
+#define D_KEEPSTDF 0x01
+#define D_NOCD 0x02
 
 int daemonize( int flags );
 

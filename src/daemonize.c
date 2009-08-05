@@ -22,7 +22,21 @@
 
 #include "daemonize.h"
 
+static void empty_sighandler(){}
+ 
 int daemonize( int flags ) {
+
+	void (*prev_sighandler)(int);
+	if ( ( prev_sighandler = signal( SIGHUP, empty_sighandler ) ) != SIG_DFL )
+		signal( SIGHUP, prev_sighandler );
+	if ( ( prev_sighandler = signal( SIGTERM, empty_sighandler ) ) != SIG_DFL )
+		signal( SIGTERM, prev_sighandler );
+	if ( ( prev_sighandler = signal( SIGINT, empty_sighandler ) ) != SIG_DFL )
+		signal( SIGINT, prev_sighandler );
+	if ( ( prev_sighandler = signal( SIGQUIT, empty_sighandler ) ) != SIG_DFL )
+		signal( SIGQUIT, prev_sighandler );
+
+
 	/* Our process ID and Session ID */
 	pid_t pid, sid;
 
@@ -45,10 +59,8 @@ int daemonize( int flags ) {
 		return 0;
 
 	/* Change the current working directory */
-	//if ((chdir("/")) < 0) {
-		/* Log the failure */
-	//	exit(EXIT_FAILURE);
-	//}
+	if ( ! flags & D_NOCD && chdir( "/" ) < 0 )
+		return 0;
 
 	if ( ! flags & D_KEEPSTDF ) {
 		/* repoen the standard file descriptors */
