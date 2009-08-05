@@ -29,16 +29,12 @@ int pcom_create( ) {
 	char filename[ 128 ];
 	char filename2[ 128 ];
 
-	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
-	mkdir( filename, S_IRWXU );
-	chmod( filename, S_IRWXU | S_IRWXG | S_IRWXO );
-
-	sprintf( filename, PD_TMPDIR "/%d/%d", getpid( ), npds++ );
+	sprintf( filename, PD_TMPDIR "/%d/_%d", getpid( ), npds++ );
 	if ( mkfifo( filename, S_IRWXU ) < 0 ) {
 		fprintf( stderr, "[error] pcom_create: mkfifo() failed creating %s: %s\n", filename, strerror( errno ) );
 		return -1;
 	}
-	chmod( filename, S_IRWXU | S_IRWXG | S_IRWXO );
+	chmod( filename, 0744 );
 
 	if ( ( fd = open( filename, O_RDONLY | O_NONBLOCK ) ) < 0 ) {
 		fprintf( stderr, "[error] pcom_create: open() failed open %s: %s\n", filename, strerror( errno ) );
@@ -47,8 +43,8 @@ int pcom_create( ) {
 
 	open( filename, O_WRONLY ); // TODO: hack!
 
-	sprintf( filename2, PD_TMPDIR "/%d/l%d", getpid( ), fd );
-	symlink( filename, filename2 );
+	sprintf( filename2, PD_TMPDIR "/%d/%d", getpid( ), fd );
+	rename( filename, filename2 );
 
 	return fd;
 }
@@ -56,8 +52,15 @@ int pcom_create( ) {
 int pcom_connect( int pid, int fd ) {
 	char filename[ 128 ];
 
-	sprintf( filename, PD_TMPDIR "/%d/l%d", pid, fd );
+	sprintf( filename, PD_TMPDIR "/%d/%d", pid, fd );
 	return open( filename, O_WRONLY );
+}
+
+void pcom_destroy( int fd ) {
+	close( fd );
+	char filename[ 128 ];
+	sprintf( filename, PD_TMPDIR "/%d/%d", getpid( ), fd );
+	remove( filename );
 }
 
 pcom_transport_t* pcom_open( int pd, int io_type, int id, int key ) {

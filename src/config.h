@@ -104,6 +104,12 @@
 
 /*************************/
 
+/******* params config *******/
+
+#define D_KEEPSTDF 0x01
+
+/*************************/
+
 #define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
 
 #endif

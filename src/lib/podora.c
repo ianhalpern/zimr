@@ -43,6 +43,11 @@ const char* podora_build_date( ) {
 int podora_init( ) {
 	int pid, res_filenum;
 
+	char filename[ 128 ];
+	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
+	mkdir( filename, S_IRWXU );
+	chmod( filename, 0744 );
+
 	if ( !podora_read_server_info( &pid, &res_filenum ) )
 		return 0;
 
@@ -60,6 +65,10 @@ void podora_shutdown( ) {
 	while ( website_get_root( ) ) {
 		podora_website_destroy( website_get_root( ) );
 	}
+
+	char filename[ 128 ];
+	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
+	remove( filename );
 }
 
 int podora_read_server_info( int* pid, int* res_fn ) {
@@ -123,7 +132,7 @@ void podora_website_destroy( website_t* website ) {
 		free( website_data->pubdir );
 
 	pfd_clr( website_data->req_fd );
-	close( website_data->req_fd );
+	pcom_destroy( website_data->req_fd );
 
 	free( website_data );
 	website_remove( website );

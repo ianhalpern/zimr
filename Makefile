@@ -12,7 +12,7 @@ LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
 
 PYVERSION = 2.6
 
-OBJS        = general.o pcom.o website.o pfildes.o psocket.o connection.o mime.o headers.o params.o cookies.o urldecoder.o
+OBJS        = general.o pcom.o website.o pfildes.o psocket.o connection.o mime.o headers.o params.o cookies.o urldecoder.o daemonize.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 
 EXECS       = podora podora-website
@@ -47,7 +47,7 @@ clean:
 ##### EXECS #####
 #################
 
-podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o psocket.o
+podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o psocket.o daemonize.o
 	$(EXEC_COMPILE)
 
 podora-website: $(EXEC_DEPENDS) libpodora.so
@@ -75,6 +75,7 @@ $(OBJS): $(OBJ_DEPENDS)
 #################################
 
 debug: CC += $(DBFLAGS)
+debug: DSYMBOLS += -DDEBUG
 tests: CC += $(DBFLAGS)
 $(TEST_EXECS): CC += $(DBFLAGS)
 debug: VERNUM = `vernum 1`b-debug

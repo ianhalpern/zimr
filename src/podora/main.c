@@ -25,11 +25,17 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <netdb.h> // for gethostbyaddr
+#include <syslog.h>
+#include <errno.h>
+#include <unistd.h>
 
 #include "pcom.h"
 #include "pfildes.h"
 #include "website.h"
 #include "psocket.h"
+#include "daemonize.h"
+
+#define DAEMON_NAME "[podora]"
 
 typedef struct {
 	int pid;
@@ -43,9 +49,13 @@ typedef struct {
 } req_info_t;
 
 int res_fd;
+int created_podora_info_file = 0; // flag to let remove_podora_info() know if it can remove it
 
-void create_tmpdir( );
-void save_podora_info( );
+int create_tmpdir( );
+void remove_tmpdir( );
+int save_podora_info( );
+void remove_podora_info( );
+int check_if_podora_info_file_exitst( );
 
 void request_accept_handler( int sockfd, void* udata );
 void request_handler( int sockfd, req_info_t* req_info );
@@ -56,52 +66,209 @@ void stop_website( pcom_transport_t* transport );
 
 void remove_website( website_t* website );
 
-void broken_pipe( ) { }
-void quit( ) { }
+void signal_handler( int sig ) {
+	switch( sig ) {
+		case SIGHUP:
+			syslog( LOG_WARNING, "received SIGHUP signal." );
+			break;
+		case SIGTERM:
+			syslog( LOG_WARNING, "received SIGTERM signal." );
+			break;
+		default:
+			syslog( LOG_WARNING, "unhandled signal %d", sig );
+			break;
+	}
+}
 
-int main( ) {
+void print_usage( ) {
+	printf(
+"\nUsage:\n\
+	-h --help\n\
+	--no-daemon\n\
+	--force\n\
+"
+	);
+}
 
-	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n\n" );
-	create_tmpdir( );
+int main( int argc, char* argv[ ] ) {
+	int make_daemon = 1, ret = EXIT_SUCCESS, daemon_flags = 0;
 
-	// TODO: switch to sighandler
-	signal( SIGPIPE, broken_pipe );
-	signal( SIGINT, quit );
+	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n" );
 
+	// parse command line options
+	int i;
+	for ( i = 1; i < argc; i++ ) {
+		if ( strcmp( argv[ i ], "--no-daemon" ) == 0 )
+			make_daemon = 0;
+		else if ( "--force" ) {
+			printf( "--force not implimented yet\n" );
+			exit( 0 );
+		} else {
+			if ( strcmp( argv[ i ], "--help" ) != 0 && strcmp( argv[ i ], "-h" ) != 0 )
+				printf( "%s\n", argv[ i ] );
+			print_usage( );
+			exit( 0 );
+		}
+
+	}
+
+	// Setup signal handling before we start
+	signal( SIGHUP,  signal_handler );
+	signal( SIGTERM, signal_handler );
+	signal( SIGINT,  signal_handler );
+	signal( SIGQUIT, signal_handler );
+
+#if defined(DEBUG)
+	daemon_flags |= D_KEEPSTDF;
+
+
+// Setup syslog logging - see SETLOGMASK(3)
+	setlogmask( LOG_UPTO( LOG_DEBUG ) );
+	openlog( DAEMON_NAME, LOG_CONS | LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_USER );
+#else
+	setlogmask( LOG_UPTO( LOG_INFO ) );
+	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
+#endif
+
+	syslog( LOG_INFO, "starting up" );
+
+	// check if podora is already running
+	if ( check_if_podora_info_file_exitst( ) ) {
+		syslog( LOG_ERR, "daemon already running" );
+		printf( "error: podora is already running\n" );
+		ret = EXIT_FAILURE;
+		goto quit;
+	}
+
+	// daemonize
+	if ( make_daemon ) {
+		syslog( LOG_INFO, "starting the daemonizing process" );
+		if ( !daemonize( daemon_flags ) ) {
+			ret = EXIT_FAILURE;
+			goto quit;
+		}
+	}
+
+	// create tmp directory to hold named pipe files
+	if ( !create_tmpdir( ) ) {
+		ret = EXIT_FAILURE;
+		goto quit;
+	}
+
+	// set the fle handlers for the different types of file desriptors
+	// used in pfd_start()'s select() loop
 	pfd_register_type( PFD_TYPE_PCOM,          PFD_TYPE_HDLR response_handler );
 	pfd_register_type( PFD_TYPE_SOCK_LISTEN,   PFD_TYPE_HDLR request_accept_handler );
 	pfd_register_type( PFD_TYPE_SOCK_ACCEPTED, PFD_TYPE_HDLR request_handler );
 
 	if ( ( res_fd = pcom_create( ) ) < 0 ) {
-		return EXIT_FAILURE;
+		ret = EXIT_FAILURE;
+		goto quit;
 	}
 
-	save_podora_info( );
+	// save pid and res_fd to podora info file in tmp directory
+	// this is read by podora websites, providing them with the
+	// info to connect
+	if ( !save_podora_info( ) ) {
+		ret = EXIT_FAILURE;
+		goto quit;
+	}
 
 	pfd_set( res_fd, PFD_TYPE_PCOM, pcom_open( res_fd, PCOM_RO, 0, 0 ) );
 
+	// starts a select() loop and calls the associated file descriptor handlers
 	pfd_start( );
 
-	printf( "quit\n" );
+quit:
+	// cleanup
+	pcom_destroy( res_fd );
+	remove_podora_info( );
+	remove_tmpdir( );
+
+	if ( ret == EXIT_FAILURE )
+		printf( "exit: failure\n" );
+
+	syslog( LOG_INFO, "exiting" );
+	closelog( );
+	return ret;
+}
+
+int create_tmpdir( ) {
+	int r;
+
+	if ( ( r = mkdir( PD_TMPDIR, S_IRWXU ) ) == -1 ) {
+		if ( errno != EEXIST ) {
+			syslog( LOG_ERR, "could not create %s: %s", PD_TMPDIR, strerror( errno ) );
+			return 0;
+		}
+	}
+
+	if ( ( r = chmod( PD_TMPDIR, S_IRWXU | S_IRWXG | S_IRWXO ) ) == -1 ) {
+		syslog( LOG_ERR, "could set permissions for %s: %s", PD_TMPDIR, strerror( errno ) );
+		return 0;
+	}
+
+	char filename[ 128 ];
+	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
+
+	if ( ( r = mkdir( filename, S_IRWXU ) ) == -1 ) {
+		syslog( LOG_ERR, "could not create %s: %s", filename, strerror( errno ) );
+		return 0;
+	}
+
+	if ( ( r = chmod( filename, 0744 ) ) == -1 ) {
+		syslog( LOG_ERR, "could set permissions for %s: %s", filename, strerror( errno ) );
+		return 0;
+	}
+
 	return 1;
 }
 
-void create_tmpdir( ) {
-	mkdir( PD_TMPDIR, S_IRWXU );
-	chmod( PD_TMPDIR, S_IRWXU | S_IRWXG | S_IRWXO );
+void remove_tmpdir( ) {
+	char filename[ 128 ];
+	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
+
+	remove( filename );
+
+	remove( PD_TMPDIR );
 }
 
-void save_podora_info( ) {
-	int pid = getpid( ), fd;
+void remove_podora_info( ) {
+	if ( created_podora_info_file )
+		remove( PD_TMPDIR "/" PD_INFO_FILE );
+}
 
-	if ( ( fd = creat( PD_TMPDIR "/" PD_INFO_FILE, 0644 ) ) < 0 ) {
-		perror( "[fatal] save_podora_info: creat() failed" );
-		exit( EXIT_FAILURE );
+int check_if_podora_info_file_exitst( ) {
+
+	if ( open( PD_TMPDIR "/" PD_INFO_FILE, O_RDONLY ) == -1 ) {
+		return 0;
 	}
 
-	write( fd, &pid, sizeof( pid ) );
-	write( fd, &res_fd, sizeof( pid ) );
+	return 1;
+}
+
+int save_podora_info( ) {
+	int pid = getpid( ), fd;
+
+	if ( check_if_podora_info_file_exitst( ) ) {
+		syslog( LOG_ERR, "daemon already running" );
+		return 0;
+	}
+
+	if ( ( fd = creat( PD_TMPDIR "/" PD_INFO_FILE, 0644 ) ) < 0 ) {
+		syslog( LOG_ERR, "could set create %s: %s", PD_TMPDIR "/" PD_INFO_FILE, strerror( errno ) );
+		return 0;
+	}
+
+	created_podora_info_file = 1;
+
+	if ( write( fd, &pid, sizeof( pid ) ) <= 0 || write( fd, &res_fd, sizeof( pid ) ) <= 0 ) {
+		syslog( LOG_ERR, "could set write %s: %s", PD_TMPDIR "/" PD_INFO_FILE, strerror( errno ) );
+		return 0;
+	}
 	close( fd );
+
+	return 1;
 }
 
 char* get_url_from_http_header( char* url, char* raw ) {
@@ -158,20 +325,24 @@ void start_website( pcom_transport_t* transport ) {
 
 	if ( ( website = website_get_by_url( url ) ) ) {
 
+		// check if website proccess is running
+		// remove it if the proccess is not running
+		// return with a warning if it does exist
 		if ( kill( ((website_data_t*) website->data)->pid, 0 ) == -1 )
 			remove_website( website );
 		else {
-			fprintf( stderr, "[warning] start_website: tried to add website \"%s\" that already exists\n", url );
+			syslog( LOG_WARNING, "start_website: tried to add website \"%s\" that already exists", url );
 			return;
 		}
+
 	}
 
 	if ( !( website = website_add( transport->header->key, url ) ) ) {
-		fprintf( stderr, "[error] start_website: website_add() failed starting website \"%s\"\n", url );
+		syslog( LOG_ERR, "start_website: website_add() failed starting website \"%s\"", url );
 		return;
 	}
 
-	printf( "[website] starting \"http://%s\"\n", website->url );
+	syslog( LOG_INFO, "website: starting \"http://%s\"", website->url );
 
 	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
 
@@ -180,7 +351,7 @@ void start_website( pcom_transport_t* transport ) {
 	website_data->pid = pid;
 
 	if ( !( website_data->fd = pcom_connect( pid, fd ) ) ) {
-		fprintf( stderr, "[error] start_website: pcom_connect() failed for website \"%s\"\n", website->url );
+		syslog( LOG_ERR, "start_website: pcom_connect() failed for website \"%s\"", website->url );
 		//stop_website( website->id );
 		return;
 	}
@@ -188,7 +359,7 @@ void start_website( pcom_transport_t* transport ) {
 	website_data->socket = psocket_open( INADDR_ANY, get_port_from_url( website->url ) );
 
 	if ( !website_data->socket ) {
-		fprintf( stderr, "[error] start_website: psocket_open() failed\n" );
+		syslog( LOG_ERR, "start_website: psocket_open() failed" );
 		remove_website( website );
 		return;
 	}
@@ -201,7 +372,7 @@ void stop_website( pcom_transport_t* transport ) {
 	website_t* website;
 
 	if ( !( website = website_get_by_key( transport->header->key ) ) ) {
-		fprintf( stderr, "[warning] stop_website: tried to stop a nonexisting website\n" );
+		syslog( LOG_WARNING, "stop_website: tried to stop a nonexisting website" );
 		return;
 	}
 
@@ -209,7 +380,7 @@ void stop_website( pcom_transport_t* transport ) {
 }
 
 void remove_website( website_t* website ) {
-	printf( "[website] stopping \"http://%s\"\n", website->url );
+	syslog( LOG_INFO, "website: stopping \"http://%s\"", website->url );
 	website_data_t* website_data = (website_data_t*) website->data;
 
 	close( website_data->fd );
@@ -234,7 +405,7 @@ void request_accept_handler( int sockfd, void* udata ) {
 
 	/* Connection request on original socket.  */
 	if ( ( newsockfd = accept( sockfd, (struct sockaddr *) &cli_addr, &cli_len ) ) < 0 ) {
-		perror( "[error] request_accept_handler: accept() failed" );
+		syslog( LOG_ERR, "request_accept_handler: accept() failed: %s", strerror( errno ) );
 		return;
 	}
 
@@ -264,7 +435,7 @@ void request_handler( int sockfd, req_info_t* req_info ) {
 			pfd_clr( sockfd );
 			close( sockfd );
 		} else
-			perror( "[error] request_handler: read() failed" );
+			syslog( LOG_ERR, "request_handler: read() failed: %s", strerror( errno ) );
 		return;
 	}
 
@@ -275,7 +446,7 @@ void request_handler( int sockfd, req_info_t* req_info ) {
 	else return;
 
 	if ( !( website = website_get_by_url( get_url_from_http_header( url, buffer ) ) ) ) {
-		fprintf( stderr, "[warning] request_handler: no website to service request\n" );
+		syslog( LOG_WARNING, "request_handler: no website to service request" );
 		pfd_clr( sockfd );
 		close( sockfd );
 		return;
@@ -284,7 +455,7 @@ void request_handler( int sockfd, req_info_t* req_info ) {
 	website_data = website->data;
 
 	if ( website_data->socket->sockfd != req_info->fd ) {
-		fprintf( stderr, "[warning] request_handler: no website to service request\n" );
+		syslog( LOG_WARNING, "request_handler: no website to service request" );
 		pfd_clr( sockfd );
 		close( sockfd );
 		return;
@@ -315,7 +486,7 @@ void request_handler( int sockfd, req_info_t* req_info ) {
 		pfd_clr( transport->header->id );
 		close( transport->header->id );
 		if ( errno == EPIPE ) {
-			fprintf( stderr, "[warning] request_handler: pipe broken...removing website\n" );
+			syslog( LOG_WARNING, "request_handler: pipe broken...removing website \"%s\"", website->url );
 			remove_website( website );
 		}
 	}
@@ -353,7 +524,7 @@ void response_handler( int res_fd, pcom_transport_t* transport ) {
 	}
 
 	if ( write( transport->header->id, transport->message, transport->header->size ) != transport->header->size ) {
-		perror( "[error] response_handler: write failed" );
+		syslog( LOG_ERR, "response_handler: write failed: %s", strerror( errno ) );
 		return;
 	}
 
