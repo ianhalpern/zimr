@@ -446,8 +446,9 @@ void request_handler( int sockfd, req_info_t* req_info ) {
 		request_type = HTTP_POST_TYPE;
 	else return;
 
-	if ( !( website = website_get_by_url( get_url_from_http_header( url, buffer ) ) ) ) {
-		syslog( LOG_WARNING, "request_handler: no website to service request" );
+	ptr = get_url_from_http_header( url, buffer );
+	if ( !( website = website_get_by_url( ptr ) ) ) {
+		syslog( LOG_WARNING, "request_handler: no website to service request %s", ptr );
 		pfd_clr( sockfd );
 		close( sockfd );
 		return;
@@ -456,7 +457,7 @@ void request_handler( int sockfd, req_info_t* req_info ) {
 	website_data = website->data;
 
 	if ( website_data->socket->sockfd != req_info->fd ) {
-		syslog( LOG_WARNING, "request_handler: no website to service request" );
+		syslog( LOG_WARNING, "request_handler: no website to service request %s", ptr );
 		pfd_clr( sockfd );
 		close( sockfd );
 		return;

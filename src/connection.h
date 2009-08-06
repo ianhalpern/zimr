@@ -56,7 +56,8 @@ typedef struct {
 	void* udata;
 } connection_t;
 
-connection_t connection_create( website_t*, int, char*, size_t );
+connection_t* connection_create( website_t*, int, char*, size_t );
+void connection_free( connection_t* connection );
 
 const char* response_status( short );
 void response_set_status( response_t* response, short status );

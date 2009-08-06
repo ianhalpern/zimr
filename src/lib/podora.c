@@ -171,6 +171,7 @@ int podora_cnf_load_websites( yaml_document_t* document, int index ) {
 			yaml_node_t* attr_val = yaml_document_get_node( document, website_node->data.mapping.pairs.start[ j ].value );
 			if ( ! attr_val )
 				return 0;
+
 			// url
 			if ( strcmp( "url", attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
@@ -342,7 +343,7 @@ int podora_website_disable( website_t* website ) {
 	return 1;
 }
 
-void podora_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t connection ) ) {
+void podora_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 	website_data->connection_handler = connection_handler;
 }
@@ -363,23 +364,23 @@ char* podora_website_get_pubdir( website_t* website ) {
 	return website_data->pubdir;
 }
 
-void podora_website_default_connection_handler( connection_t connection ) {
-	podora_connection_send_file( &connection, connection.request.url, 1 );
+void podora_website_default_connection_handler( connection_t* connection ) {
+	podora_connection_send_file( connection, connection->request.url, 1 );
 }
 
 void podora_connection_handler( int req_fd, website_t* website ) {
 	pcom_transport_t* transport = pcom_open( req_fd, PCOM_RO, 0, 0 );
-	connection_t connection;
+	connection_t* connection;
 	website_data_t* website_data = (website_data_t*) website->data;
 
 	pcom_read( transport );
 
 	connection = connection_create( website, transport->header->id, transport->message, transport->header->size );
 
-	response_set_status( &connection.response, 200 );
+	response_set_status( &connection->response, 200 );
 	// To ensure thier position at the top of the headers
-	headers_set_header( &connection.response.headers, "Date", "" );
-	headers_set_header( &connection.response.headers, "Server", "" );
+	headers_set_header( &connection->response.headers, "Date", "" );
+	headers_set_header( &connection->response.headers, "Server", "" );
 
 	if ( website_data->connection_handler )
 		website_data->connection_handler( connection );
@@ -438,8 +439,9 @@ void podora_connection_send( connection_t* connection, void* message, int size )
 	char sizebuf[ 10 ];
 	pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, connection->sockfd, connection->website->key );
 
-	if ( !headers_get_header( &connection->response.headers, "Content-Type" ) )
+	if ( !headers_get_header( &connection->response.headers, "Content-Type" ) ) {
 		headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
+	}
 
 	sprintf( sizebuf, "%d", size );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
@@ -449,6 +451,7 @@ void podora_connection_send( connection_t* connection, void* message, int size )
 
 	pcom_write( transport, (void*) message, size );
 	pcom_close( transport );
+	connection_free( connection );
 }
 
 void podora_connection_send_file( connection_t* connection, char* filepath, unsigned char use_pubdir ) {
@@ -512,7 +515,7 @@ void podora_connection_send_error( connection_t* connection ) {
 
 	pcom_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
 	pcom_close( transport );
-
+	connection_free( connection );
 }
 
 void podora_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata ) {
@@ -548,6 +551,7 @@ void podora_connection_default_page_handler( connection_t* connection, char* fil
 
 	podora_connection_send_status( transport, connection );
 	podora_connection_send_headers( transport, connection );
+	connection_free( connection );
 
 	pfd_set( fd, PFD_TYPE_FILE, transport );
 }

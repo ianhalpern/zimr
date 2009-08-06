@@ -222,7 +222,7 @@ typedef struct {
 	PyObject* response;
 	PyObject* request;
 	PyObject* website;
-	connection_t _connection;
+	connection_t* _connection;
 } pypodora_connection_t;
 
 static void pypodora_connection_dealloc( pypodora_connection_t* self ) {
@@ -237,7 +237,7 @@ static PyObject* pypodora_connection_send( pypodora_connection_t* self, PyObject
 	const char* message;
 
 	if ( PyArg_ParseTuple( args, "s", &message ) ) {
-		podora_connection_send( &self->_connection, (void*) message, strlen( message ) );
+		podora_connection_send( self->_connection, (void*) message, strlen( message ) );
 	} else {
 		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
 		return NULL;
@@ -251,7 +251,7 @@ static PyObject* pypodora_connection_send_file( pypodora_connection_t* self, PyO
 	unsigned char use_pubdir = 1;
 
 	if ( PyArg_ParseTuple( args, "s|b", &filename, &use_pubdir ) ) {
-		podora_connection_send_file( &self->_connection, (char*) filename, use_pubdir );
+		podora_connection_send_file( self->_connection, (char*) filename, use_pubdir );
 	} else {
 		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
 		return NULL;
@@ -269,7 +269,7 @@ static PyObject* pypodora_connection_get_cookie( pypodora_connection_t* self, Py
 		return NULL;
 	}
 
-	cookie = cookies_get_cookie( &self->_connection.cookies, cookie_name );
+	cookie = cookies_get_cookie( &self->_connection->cookies, cookie_name );
 
 	if ( !cookie )
 		Py_RETURN_NONE;
@@ -287,17 +287,17 @@ static PyObject* pypodora_connection_set_cookie( pypodora_connection_t* self, Py
 		return NULL;
 	}
 
-	cookies_set_cookie( &self->_connection.cookies, cookie_name, cookie_value, expires, cookie_domain, cookie_path );
+	cookies_set_cookie( &self->_connection->cookies, cookie_name, cookie_value, expires, cookie_domain, cookie_path );
 
 	Py_RETURN_NONE;
 }
 
 static PyObject* pypodora_connection_get_hostname( pypodora_connection_t* self, void* closure ) {
-	return PyString_FromString( self->_connection.hostname );
+	return PyString_FromString( self->_connection->hostname );
 }
 
 static PyObject* pypodora_connection_get_ip( pypodora_connection_t* self, void* closure ) {
-	return PyString_FromString( inet_ntoa( self->_connection.ip ) );
+	return PyString_FromString( inet_ntoa( self->_connection->ip ) );
 }
 
 static PyMemberDef pypodora_connection_members[ ] = {
@@ -384,19 +384,19 @@ typedef struct {
 	website_t* _website;
 } pypodora_website_t;
 
-static void pypodora_website_connection_handler( connection_t _connection ) {
+static void pypodora_website_connection_handler( connection_t* _connection ) {
 
-	pypodora_website_t* website = (pypodora_website_t*) ( (website_data_t*) _connection.website->data )->udata;
+	pypodora_website_t* website = (pypodora_website_t*) ( (website_data_t*) _connection->website->data )->udata;
 
 	pypodora_connection_t* connection = (pypodora_connection_t*) pypodora_connection_type.tp_new( &pypodora_connection_type, NULL, NULL );
 	connection->_connection = _connection;
-	connection->_connection.udata = connection;
+	connection->_connection->udata = connection;
 
 	pypodora_request_t* request = (pypodora_request_t*) pypodora_request_type.tp_new( &pypodora_request_type, NULL, NULL );
-	request->_request = &_connection.request;
+	request->_request = &_connection->request;
 
 	pypodora_response_t* response = (pypodora_response_t*) pypodora_response_type.tp_new( &pypodora_response_type, NULL, NULL );
-	response->_response = &_connection.response;
+	response->_response = &_connection->response;
 
 	connection->request = (PyObject*) request;
 	connection->response = (PyObject*) response;

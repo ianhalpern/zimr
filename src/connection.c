@@ -65,24 +65,24 @@ const char httpstatus[ ][ 40 ] = {
 "505 HTTP Version Not Supported"
 };
 
-connection_t connection_create( website_t* website, int sockfd, char* raw, size_t size ) {
-	connection_t connection;
-	char* tmp, * start = raw, urlbuf[ sizeof( connection.request.url ) ];
-	connection.website = website;
-	connection.sockfd  = sockfd;
-	connection.udata   = NULL;
+connection_t* connection_create( website_t* website, int sockfd, char* raw, size_t size ) {
+	connection_t* connection = (connection_t*) malloc( sizeof( connection_t ) );
+	char* tmp,* start = raw, urlbuf[ sizeof( connection->request.url ) ];
+	connection->website = website;
+	connection->sockfd  = sockfd;
+	connection->udata   = NULL;
 
-	memcpy( &connection.ip, raw, sizeof( connection.ip ) );
-	raw += sizeof( connection.ip );
-	strncpy( connection.hostname, raw, sizeof( connection.hostname ) );
-	//printf( "%s %s %d\n", connection.hostname, inet_ntoa( connection.ip ), strlen( raw ) );
+	memcpy( &connection->ip, raw, sizeof( connection->ip ) );
+	raw += sizeof( connection->ip );
+	strncpy( connection->hostname, raw, sizeof( connection->hostname ) );
+	//printf( "%s %s %d\n", connection->hostname, inet_ntoa( connection->ip ), strlen( raw ) );
 	raw += strlen( raw ) + 1;
 	// type
 	if ( startswith( raw, HTTP_GET ) ) {
-		connection.request.type = HTTP_GET_TYPE;
+		connection->request.type = HTTP_GET_TYPE;
 		raw += strlen( HTTP_GET ) + 1;
 	} else if ( startswith( raw, HTTP_POST ) ) {
-		connection.request.type = HTTP_POST_TYPE;
+		connection->request.type = HTTP_POST_TYPE;
 		raw += strlen( HTTP_POST ) + 1;
 	} else return connection;
 
@@ -91,22 +91,30 @@ connection_t connection_create( website_t* website, int sockfd, char* raw, size_
 	// url
 	raw++; // skip over forward slash
 	tmp = strstr( raw, "?" );
-	if ( !tmp ) tmp = strstr( raw, " " );
+	if ( !tmp || tmp > strstr( raw, HTTP_HDR_ENDL ) ) tmp = strstr( raw, " " );
 	url_decode( raw, urlbuf, tmp - raw );
 
-	normalize( connection.request.url, urlbuf );
+	// Skip over websites leading url.
+	// if website is "example.com/test/" and url is "/test/hi" "/test" gets removed
+	char* ptr = strstr( connection->website->url, "/" );
+	int i = 0;
+	if ( ptr ) {
+		i = ( strlen( connection->website->url ) + connection->website->url ) - ptr - 1;
+	}
 
-	while ( startswith( connection.request.url, "../" ) ) {
-		strcpy( urlbuf, connection.request.url + 3 );
-		strcpy( connection.request.url, urlbuf );
+	normalize( connection->request.url, &urlbuf[ i ] );
+
+	while ( startswith( connection->request.url, "../" ) ) {
+		strcpy( urlbuf, connection->request.url + 3 );
+		strcpy( connection->request.url, urlbuf );
 	}
 	//printf( "url: \"%s\"\n", r.url );
 
 	// parse qstring params
-	if ( *tmp == '?' ) {
+	if ( tmp[ 0 ] == '?' ) {
 		raw = tmp + 1;
 		tmp = strstr( tmp, " " );
-		connection.request.params = params_parse_qs( raw, tmp - raw );
+		connection->request.params = params_parse_qs( raw, tmp - raw );
 		raw = tmp + 1;
 	} else
 		raw = strstr( tmp, " " ) + 1;
@@ -114,32 +122,36 @@ connection_t connection_create( website_t* website, int sockfd, char* raw, size_
 	// version
 	raw += 5; // skips "HTTP/"
 	tmp = strstr( raw, HTTP_HDR_ENDL );
-	memcpy( connection.http_version, raw, tmp - raw + 1 );
-	connection.http_version[ tmp - raw ] = '\0';
+	memcpy( connection->http_version, raw, tmp - raw + 1 );
+	connection->http_version[ tmp - raw ] = '\0';
 	raw = tmp + 2;
 
 	// headers
-	connection.request.headers = headers_parse( raw );
+	connection->request.headers = headers_parse( raw );
 
 	// cookies
-	header_t* header = headers_get_header( &connection.request.headers, "Cookie" );
+	header_t* header = headers_get_header( &connection->request.headers, "Cookie" );
 	if ( header )
-		connection.cookies = cookies_parse( header->value );
+		connection->cookies = cookies_parse( header->value );
 	else
-		connection.cookies = cookies_parse( "" );
+		connection->cookies = cookies_parse( "" );
 
 	// body
-	memset( connection.request.post_body, 0, sizeof( connection.request.post_body ) );
-	if ( connection.request.type == HTTP_POST_TYPE ) {
+	memset( connection->request.post_body, 0, sizeof( connection->request.post_body ) );
+	if ( connection->request.type == HTTP_POST_TYPE ) {
 		if ( ( tmp = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
 			tmp += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-			strncpy( connection.request.post_body, tmp, size - (long) ( tmp - start ) );
+			strncpy( connection->request.post_body, tmp, size - (long) ( tmp - start ) );
 		}
 	}
 
-	connection.response.headers.num = 0;
+	connection->response.headers.num = 0;
 
 	return connection;
+}
+
+void connection_free( connection_t* connection ) {
+	free( connection );
 }
 
 const char *response_status( short c ) {

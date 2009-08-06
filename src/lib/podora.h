@@ -43,7 +43,7 @@ typedef struct website_data {
 	int req_fd;
 	char status;
 	char* pubdir;
-	void (*connection_handler)( connection_t connection );
+	void (*connection_handler)( connection_t* connection );
 	void* udata;
 } website_data_t;
 
@@ -67,9 +67,9 @@ int   podora_website_enable( website_t* website );
 int   podora_website_disable( website_t* website );
 void  podora_website_set_pubdir( website_t* website, const char* pubdir );
 char* podora_website_get_pubdir( website_t* website );
-void  podora_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t ) );
+void  podora_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t* ) );
 void  podora_website_unset_connection_handler( website_t* website );
-void  podora_website_default_connection_handler( connection_t connection );
+void  podora_website_default_connection_handler( connection_t* connection );
 
 void podora_connection_send_status( pcom_transport_t* transport, connection_t* connection );
 void podora_connection_send_headers( pcom_transport_t* transport, connection_t* connection );
