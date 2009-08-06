@@ -29,10 +29,11 @@
 #include <stdio.h>
 #include <errno.h>
 
-#define PFD_TYPE_PCOM          0x01
-#define PFD_TYPE_SOCK_LISTEN   0x02
-#define PFD_TYPE_SOCK_ACCEPTED 0x03
-#define PFD_TYPE_FILE          0x04
+#define PFD_TYPE_PCOM_LISTEN    0x01
+#define PFD_TYPE_SOCK_LISTEN    0x02
+#define PFD_TYPE_SOCK_CONNECTED 0x03
+#define PFD_TYPE_PCOM_CONNECTED 0x04
+#define PFD_TYPE_FILE           0x05
 
 
 typedef struct {

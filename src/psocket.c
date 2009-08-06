@@ -29,7 +29,7 @@ psocket_t* psocket_open( in_addr_t addr, int portno ) {
 	psocket_t* p = psocket_get_by_info( addr, portno );
 
 	if ( !p ) {
-		int sockfd = psocket_init( addr, portno );
+		int sockfd = psocket_init( addr, portno, PCOM_LISTEN );
 		if ( sockfd == -1 )
 			return NULL;
 		p = psocket_create( sockfd, addr, portno );
@@ -39,7 +39,16 @@ psocket_t* psocket_open( in_addr_t addr, int portno ) {
 	return p;
 }
 
-int psocket_init( in_addr_t addr, int portno ) {
+psocket_t* psocket_connect( in_addr_t addr, int portno ) {
+
+	int sockfd = psocket_init( addr, portno, PCOM_CONNECT );
+	if ( sockfd == -1 )
+		return NULL;
+
+	return psocket_create( sockfd, addr, portno );
+}
+
+int psocket_init( in_addr_t addr, int portno, int type ) {
 	int sockfd = socket( AF_INET, SOCK_STREAM, 0 );
 	struct sockaddr_in serv_addr;
 	int on = 1; // used by setsockopt
@@ -55,20 +64,28 @@ int psocket_init( in_addr_t addr, int portno ) {
 	serv_addr.sin_addr.s_addr = addr;
 	serv_addr.sin_port = htons( portno );
 
-	setsockopt( sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof( on ) );
+	if ( type == PCOM_LISTEN ) {
+		setsockopt( sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof( on ) );
 
-	if ( bind( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
-		perror( "[error] psocket_open: bind() failed" );
+		if ( bind( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
+			perror( "[error] psocket_open: bind() failed" );
+			close( sockfd );
+			return -1;
+		}
+
+		if ( listen( sockfd, SOCK_N_PENDING ) < 0 ) {
+			perror( "[error] psocket_open: listen() failed" );
+			return -1;
+		}
+	} else if ( type == PCOM_CONNECT ) {
+		if ( connect( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
+			perror( "[error] psocket_open: connect() failed" );
+			return -1;
+		}
+	} else {
 		close( sockfd );
 		return -1;
 	}
-
-	if ( listen( sockfd, SOCK_N_PENDING ) < 0 ) {
-		perror( "[error] psocket_open: listen() failed" );
-		return -1;
-	}
-
-	printf( "[socket] started socket \"http://%s:%d\"\n", "0.0.0.0", portno );
 
 	return sockfd;
 }

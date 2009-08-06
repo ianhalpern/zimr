@@ -25,47 +25,25 @@
 static int npds = 0;
 
 int pcom_create( ) {
-	int fd;
-	char filename[ 128 ];
-	char filename2[ 128 ];
-
-	sprintf( filename, PD_TMPDIR "/%d/_%d", getpid( ), npds++ );
-	if ( mkfifo( filename, 0777 ) < 0 ) {
-		fprintf( stderr, "[error] pcom_create: mkfifo() failed creating %s: %s\n", filename, strerror( errno ) );
-		return -1;
-	}
-	chmod( filename, 0777 );
-
-	if ( ( fd = open( filename, O_RDONLY | O_NONBLOCK ) ) < 0 ) {
-		fprintf( stderr, "[error] pcom_create: open() failed open %s: %s\n", filename, strerror( errno ) );
-		return -1;
-	}
-
-	open( filename, O_WRONLY ); // TODO: hack!
-
-	sprintf( filename2, PD_TMPDIR "/%d/%d", getpid( ), fd );
-	rename( filename, filename2 );
-
-	return fd;
+	psocket_t* socket = psocket_open( inet_addr( PCOM_ADDR ), PCOM_SOCK );
+	if ( !socket ) return -1;
+	return socket->sockfd;
 }
 
 int pcom_connect( int pid, int fd ) {
-	char filename[ 128 ];
-
-	sprintf( filename, PD_TMPDIR "/%d/%d", pid, fd );
-	return open( filename, O_WRONLY );
+	psocket_t* socket = psocket_connect( inet_addr( PCOM_ADDR ), PCOM_SOCK );
+	if ( !socket ) return -1;
+	return socket->sockfd;
 }
 
 void pcom_destroy( int fd ) {
-	close( fd );
-	char filename[ 128 ];
-	sprintf( filename, PD_TMPDIR "/%d/%d", getpid( ), fd );
-	remove( filename );
+	psocket_t* socket = psocket_get_by_sockfd( fd );
+	if ( socket )
+		psocket_remove( socket );
 }
 
 pcom_transport_t* pcom_open( int pd, int io_type, int id, int key ) {
 	pcom_transport_t* transport = (pcom_transport_t*) malloc( sizeof( pcom_transport_t ) );
-	memset( &transport->lock, 0, sizeof( transport->lock ) );
 
 	transport->pd = pd;
 	transport->io_type = io_type;
@@ -85,13 +63,8 @@ void pcom_reset_header( pcom_transport_t* transport, int flags ) {
 }
 
 int pcom_read( pcom_transport_t* transport ) {
-	transport->lock.l_type = F_WRLCK;
-	fcntl( transport->pd, F_SETLKW, &transport->lock );
 
 	int n = read( transport->pd, transport->buffer, PCOM_BUF_SIZE );
-
-	transport->lock.l_type = F_UNLCK;
-	fcntl( transport->pd, F_SETLKW, &transport->lock );
 
 	if ( n != PCOM_BUF_SIZE ) {
 		fprintf( stderr, "[warning] pcom_read: did not read corrent number of bytes\n" );
@@ -128,16 +101,10 @@ int pcom_write( pcom_transport_t* transport, void* message, int size ) {
 int pcom_flush( pcom_transport_t* transport ) {
 	int n;
 
-	transport->lock.l_type = F_WRLCK;
-	fcntl( transport->pd, F_SETLKW, &transport->lock );
-
 	if ( ( n = write( transport->pd, transport->buffer, PCOM_BUF_SIZE ) ) < 0 ) {
 		if ( errno == EPIPE )
 			return 0;
 	}
-
-	transport->lock.l_type = F_UNLCK;
-	fcntl( transport->pd, F_SETLKW, &transport->lock );
 
 	if ( n != PCOM_BUF_SIZE ) {
 		fprintf( stderr, "[error] pcom_flush: did not write corrent number of bytes, only wrote %d\n", n );

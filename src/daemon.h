@@ -20,21 +20,34 @@
  *
  */
 
-#ifndef _PD_DAEMONIZE_H
-#define _PD_DAEMONIZE_H
+#ifndef _PD_DAEMON_H
+#define _PD_DAEMON_H
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #include "config.h"
 
-#define D_KEEPSTDF 0x01
-#define D_NOCD 0x02
+// to change the lockfile path
+// just define D_LOCKFILE_PATH
+// before including "daemonize.h"
+#ifndef D_LOCKFILE_PATH
+#define D_LOCKFILE_PATH "daemon.pid"
+#endif
 
-int daemonize( int flags );
+#define D_KEEPSTDF    0x01
+#define D_NOCD        0x02
+#define D_NOLOCKFILE  0x04
+#define D_NOLOCKCHECK 0x08
+
+int daemon_start( int flags );
+int daemon_stop( );
 
 #endif

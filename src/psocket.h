@@ -37,18 +37,21 @@
 
 #include "config.h"
 
+#define PCOM_LISTEN  0x01
+#define PCOM_CONNECT 0x02
+
 typedef struct psocket {
 	int sockfd;
 	in_addr_t addr;
 	int portno;
 	int n_open;
-	SSL_CTX* ssl;
+	SSL_CTX* ssl; // TODO
 	struct psocket* next;
 	struct psocket* prev;
 } psocket_t;
 
 psocket_t* psocket_open( in_addr_t addr, int portno );
-int psocket_init( in_addr_t addr, int portno );
+int psocket_init( in_addr_t addr, int portno, int type );
 psocket_t* psocket_create( int sockfd, in_addr_t addr, int portno );
 void psocket_remove( psocket_t* p );
 psocket_t* psocket_get_by_info( in_addr_t addr, int portno );

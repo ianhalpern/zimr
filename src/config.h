@@ -23,8 +23,9 @@
 #ifndef _PD_CONFIG_H
 #define _PD_CONFIG_H
 
-#define PD_TMPDIR "/tmp/podora"
-#define PD_INFO_FILE "podora.info"
+#define FLAG_ISSET( flag, flags ) ( (flag) & (flags) )
+
+#define D_LOCKFILE_PATH "/tmp/podorapd.pid" // used by daemon.c
 #define PD_WS_CONF_FILE "podora.cnf"
 
 /****** pcom config *******/
@@ -35,8 +36,14 @@
 
 /**************************/
 
+/****** pcom config ********/
 
-/****** socket config ********/
+#define PCOM_ADDR "127.0.0.1"
+#define PCOM_SOCK 8888
+
+/**************************/
+
+/****** psocket config ********/
 
 #define SOCK_N_PENDING 25
 

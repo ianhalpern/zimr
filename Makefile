@@ -12,13 +12,13 @@ LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
 
 PYVERSION = 2.6
 
-OBJS        = general.o pcom.o website.o pfildes.o psocket.o connection.o mime.o headers.o params.o cookies.o urldecoder.o daemonize.o
+OBJS        = general.o pcom.o website.o pfildes.o psocket.o connection.o mime.o headers.o params.o cookies.o urldecoder.o daemon.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 
-EXECS       = podora podora-website
+EXECS       = podorapd # podora-website
 TEST_EXECS  =
-SHARED_OBJS = libpodora.so
-PYMOD_OBJS  = podora.so
+SHARED_OBJS = #libpodora.so
+PYMOD_OBJS  = #podora.so
 
 SRCDIR     = src
 LIB_SRCDIR = $(SRCDIR)/lib
@@ -47,7 +47,7 @@ clean:
 ##### EXECS #####
 #################
 
-podora: $(EXEC_DEPENDS) general.o pcom.o pfildes.o website.o psocket.o daemonize.o
+podorapd: $(EXEC_DEPENDS) general.o pfildes.o website.o psocket.o daemon.o
 	$(EXEC_COMPILE)
 
 podora-website: $(EXEC_DEPENDS) libpodora.so
@@ -55,7 +55,7 @@ podora-website: $(EXEC_DEPENDS) libpodora.so
 
 ##### SHARED OBJS #####
 
-libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o mime.o connection.o headers.o params.o cookies.o urldecoder.o daemonize.o
+libpodora.so: $(SHARED_OBJ_DEPENDS) general.o pcom.o pfildes.o website.o mime.o connection.o headers.o params.o cookies.o urldecoder.o daemon.o
 	$(EXEC_COMPILE) $(SHARED) -lyaml
 
 ##### PYTHON MODS #####

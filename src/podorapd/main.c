@@ -29,13 +29,13 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include "pcom.h"
+//#include "pcom.h"
 #include "pfildes.h"
 #include "website.h"
 #include "psocket.h"
-#include "daemonize.h"
+#include "daemon.h"
 
-#define DAEMON_NAME "podora"
+#define DAEMON_NAME "podorapd"
 
 typedef struct {
 	int pid;
@@ -49,22 +49,15 @@ typedef struct {
 } req_info_t;
 
 int res_fd;
-int created_podora_info_file = 0; // flag to let remove_podora_info() know if it can remove it
 
-int create_tmpdir( );
-void remove_tmpdir( );
-int save_podora_info( );
-void remove_podora_info( );
-int check_if_podora_info_file_exitst( );
+//void request_accept_handler( int sockfd, void* udata );
+//void request_handler( int sockfd, req_info_t* req_info );
+//void response_handler( int fd, pcom_transport_t* transport );
 
-void request_accept_handler( int sockfd, void* udata );
-void request_handler( int sockfd, req_info_t* req_info );
-void response_handler( int fd, pcom_transport_t* transport );
+//void start_website( pcom_transport_t* transport );
+//void stop_website( pcom_transport_t* transport );
 
-void start_website( pcom_transport_t* transport );
-void stop_website( pcom_transport_t* transport );
-
-void remove_website( website_t* website );
+//void remove_website( website_t* website );
 
 void signal_handler( int sig ) {
 	switch( sig ) {
@@ -82,9 +75,10 @@ void signal_handler( int sig ) {
 
 void print_usage( ) {
 	printf(
-"\nUsage:\n\
+"\nUsage: podorapd [OPTIONS] {start|stop|restart}\n\
 	-h --help\n\
 	--no-daemon\n\
+	--no-lockfile\n\
 	--force\n\
 "
 	);
@@ -93,37 +87,90 @@ void print_usage( ) {
 int main( int argc, char* argv[ ] ) {
 	int ret = EXIT_SUCCESS;
 	int make_daemon = 1, daemon_flags = 0;
-	int force_start = 0;
 
-	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n" );
+	printf( "Podora Proxy Daemon " PODORA_VERSION " (" BUILD_DATE ")\n" );
 
+	///////////////////////////////////////////////
 	// parse command line options
 	int i;
 	for ( i = 1; i < argc; i++ ) {
+		if ( argv[ i ][ 0 ] != '-' ) break;
 		if ( strcmp( argv[ i ], "--no-daemon" ) == 0 )
 			make_daemon = 0;
 		else if ( strcmp( argv[ i ], "--force" ) == 0 ) {
-			force_start = 1;
+			daemon_flags |= D_NOLOCKCHECK;
+		} else if ( strcmp( argv[ i ], "--no-lockfile" ) == 0 ) {
+			daemon_flags |= D_NOLOCKFILE;
 		} else {
 			if ( strcmp( argv[ i ], "--help" ) != 0 && strcmp( argv[ i ], "-h" ) != 0 )
-				printf( "%s\n", argv[ i ] );
+				printf( "\nUnknown Option: %s\n", argv[ i ] );
 			print_usage( );
 			exit( 0 );
 		}
-
 	}
 
-	// signal handling is also set up in daemonize
+	if ( i == argc ) {
+		print_usage( );
+		exit( 0 );
+	}
+
+	// parse command line commands
+	for ( i = i; i < argc; i++ ) {
+		if ( strcmp( argv[ i ], "start" ) == 0 ) break;
+		else if ( strcmp( argv[ i ], "stop" ) == 0 ) {
+			if ( !daemon_stop( ) ) exit( EXIT_FAILURE );
+			exit( EXIT_SUCCESS );
+		} else if ( strcmp( argv[ i ], "restart" ) == 0 ) {
+			if ( !daemon_stop( ) ) exit( EXIT_FAILURE );
+			break;
+		} else {
+			printf( "\nUnknown Command: %s\n", argv[ i ] );
+			print_usage( );
+			exit( 0 );
+		}
+	}
+	/////////////////////////////////////////////////
+
+	// signal handling is also set up in daemon.c
 	// but this signal handler will log what signal
-	// was recieved
+	// was received
 	signal( SIGHUP,  signal_handler );
 	signal( SIGTERM, signal_handler );
 	signal( SIGINT,  signal_handler );
 	signal( SIGQUIT, signal_handler );
 
+	// stop logging until ready
+	setlogmask( LOG_EMERG );
+
 #if defined(DEBUG)
 	daemon_flags |= D_KEEPSTDF;
+#endif
 
+	/*
+	// set the fle handlers for the different types of file desriptors
+	// used in pfd_start()'s select() loop
+	pfd_register_type( PFD_TYPE_PCOM_LISTEN,    PFD_TYPE_HDLR response_handler );
+	pfd_register_type( PFD_TYPE_PCOM_CONNECTED, PFD_TYPE_HDLR response_handler );
+	pfd_register_type( PFD_TYPE_SOCK_LISTEN,    PFD_TYPE_HDLR request_accept_handler );
+	pfd_register_type( PFD_TYPE_SOCK_CONNECTED, PFD_TYPE_HDLR request_handler );
+
+	if ( ( res_fd = pcom_create( ) ) < 0 ) {
+		ret = EXIT_FAILURE;
+		goto quit;
+	}
+
+	pfd_set( res_fd, PFD_TYPE_PCOM, pcom_open( res_fd, PCOM_RO, 0, 0 ) );
+	*/
+
+	// daemonize
+	if ( make_daemon ) {
+		if ( !daemon_start( daemon_flags ) ) {
+			ret = EXIT_FAILURE;
+			goto quit;
+		}
+	}
+
+#if defined(DEBUG)
 // Setup syslog logging - see SETLOGMASK(3)
 	setlogmask( LOG_UPTO( LOG_DEBUG ) );
 	openlog( DAEMON_NAME, LOG_CONS | LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_USER );
@@ -134,58 +181,12 @@ int main( int argc, char* argv[ ] ) {
 
 	syslog( LOG_INFO, "starting up" );
 
-	// check if podora is already running
-	if ( ! force_start && check_if_podora_info_file_exitst( ) ) {
-		syslog( LOG_ERR, "daemon already running" );
-		printf( "error: podora is already running\n" );
-		ret = EXIT_FAILURE;
-		goto quit;
-	}
-
-	// daemonize
-	if ( make_daemon ) {
-		syslog( LOG_INFO, "starting the daemonizing process" );
-		if ( !daemonize( daemon_flags ) ) {
-			ret = EXIT_FAILURE;
-			goto quit;
-		}
-	}
-
-	// create tmp directory to hold named pipe files
-	if ( !create_tmpdir( ) ) {
-		ret = EXIT_FAILURE;
-		goto quit;
-	}
-
-	// set the fle handlers for the different types of file desriptors
-	// used in pfd_start()'s select() loop
-	pfd_register_type( PFD_TYPE_PCOM,          PFD_TYPE_HDLR response_handler );
-	pfd_register_type( PFD_TYPE_SOCK_LISTEN,   PFD_TYPE_HDLR request_accept_handler );
-	pfd_register_type( PFD_TYPE_SOCK_ACCEPTED, PFD_TYPE_HDLR request_handler );
-
-	if ( ( res_fd = pcom_create( ) ) < 0 ) {
-		ret = EXIT_FAILURE;
-		goto quit;
-	}
-
-	// save pid and res_fd to podora info file in tmp directory
-	// this is read by podora websites, providing them with the
-	// info to connect
-	if ( !save_podora_info( ) ) {
-		ret = EXIT_FAILURE;
-		goto quit;
-	}
-
-	pfd_set( res_fd, PFD_TYPE_PCOM, pcom_open( res_fd, PCOM_RO, 0, 0 ) );
-
 	// starts a select() loop and calls the associated file descriptor handlers
 	pfd_start( );
 
 quit:
 	// cleanup
-	pcom_destroy( res_fd );
-	remove_podora_info( );
-	remove_tmpdir( );
+	// pcom_destroy( res_fd );
 
 	if ( ret == EXIT_FAILURE ) {
 		printf( "exit: failure\n" );
@@ -199,79 +200,7 @@ quit:
 	return ret;
 }
 
-int create_tmpdir( ) {
-	int r;
-
-	if ( ( r = mkdir( PD_TMPDIR, S_IRWXU ) ) == -1 ) {
-		if ( errno != EEXIST ) {
-			syslog( LOG_ERR, "could not create %s: %s", PD_TMPDIR, strerror( errno ) );
-			return 0;
-		}
-	}
-
-	if ( ( r = chmod( PD_TMPDIR, S_IRWXU | S_IRWXG | S_IRWXO ) ) == -1 ) {
-		syslog( LOG_ERR, "could set permissions for %s: %s", PD_TMPDIR, strerror( errno ) );
-		return 0;
-	}
-
-	char filename[ 128 ];
-	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
-
-	if ( ( r = mkdir( filename, S_IRWXU ) ) == -1 ) {
-		syslog( LOG_ERR, "could not create %s: %s", filename, strerror( errno ) );
-		return 0;
-	}
-
-	if ( ( r = chmod( filename, 0777 ) ) == -1 ) {
-		syslog( LOG_ERR, "could set permissions for %s: %s", filename, strerror( errno ) );
-		return 0;
-	}
-
-	return 1;
-}
-
-void remove_tmpdir( ) {
-	char filename[ 128 ];
-	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
-
-	remove( filename );
-
-	remove( PD_TMPDIR );
-}
-
-void remove_podora_info( ) {
-	if ( created_podora_info_file )
-		remove( PD_TMPDIR "/" PD_INFO_FILE );
-}
-
-int check_if_podora_info_file_exitst( ) {
-
-	if ( open( PD_TMPDIR "/" PD_INFO_FILE, O_RDONLY ) == -1 ) {
-		return 0;
-	}
-
-	return 1;
-}
-
-int save_podora_info( ) {
-	int pid = getpid( ), fd;
-
-	if ( ( fd = creat( PD_TMPDIR "/" PD_INFO_FILE, 0644 ) ) < 0 ) {
-		syslog( LOG_ERR, "could set create %s: %s", PD_TMPDIR "/" PD_INFO_FILE, strerror( errno ) );
-		return 0;
-	}
-
-	created_podora_info_file = 1;
-
-	if ( write( fd, &pid, sizeof( pid ) ) <= 0 || write( fd, &res_fd, sizeof( pid ) ) <= 0 ) {
-		syslog( LOG_ERR, "could set write %s: %s", PD_TMPDIR "/" PD_INFO_FILE, strerror( errno ) );
-		return 0;
-	}
-	close( fd );
-
-	return 1;
-}
-
+/*
 char* get_url_from_http_header( char* url, char* raw ) {
 	char* ptr,* ptr2;
 
@@ -404,7 +333,7 @@ void request_accept_handler( int sockfd, void* udata ) {
 	unsigned int cli_len = sizeof ( cli_addr );
 	int newsockfd;
 
-	/* Connection request on original socket.  */
+	// Connection request on original socket.
 	if ( ( newsockfd = accept( sockfd, (struct sockaddr *) &cli_addr, &cli_len ) ) < 0 ) {
 		syslog( LOG_ERR, "request_accept_handler: accept() failed: %s", strerror( errno ) );
 		return;
@@ -537,3 +466,4 @@ void response_handler( int res_fd, pcom_transport_t* transport ) {
 }
 
 ////////////////////////////////////////////////////////////////
+*/

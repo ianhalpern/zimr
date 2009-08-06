@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 
 #include "config.h"
+#include "psocket.h"
 
 #define PCOM_MSG_IS_FIRST(X) ( ((pcom_transport_t *)(X))->header->flags & PCOM_MSG_FIRST )
 #define PCOM_MSG_IS_LAST(X)  ( ((pcom_transport_t *)(X))->header->flags & PCOM_MSG_LAST  )
@@ -56,7 +57,6 @@ typedef struct {
 typedef struct {
 	int pd;
 	int io_type;
-	struct flock lock;
 	pcom_header_t* header;
 	void* message;
 	char buffer[ PCOM_BUF_SIZE ];
