@@ -25,13 +25,13 @@
 static fd_set active_fd_set, read_fd_set;
 static fd_info_t fd_data[ FD_SETSIZE ];
 static fd_type_t fd_types[ 64 ];
-static int first_set = 1;
+static bool first_set = true;
 
 void pfd_set( int fd, int type, void* udata ) {
 	if ( first_set ) {
 		FD_ZERO( &read_fd_set );
 		memset( fd_data, 0, sizeof( fd_data ) );
-		first_set = 0;
+		first_set = false;
 	}
 	FD_SET( fd, &active_fd_set );
 	fd_data[ fd ].type = type;
@@ -50,24 +50,29 @@ void pfd_register_type( int type, void (*handler)( int, void* ) ) {
 	fd_types[ type ].handler = handler;
 }
 
-void pfd_start( ) {
+int pfd_select( int tv_sec ) {
 	int i;
 
-	while ( 1 ) {
+	struct timeval timeout,* timeout_ptr = NULL;
 
-		read_fd_set = active_fd_set;
-
-		if ( select( FD_SETSIZE, &read_fd_set, NULL, NULL, NULL ) < 0 ) {
-			if ( errno != EINTR )
-				perror( "[error] pfd_start: select() failed" );
-			return;
-		}
-
-		for ( i = 0; i < FD_SETSIZE; i++ )
-			if ( FD_ISSET( i, &read_fd_set ) ) {
-				fd_types[ fd_data[ i ].type ].handler( i, fd_data[ i ].udata );
-			}
-
+	if ( tv_sec ) {
+		timeout.tv_sec = tv_sec;
+		timeout.tv_usec = 0;
+		timeout_ptr = &timeout;
 	}
 
+	read_fd_set = active_fd_set;
+
+	if ( select( FD_SETSIZE, &read_fd_set, NULL, NULL, timeout_ptr ) < 0 ) {
+		if ( errno != EINTR )
+			perror( "[error] pfd_start: select() failed" );
+		return 0;
+	}
+
+	for ( i = 0; i < FD_SETSIZE; i++ )
+		if ( FD_ISSET( i, &read_fd_set ) ) {
+			fd_types[ fd_data[ i ].type ].handler( i, fd_data[ i ].udata );
+		}
+
+	return 1;
 }

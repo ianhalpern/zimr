@@ -28,8 +28,11 @@
 #define D_LOCKFILE_PATH "/tmp/podorapd.pid" // used by daemon.c
 #define PD_WS_CONF_FILE "podora.cnf"
 
-#define PROXY_ADDR "127.0.0.1"
-#define PROXY_PORT 8888
+#define PD_PROXY_ADDR "127.0.0.1"
+#define PD_PROXY_PORT 8888
+
+#define PD_NUM_PROXY_DEATH_RETRIES 5
+#define PD_PROXY_DEATH_RETRY_DELAY 2
 
 /****** ptransmission config *******/
 

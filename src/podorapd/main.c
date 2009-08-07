@@ -155,7 +155,7 @@ int main( int argc, char* argv[ ] ) {
 	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR internal_connection_handler );
 	pfd_register_type( PFD_TYPE_EXT_CONNECTED, PFD_TYPE_HDLR external_connection_handler );
 
-	psocket_t* socket = psocket_open( inet_addr( PROXY_ADDR ), PROXY_PORT );
+	psocket_t* socket = psocket_open( inet_addr( PD_PROXY_ADDR ), PD_PROXY_PORT );
 	if ( !socket ) {
 		ret = EXIT_FAILURE;
 		goto quit;
@@ -185,7 +185,7 @@ int main( int argc, char* argv[ ] ) {
 	// starts a select() loop and calls
 	// the associated file descriptor handlers
 	// when they are ready to read
-	pfd_start( );
+	while ( pfd_select( 0 ) ); // The loop is only broken by interrupt
 
 quit:
 	// cleanup
@@ -328,7 +328,7 @@ void general_connection_listener( int sockfd, void* udata, int type ) {
 	pfd_set( newsockfd, type, conn_info );
 }
 
-void general_connection_close( sockfd ) {
+void general_connection_close( int sockfd ) {
 	free( pfd_udata( sockfd ) ); // free the conn_info_t object
 	pfd_clr( sockfd );
 	close( sockfd );
@@ -459,7 +459,7 @@ cleanup:
 
 	}
 
-	if ( !req_info->postlen ) { /* If there is still data coming, */
+	if ( !req_info->postlen ) { /* If there isn't still data coming, */
 		ptransport_close( req_info->transport );
 		free( req_info );
 		conn_info->udata = NULL;
@@ -474,8 +474,9 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 		general_connection_close( sockfd );
 
 		// if sockfd is a website, we need to remove it
-		if ( website_get_by_key( sockfd ) ) 
+		if ( website_get_by_key( sockfd ) ) {
 			remove_website( sockfd );
+		}
 
 		goto quit;
 	}
@@ -500,7 +501,7 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 		   descriptor that the message should be routed to. */
 
 		if ( write( transport->header->msgid, transport->message, transport->header->size ) != transport->header->size ) {
-			/* TODO: sent transmission to stop sending data for this 
+			/* TODO: sent transmission to stop sending data for this
 			   external connection, it does not exist anymore. */
 			syslog( LOG_ERR, "internal_connection_handler: write failed: %s", strerror( errno ) );
 			goto quit;
@@ -538,6 +539,9 @@ void command_handler( int sockfd, ptransport_t* transport ) {
 				ptransport_write( response, "FAIL", 4 );
 			break;
 
+		default:
+			ptransport_write( response, "FAIL", 4 );
+			break;
 	}
 
 	ptransport_close( response );

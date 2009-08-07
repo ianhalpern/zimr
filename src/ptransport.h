@@ -58,8 +58,8 @@ typedef struct {
 	char buffer[ PT_BUF_SIZE ];
 } ptransport_t;
 
-ptransport_t* ptransport_open( int pd, int io_type, int id );
-void ptransport_reset_header( ptransport_t* transport, int flags );
+ptransport_t* ptransport_open( int pd, int io_type, int msgid );
+void ptransport_reset( ptransport_t* transport, int flags );
 int  ptransport_read( ptransport_t* transport );
 int  ptransport_write( ptransport_t* transport, void* message, int size );
 int  ptransport_flush( ptransport_t* transport );

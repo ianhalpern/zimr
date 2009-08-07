@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdbool.h>
 
 #define PFD_TYPE_INT_LISTEN    0x01
 #define PFD_TYPE_EXT_LISTEN    0x02
@@ -49,6 +50,6 @@ void pfd_set( int fd, int type, void* udata );
 void pfd_clr( int fd );
 void pfd_register_type( int type, void (*handler)( int, void* ) );
 void* pfd_udata( int fd );
-void pfd_start( );
+int pfd_select( );
 
 #endif

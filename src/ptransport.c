@@ -31,14 +31,15 @@ ptransport_t* ptransport_open( int pd, int io_type, int id ) {
 	transport->header->msgid = id;
 	transport->message = transport->buffer + PT_HDR_SIZE;
 
-	ptransport_reset_header( transport, PT_MSG_FIRST );
+	ptransport_reset( transport, PT_MSG_FIRST );
 
 	return transport;
 }
 
-void ptransport_reset_header( ptransport_t* transport, int flags ) {
+void ptransport_reset( ptransport_t* transport, int flags ) {
 	transport->header->size = 0;
 	transport->header->flags = flags;
+	memset( transport->message, 0, PT_MSG_SIZE );
 }
 
 int ptransport_read( ptransport_t* transport ) {
@@ -99,7 +100,7 @@ int ptransport_flush( ptransport_t* transport ) {
 		return 0;
 	}
 
-	ptransport_reset_header( transport, 0 );
+	ptransport_reset( transport, 0 );
 
 	errno = 0; // just in case EPIPE errno was set but not from this call
 
