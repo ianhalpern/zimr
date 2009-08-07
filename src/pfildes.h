@@ -25,16 +25,16 @@
 
 #define PFD_TYPE_HDLR (void (*)( int, void* ))
 
+#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 
-#define PFD_TYPE_PCOM_LISTEN    0x01
-#define PFD_TYPE_SOCK_LISTEN    0x02
-#define PFD_TYPE_SOCK_CONNECTED 0x03
-#define PFD_TYPE_PCOM_CONNECTED 0x04
+#define PFD_TYPE_INT_LISTEN    0x01
+#define PFD_TYPE_EXT_LISTEN    0x02
+#define PFD_TYPE_INT_CONNECTED 0x03
+#define PFD_TYPE_EXT_CONNECTED 0x04
 #define PFD_TYPE_FILE           0x05
-
 
 typedef struct {
 	int type;
@@ -48,6 +48,7 @@ typedef struct {
 void pfd_set( int fd, int type, void* udata );
 void pfd_clr( int fd );
 void pfd_register_type( int type, void (*handler)( int, void* ) );
+void* pfd_udata( int fd );
 void pfd_start( );
 
 #endif

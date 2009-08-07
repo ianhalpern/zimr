@@ -28,24 +28,20 @@
 #define D_LOCKFILE_PATH "/tmp/podorapd.pid" // used by daemon.c
 #define PD_WS_CONF_FILE "podora.cnf"
 
-/****** pcom config *******/
+#define PROXY_ADDR "127.0.0.1"
+#define PROXY_PORT 8888
 
-#define PCOM_MSG_SIZE ( PCOM_BUF_SIZE - PCOM_HDR_SIZE )
-#define PCOM_HDR_SIZE ( sizeof( pcom_header_t ) )
-#define PCOM_BUF_SIZE 4096
+/****** ptransmission config *******/
 
-/**************************/
-
-/****** pcom config ********/
-
-#define PCOM_ADDR "127.0.0.1"
-#define PCOM_SOCK 8888
+#define PT_MSG_SIZE ( PT_BUF_SIZE - PT_HDR_SIZE )
+#define PT_HDR_SIZE ( sizeof( ptransport_header_t ) )
+#define PT_BUF_SIZE 4096
 
 /**************************/
 
 /****** psocket config ********/
 
-#define SOCK_N_PENDING 25
+#define PSOCK_N_PENDING 25
 
 /*************************/
 

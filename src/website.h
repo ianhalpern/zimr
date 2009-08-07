@@ -37,7 +37,7 @@ typedef struct website {
 	int key;
 	struct website* next;
 	struct website* prev;
-	void* data;
+	void* udata;
 } website_t;
 
 website_t* website_add ( int, char* );

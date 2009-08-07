@@ -29,7 +29,7 @@
 #include <errno.h>
 #include <unistd.h>
 
-//#include "pcom.h"
+#include "ptransport.h"
 #include "pfildes.h"
 #include "website.h"
 #include "psocket.h"
@@ -38,26 +38,28 @@
 #define DAEMON_NAME "podorapd"
 
 typedef struct {
-	int pid;
-	int fd;
 	psocket_t* socket;
 } website_data_t;
 
 typedef struct {
 	int fd;
 	struct sockaddr_in addr;
+	void* udata;
+} conn_info_t;
+
+typedef struct {
+	int website_key;
+	ptransport_t* transport;
+	int request_type;
+	int postlen;
 } req_info_t;
 
-int res_fd;
+void internal_connection_listener( int sockfd, void* udata );
+void external_connection_listener( int sockfd, void* udata );
+void internal_connection_handler( int sockfd, conn_info_t* conn_info );
+void external_connection_handler( int sockfd, conn_info_t* conn_info );
 
-//void request_accept_handler( int sockfd, void* udata );
-//void request_handler( int sockfd, req_info_t* req_info );
-//void response_handler( int fd, pcom_transport_t* transport );
-
-//void start_website( pcom_transport_t* transport );
-//void stop_website( pcom_transport_t* transport );
-
-//void remove_website( website_t* website );
+void command_handler( int sockfd, ptransport_t* transport );
 
 void signal_handler( int sig ) {
 	switch( sig ) {
@@ -140,27 +142,26 @@ int main( int argc, char* argv[ ] ) {
 	signal( SIGQUIT, signal_handler );
 
 	// stop logging until ready
-	setlogmask( LOG_EMERG );
+	setlogmask( LOG_EMERG + 1 );
 
 #if defined(DEBUG)
 	daemon_flags |= D_KEEPSTDF;
 #endif
 
-	/*
 	// set the fle handlers for the different types of file desriptors
 	// used in pfd_start()'s select() loop
-	pfd_register_type( PFD_TYPE_PCOM_LISTEN,    PFD_TYPE_HDLR response_handler );
-	pfd_register_type( PFD_TYPE_PCOM_CONNECTED, PFD_TYPE_HDLR response_handler );
-	pfd_register_type( PFD_TYPE_SOCK_LISTEN,    PFD_TYPE_HDLR request_accept_handler );
-	pfd_register_type( PFD_TYPE_SOCK_CONNECTED, PFD_TYPE_HDLR request_handler );
+	pfd_register_type( PFD_TYPE_INT_LISTEN,    PFD_TYPE_HDLR internal_connection_listener );
+	pfd_register_type( PFD_TYPE_EXT_LISTEN,    PFD_TYPE_HDLR external_connection_listener );
+	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR internal_connection_handler );
+	pfd_register_type( PFD_TYPE_EXT_CONNECTED, PFD_TYPE_HDLR external_connection_handler );
 
-	if ( ( res_fd = pcom_create( ) ) < 0 ) {
+	psocket_t* socket = psocket_open( inet_addr( PROXY_ADDR ), PROXY_PORT );
+	if ( !socket ) {
 		ret = EXIT_FAILURE;
 		goto quit;
 	}
 
-	pfd_set( res_fd, PFD_TYPE_PCOM, pcom_open( res_fd, PCOM_RO, 0, 0 ) );
-	*/
+	pfd_set( socket->sockfd, PFD_TYPE_INT_LISTEN, NULL );
 
 	// daemonize
 	if ( make_daemon ) {
@@ -181,7 +182,9 @@ int main( int argc, char* argv[ ] ) {
 
 	syslog( LOG_INFO, "starting up" );
 
-	// starts a select() loop and calls the associated file descriptor handlers
+	// starts a select() loop and calls
+	// the associated file descriptor handlers
+	// when they are ready to read
 	pfd_start( );
 
 quit:
@@ -200,7 +203,7 @@ quit:
 	return ret;
 }
 
-/*
+
 char* get_url_from_http_header( char* url, char* raw ) {
 	char* ptr,* ptr2;
 
@@ -245,75 +248,17 @@ int get_port_from_url( char* url ) {
 	return atoi( port_str );
 }
 
-void start_website( pcom_transport_t* transport ) {
-	website_t* website;
-	website_data_t* website_data;
-
-	int pid = *(int*) transport->message;
-	int fd = *(int*) ( transport->message + sizeof( int ) );
-	char* url = transport->message + sizeof( int ) * 2;
-
-	if ( ( website = website_get_by_url( url ) ) ) {
-
-		// check if website proccess is running
-		// remove it if the proccess is not running
-		// return with a warning if it does exist
-		if ( kill( ((website_data_t*) website->data)->pid, 0 ) == -1 )
-			remove_website( website );
-		else {
-			syslog( LOG_WARNING, "start_website: tried to add website \"%s\" that already exists", url );
-			return;
-		}
-
-	}
-
-	if ( !( website = website_add( transport->header->key, url ) ) ) {
-		syslog( LOG_ERR, "start_website: website_add() failed starting website \"%s\"", url );
-		return;
-	}
-
-	syslog( LOG_INFO, "website: starting \"http://%s\"", website->url );
-
-	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
-
-	website->data = website_data;
-
-	website_data->pid = pid;
-
-	if ( !( website_data->fd = pcom_connect( pid, fd ) ) ) {
-		syslog( LOG_ERR, "start_website: pcom_connect() failed for website \"%s\"", website->url );
-		//stop_website( website->id );
-		return;
-	}
-
-	website_data->socket = psocket_open( INADDR_ANY, get_port_from_url( website->url ) );
-
-	if ( !website_data->socket ) {
-		syslog( LOG_ERR, "start_website: psocket_open() failed" );
-		remove_website( website );
-		return;
-	}
-
-	pfd_set( website_data->socket->sockfd, PFD_TYPE_SOCK_LISTEN, NULL );
-
-}
-
-void stop_website( pcom_transport_t* transport ) {
+int remove_website( int key ) {
 	website_t* website;
 
-	if ( !( website = website_get_by_key( transport->header->key ) ) ) {
+	if ( !( website = website_get_by_key( key ) ) ) {
 		syslog( LOG_WARNING, "stop_website: tried to stop a nonexisting website" );
-		return;
+		return 0;
 	}
 
-	remove_website( website );
-}
-
-void remove_website( website_t* website ) {
 	syslog( LOG_INFO, "website: stopping \"http://%s\"", website->url );
-	website_data_t* website_data = (website_data_t*) website->data;
+	website_data_t* website_data = (website_data_t*) website->udata;
 
-	close( website_data->fd );
 	if ( website_data->socket ) {
 		if ( website_data->socket->n_open == 1 ) {
 			pfd_clr( website_data->socket->sockfd );
@@ -323,147 +268,279 @@ void remove_website( website_t* website ) {
 
 	free( website_data );
 	website_remove( website );
+
+	return 1;
+}
+
+int start_website( char* url, int key ) {
+	website_t* website;
+	website_data_t* website_data;
+
+	if ( ( website = website_get_by_url( url ) ) ) {
+
+		syslog( LOG_WARNING, "start_website: tried to add website \"%s\" that already exists", url );
+		return 0;
+
+	}
+
+	if ( !( website = website_add( key, url ) ) ) {
+		syslog( LOG_ERR, "start_website: website_add() failed starting website \"%s\"", url );
+		return 0;
+	}
+
+	syslog( LOG_INFO, "website: starting \"http://%s\"", website->url );
+
+	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
+	website->udata = website_data;
+
+	website_data->socket = psocket_open( INADDR_ANY, get_port_from_url( website->url ) );
+
+	if ( !website_data->socket ) {
+		syslog( LOG_ERR, "start_website: psocket_open() failed" );
+		remove_website( key );
+		return 0;
+	}
+
+	pfd_set( website_data->socket->sockfd, PFD_TYPE_EXT_LISTEN, NULL );
+	return 1;
 }
 
 // Handlers ////////////////////////////////////////////
 
-void request_accept_handler( int sockfd, void* udata ) {
-	req_info_t* req_info;
+void general_connection_listener( int sockfd, void* udata, int type ) {
+	conn_info_t* conn_info;
 	struct sockaddr_in cli_addr;
 	unsigned int cli_len = sizeof ( cli_addr );
 	int newsockfd;
 
 	// Connection request on original socket.
 	if ( ( newsockfd = accept( sockfd, (struct sockaddr *) &cli_addr, &cli_len ) ) < 0 ) {
-		syslog( LOG_ERR, "request_accept_handler: accept() failed: %s", strerror( errno ) );
+		syslog( LOG_ERR, "general_connection_listener: accept() failed: %s", strerror( errno ) );
 		return;
 	}
 
-	req_info = (req_info_t*) malloc( sizeof( req_info_t ) );
-	req_info->fd = sockfd;
-	req_info->addr = cli_addr;
-	pfd_set( newsockfd, PFD_TYPE_SOCK_ACCEPTED, req_info );
+	// pass the connection information along...
+	conn_info = (conn_info_t*) malloc( sizeof( conn_info_t ) );
+	conn_info->fd = sockfd;
+	conn_info->addr = cli_addr;
+	conn_info->udata = NULL;
+
+	pfd_set( newsockfd, type, conn_info );
 }
 
-void request_handler( int sockfd, req_info_t* req_info ) {
-	char buffer[ PCOM_MSG_SIZE ];
-	int n;
-	website_t* website;
-	website_data_t* website_data;
-	pcom_transport_t* transport;
-	int request_type;
-	char url[ 256 ];
-	char* ptr;
-	char postlenbuf[ 16 ];
-	int postlen = 0;
-	struct hostent* hp;
+void general_connection_close( sockfd ) {
+	free( pfd_udata( sockfd ) ); // free the conn_info_t object
+	pfd_clr( sockfd );
+	close( sockfd );
+}
 
+void external_connection_listener( int sockfd, void* udata ) {
+	general_connection_listener( sockfd, udata, PFD_TYPE_EXT_CONNECTED );
+}
+
+void internal_connection_listener( int sockfd, void* udata ) {
+	general_connection_listener( sockfd, udata, PFD_TYPE_INT_CONNECTED );
+}
+
+void external_connection_handler( int sockfd, conn_info_t* conn_info ) {
+	char buffer[ PT_BUF_SIZE ],* ptr;
 	memset( &buffer, 0, sizeof( buffer ) );
+	int len;
 
-	if ( ( n = read( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
-		if ( !n ) { // if no data was read, the socket has been closed from the other end
-			pfd_clr( sockfd );
-			close( sockfd );
-		} else
-			syslog( LOG_ERR, "request_handler: read() failed: %s", strerror( errno ) );
+	req_info_t* req_info = conn_info->udata;
+
+	if ( req_info && !website_get_by_key( req_info->website_key ) )
+		goto cleanup;
+
+	if ( ( len = read( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
+cleanup:
+		// cleanup
+		if ( req_info ) {
+			if ( req_info->transport ) {
+				if ( PT_MSG_IS_FIRST( req_info->transport )
+				  || !website_get_by_key( req_info->website_key ) ) {
+					ptransport_free( req_info->transport );
+				} else {
+					ptransport_close( req_info->transport );
+				}
+			}
+
+			free( req_info );
+		}
+
+		general_connection_close( sockfd );
 		return;
 	}
 
-	if ( startswith( buffer, HTTP_GET ) )
-		request_type = HTTP_GET_TYPE;
-	else if ( startswith( buffer, HTTP_POST ) )
-		request_type = HTTP_POST_TYPE;
-	else return;
+	ptr = buffer;
 
-	ptr = get_url_from_http_header( url, buffer );
-	if ( !( website = website_get_by_url( ptr ) ) ) {
-		syslog( LOG_WARNING, "request_handler: no website to service request %s", ptr );
-		pfd_clr( sockfd );
-		close( sockfd );
-		return;
-	}
+	if ( !req_info ) {
+		/* If req_info is NULL this is the start of a request and the
+		   HTTP request headers need to be parsed. */
+		req_info = (req_info_t*) malloc( sizeof( req_info_t ) );
+		conn_info->udata = req_info;
+		req_info->transport = NULL;
+		req_info->website_key = -1;
+		req_info->postlen = 0;
 
-	website_data = website->data;
+		/* Get HTTP request type */
+		if ( startswith( buffer, HTTP_GET ) )
+			req_info->request_type = HTTP_GET_TYPE;
+		else if ( startswith( buffer, HTTP_POST ) )
+			req_info->request_type = HTTP_POST_TYPE;
+		else return;
 
-	if ( website_data->socket->sockfd != req_info->fd ) {
-		syslog( LOG_WARNING, "request_handler: no website to service request %s", ptr );
-		pfd_clr( sockfd );
-		close( sockfd );
-		return;
-	}
+		/* Find website for request from HTTP header */
+		website_t* website;
+		int urlbuf[ PT_BUF_SIZE ];
+		get_url_from_http_header( (char*) urlbuf, buffer );
+		if ( !( website = website_get_by_url( (char*) urlbuf ) ) ) {
+			syslog( LOG_WARNING, "external_connection_handler: no website to service request %s", ptr );
+			goto cleanup;
+		}
 
-	transport = pcom_open( website_data->fd, PCOM_WO, sockfd, website->key );
+		/* Set the website key so that furthur sections of this
+		   request can check if the website is still alive. */
+		req_info->website_key = website->key;
 
-	hp = gethostbyaddr( (char*) &req_info->addr.sin_addr.s_addr, sizeof( req_info->addr.sin_addr.s_addr ), AF_INET );
+		/* Check the websites socket to make sure the request came in on
+		   the right socket. */
+		website_data_t* website_data = website->udata;
 
-	pcom_write( transport, (void*) &req_info->addr.sin_addr, sizeof( req_info->addr.sin_addr ) );
-	pcom_write( transport, (void*) hp->h_name, strlen( hp->h_name ) + 1 );
+		if ( website_data->socket->sockfd != conn_info->fd ) {
+			syslog( LOG_WARNING, "external_connection_handler: no website to service request %s", ptr );
+			goto cleanup;
+		}
 
-	if ( request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
-		memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
-		postlen = atoi( postlenbuf );
-	}
+		/* Open up a transport to send the request to the corresponding
+		   website. The website's key is the internal file descriptor to
+		   send the request over and the msgid should be set to the
+		   external file descriptor to send the response back to. */
+		req_info->transport = ptransport_open( website->key, PT_WO, sockfd );
 
-	if ( ( ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
-		ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-		pcom_write( transport, (void*) buffer, ( ptr - buffer ) );
-	}
+		struct hostent* hp;
+		hp = gethostbyaddr( (char*) &conn_info->addr.sin_addr.s_addr, sizeof( conn_info->addr.sin_addr.s_addr ), AF_INET );
 
-	if ( request_type == HTTP_POST_TYPE && postlen ) {
-		pcom_write( transport, (void*) ptr, postlen );
-	}
+		// Write the ip address and hostname of the request
+		ptransport_write( req_info->transport, (void*) &conn_info->addr.sin_addr, sizeof( conn_info->addr.sin_addr ) );
+		if ( hp ) ptransport_write( req_info->transport, (void*) hp->h_name, strlen( hp->h_name ) );
+		ptransport_write( req_info->transport, (void*) "\0", 1 );
 
-	if ( !pcom_flush( transport ) ) {
-		pfd_clr( transport->header->id );
-		close( transport->header->id );
-		if ( errno == EPIPE ) {
-			syslog( LOG_WARNING, "request_handler: pipe broken...removing website \"%s\"", website->url );
-			remove_website( website );
+		// If request_type is POST check if there is content after the HTTP header
+		char postlenbuf[ 32 ];
+		if ( req_info->request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
+			memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
+			 req_info->postlen = atoi( postlenbuf );
+		}
+
+		// Send the whole header to the website
+		if ( ( ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
+			ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
+			ptransport_write( req_info->transport, (void*) buffer, ( ptr - buffer ) );
+		}
+
+		/* If the end of the headers was not found the request was either
+		   malformatted or too long, DO NOT send to website. */
+		else {
+			syslog( LOG_WARNING, "external_connection_handler: headers to long" );
+			goto cleanup;
 		}
 	}
 
-	free( req_info );
-	pcom_free( transport );
+	if ( req_info->request_type == HTTP_POST_TYPE && req_info->postlen ) {
+		int left = len - ( ptr - buffer );
+
+		if ( left > req_info->postlen )
+			req_info->postlen = left;
+
+		ptransport_write( req_info->transport, (void*) ptr, left );
+
+		req_info->postlen -= left;
+
+	}
+
+	if ( !req_info->postlen ) { /* If there is still data coming, */
+		ptransport_close( req_info->transport );
+		free( req_info );
+		conn_info->udata = NULL;
+	}
+
 }
 
-void command_handler( pcom_transport_t* transport ) {
+void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
+	ptransport_t* transport = ptransport_open( sockfd, PT_RO, 0 );
 
-	switch ( transport->header->id ) {
+	if ( !ptransport_read( transport ) ) {
+		general_connection_close( sockfd );
+
+		// if sockfd is a website, we need to remove it
+		if ( website_get_by_key( sockfd ) ) 
+			remove_website( sockfd );
+
+		goto quit;
+	}
+
+	if ( transport->header->msgid < 0 ) {
+
+		/* If the msgid is less than zero, it refers to a command and
+		   the message should not be routed to a file descriptor. */
+
+		// the entire command must fit inside one transport
+		if ( PT_MSG_IS_FIRST( transport ) && PT_MSG_IS_LAST( transport ) )
+			command_handler( sockfd, transport );
+		else
+			syslog( LOG_WARNING, "received a command that is to long...ignoring." );
+
+	} else {
+
+		/* TODO: make sure file descriptor (msgid) is actually
+		   associated with the website it came from */
+
+		/* if msgid is zero or greater it refers to a socket file
+		   descriptor that the message should be routed to. */
+
+		if ( write( transport->header->msgid, transport->message, transport->header->size ) != transport->header->size ) {
+			/* TODO: sent transmission to stop sending data for this 
+			   external connection, it does not exist anymore. */
+			syslog( LOG_ERR, "internal_connection_handler: write failed: %s", strerror( errno ) );
+			goto quit;
+		}
+
+		if ( PT_MSG_IS_LAST( transport ) ) {
+			// clean up external connection
+			pfd_clr( transport->header->msgid );
+			close( transport->header->msgid );
+		}
+
+	}
+
+quit:
+	ptransport_close( transport );
+}
+
+
+void command_handler( int sockfd, ptransport_t* transport ) {
+	ptransport_t* response = ptransport_open( sockfd, PT_WO, transport->header->msgid );
+
+	switch ( transport->header->msgid ) {
 
 		case WS_START_CMD:
-			start_website( transport );
+			if ( start_website( transport->message, sockfd ) )
+				ptransport_write( response, "OK", 2 );
+			else
+				ptransport_write( response, "FAIL", 4 );
 			break;
 
 		case WS_STOP_CMD:
-			stop_website( transport );
+			if ( remove_website( sockfd ) )
+				ptransport_write( response, "OK", 2 );
+			else
+				ptransport_write( response, "FAIL", 4 );
 			break;
 
 	}
 
-}
-
-void response_handler( int res_fd, pcom_transport_t* transport ) {
-
-	if ( !pcom_read( transport ) )
-		return;
-
-	if ( PCOM_MSG_IS_FIRST( transport ) ) {
-		if ( transport->header->id < 0 ) {
-			command_handler( transport );
-			return;
-		}
-	}
-
-	if ( write( transport->header->id, transport->message, transport->header->size ) != transport->header->size ) {
-		syslog( LOG_ERR, "response_handler: write failed: %s", strerror( errno ) );
-		return;
-	}
-
-	if ( PCOM_MSG_IS_LAST( transport ) ) {
-		pfd_clr( transport->header->id );
-		close( transport->header->id );
-	}
+	ptransport_close( response );
 }
 
 ////////////////////////////////////////////////////////////////
-*/

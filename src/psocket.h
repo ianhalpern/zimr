@@ -37,8 +37,8 @@
 
 #include "config.h"
 
-#define PCOM_LISTEN  0x01
-#define PCOM_CONNECT 0x02
+#define PSOCK_LISTEN  0x01
+#define PSOCK_CONNECT 0x02
 
 typedef struct psocket {
 	int sockfd;
@@ -51,6 +51,7 @@ typedef struct psocket {
 } psocket_t;
 
 psocket_t* psocket_open( in_addr_t addr, int portno );
+psocket_t* psocket_connect( in_addr_t addr, int portno );
 int psocket_init( in_addr_t addr, int portno, int type );
 psocket_t* psocket_create( int sockfd, in_addr_t addr, int portno );
 void psocket_remove( psocket_t* p );

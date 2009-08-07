@@ -30,6 +30,7 @@ static int first_set = 1;
 void pfd_set( int fd, int type, void* udata ) {
 	if ( first_set ) {
 		FD_ZERO( &read_fd_set );
+		memset( fd_data, 0, sizeof( fd_data ) );
 		first_set = 0;
 	}
 	FD_SET( fd, &active_fd_set );
@@ -39,6 +40,10 @@ void pfd_set( int fd, int type, void* udata ) {
 
 void pfd_clr( int fd ) {
 	FD_CLR( fd, &active_fd_set );
+}
+
+void* pfd_udata( int fd ) {
+	return fd_data[ fd ].udata;
 }
 
 void pfd_register_type( int type, void (*handler)( int, void* ) ) {

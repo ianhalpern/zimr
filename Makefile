@@ -12,10 +12,10 @@ LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
 
 PYVERSION = 2.6
 
-OBJS        = general.o pcom.o website.o pfildes.o psocket.o connection.o mime.o headers.o params.o cookies.o urldecoder.o daemon.o
+OBJS        = general.o ptransport.o website.o pfildes.o psocket.o connection.o mime.o headers.o params.o cookies.o urldecoder.o daemon.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 
-EXECS       = podorapd # podora-website
+EXECS       = podora podorapd # podora-website
 TEST_EXECS  =
 SHARED_OBJS = #libpodora.so
 PYMOD_OBJS  = #podora.so
@@ -47,7 +47,10 @@ clean:
 ##### EXECS #####
 #################
 
-podorapd: $(EXEC_DEPENDS) general.o pfildes.o website.o psocket.o daemon.o
+podora: $(EXEC_DEPENDS) psocket.o ptransport.o pfildes.o
+	$(EXEC_COMPILE)
+
+podorapd: $(EXEC_DEPENDS) general.o pfildes.o website.o psocket.o daemon.o ptransport.o
 	$(EXEC_COMPILE)
 
 podora-website: $(EXEC_DEPENDS) libpodora.so
