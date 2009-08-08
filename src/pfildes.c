@@ -26,6 +26,7 @@ static fd_set active_fd_set, read_fd_set;
 static fd_info_t fd_data[ FD_SETSIZE ];
 static fd_type_t fd_types[ 64 ];
 static bool first_set = true;
+static bool unblock = false;
 
 void pfd_set( int fd, int type, void* udata ) {
 	if ( first_set ) {
@@ -50,23 +51,37 @@ void pfd_register_type( int type, void (*handler)( int, void* ) ) {
 	fd_types[ type ].handler = handler;
 }
 
+void pfd_unblock( ) {
+	unblock = true;
+}
+
 int pfd_select( int tv_sec ) {
 	int i;
 
 	struct timeval timeout,* timeout_ptr = NULL;
 
-	if ( tv_sec ) {
+	if ( unblock ) {
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 0;
+		timeout_ptr = &timeout;
+	} if ( tv_sec ) {
 		timeout.tv_sec = tv_sec;
 		timeout.tv_usec = 0;
 		timeout_ptr = &timeout;
 	}
+	unblock = false;
 
 	read_fd_set = active_fd_set;
 
 	if ( select( FD_SETSIZE, &read_fd_set, NULL, NULL, timeout_ptr ) < 0 ) {
-		if ( errno != EINTR )
+
+		if ( errno != EINTR ) /* select() was not interrupted. This is an
+								 unanticipated error. */
 			perror( "[error] pfd_start: select() failed" );
-		return 0;
+
+		/* if interrupted we are trying to quit...return with error (false). */
+		else return 0;
+
 	}
 
 	for ( i = 0; i < FD_SETSIZE; i++ )

@@ -48,7 +48,7 @@ typedef struct {
 } conn_info_t;
 
 typedef struct {
-	int website_key;
+	int website_id;
 	ptransport_t* transport;
 	int request_type;
 	int postlen;
@@ -203,6 +203,30 @@ quit:
 	return ret;
 }
 
+char* get_status_message( char* buffer, int size ) {
+	memset( buffer, 0, size );
+
+	strcat( buffer, "\nSockets:\n" );
+	psocket_t* socket = psocket_get_root( );
+
+	while ( socket ) {
+		strcat( buffer, "  " );
+		inet_ntop( AF_INET, &socket->addr, buffer + strlen( buffer ), INET_ADDRSTRLEN );
+		sprintf( buffer + strlen( buffer ), ":%d\n", socket->portno );
+		socket = socket->next;
+	}
+
+	strcat( buffer, "\nWebsites:\n" );
+	website_t* website = website_get_root( );
+
+	while ( website ) {
+		strcat( buffer, "  " );
+		sprintf( buffer + strlen( buffer ), "%s\n", website->url );
+		website = website->next;
+	}
+
+	return buffer;
+}
 
 char* get_url_from_http_header( char* url, char* raw ) {
 	char* ptr,* ptr2;
@@ -221,7 +245,6 @@ char* get_url_from_http_header( char* url, char* raw ) {
 	raw++;
 
 	ptr = strstr( raw, " " );
-
 	strncat( url, raw, ptr - raw );
 
 	return url;
@@ -248,10 +271,10 @@ int get_port_from_url( char* url ) {
 	return atoi( port_str );
 }
 
-int remove_website( int key ) {
+int remove_website( int id ) {
 	website_t* website;
 
-	if ( !( website = website_get_by_key( key ) ) ) {
+	if ( !( website = website_get_by_id( id ) ) ) {
 		syslog( LOG_WARNING, "stop_website: tried to stop a nonexisting website" );
 		return 0;
 	}
@@ -263,7 +286,7 @@ int remove_website( int key ) {
 		if ( website_data->socket->n_open == 1 ) {
 			pfd_clr( website_data->socket->sockfd );
 		}
-		psocket_remove( website_data->socket );
+		psocket_close( website_data->socket );
 	}
 
 	free( website_data );
@@ -272,18 +295,16 @@ int remove_website( int key ) {
 	return 1;
 }
 
-int start_website( char* url, int key ) {
+int start_website( char* url, int id ) {
 	website_t* website;
 	website_data_t* website_data;
 
 	if ( ( website = website_get_by_url( url ) ) ) {
-
 		syslog( LOG_WARNING, "start_website: tried to add website \"%s\" that already exists", url );
 		return 0;
-
 	}
 
-	if ( !( website = website_add( key, url ) ) ) {
+	if ( !( website = website_add( id, url ) ) ) {
 		syslog( LOG_ERR, "start_website: website_add() failed starting website \"%s\"", url );
 		return 0;
 	}
@@ -297,7 +318,7 @@ int start_website( char* url, int key ) {
 
 	if ( !website_data->socket ) {
 		syslog( LOG_ERR, "start_website: psocket_open() failed" );
-		remove_website( key );
+		remove_website( id );
 		return 0;
 	}
 
@@ -349,7 +370,7 @@ void external_connection_handler( int sockfd, conn_info_t* conn_info ) {
 
 	req_info_t* req_info = conn_info->udata;
 
-	if ( req_info && !website_get_by_key( req_info->website_key ) )
+	if ( req_info && !website_get_by_id( req_info->website_id ) )
 		goto cleanup;
 
 	if ( ( len = read( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
@@ -358,7 +379,7 @@ cleanup:
 		if ( req_info ) {
 			if ( req_info->transport ) {
 				if ( PT_MSG_IS_FIRST( req_info->transport )
-				  || !website_get_by_key( req_info->website_key ) ) {
+				  || !website_get_by_id( req_info->website_id ) ) {
 					ptransport_free( req_info->transport );
 				} else {
 					ptransport_close( req_info->transport );
@@ -380,7 +401,7 @@ cleanup:
 		req_info = (req_info_t*) malloc( sizeof( req_info_t ) );
 		conn_info->udata = req_info;
 		req_info->transport = NULL;
-		req_info->website_key = -1;
+		req_info->website_id = -1;
 		req_info->postlen = 0;
 
 		/* Get HTTP request type */
@@ -388,7 +409,7 @@ cleanup:
 			req_info->request_type = HTTP_GET_TYPE;
 		else if ( startswith( buffer, HTTP_POST ) )
 			req_info->request_type = HTTP_POST_TYPE;
-		else return;
+		else goto cleanup;
 
 		/* Find website for request from HTTP header */
 		website_t* website;
@@ -399,9 +420,9 @@ cleanup:
 			goto cleanup;
 		}
 
-		/* Set the website key so that furthur sections of this
+		/* Set the website id so that furthur sections of this
 		   request can check if the website is still alive. */
-		req_info->website_key = website->key;
+		req_info->website_id = website->id;
 
 		/* Check the websites socket to make sure the request came in on
 		   the right socket. */
@@ -413,10 +434,10 @@ cleanup:
 		}
 
 		/* Open up a transport to send the request to the corresponding
-		   website. The website's key is the internal file descriptor to
+		   website. The website's id is the internal file descriptor to
 		   send the request over and the msgid should be set to the
 		   external file descriptor to send the response back to. */
-		req_info->transport = ptransport_open( website->key, PT_WO, sockfd );
+		req_info->transport = ptransport_open( website->id, PT_WO, sockfd );
 
 		struct hostent* hp;
 		hp = gethostbyaddr( (char*) &conn_info->addr.sin_addr.s_addr, sizeof( conn_info->addr.sin_addr.s_addr ), AF_INET );
@@ -430,7 +451,7 @@ cleanup:
 		char postlenbuf[ 32 ];
 		if ( req_info->request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
 			memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
-			 req_info->postlen = atoi( postlenbuf );
+			req_info->postlen = atoi( postlenbuf );
 		}
 
 		// Send the whole header to the website
@@ -471,13 +492,13 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 	ptransport_t* transport = ptransport_open( sockfd, PT_RO, 0 );
 
 	if ( !ptransport_read( transport ) ) {
-		general_connection_close( sockfd );
 
 		// if sockfd is a website, we need to remove it
-		if ( website_get_by_key( sockfd ) ) {
+		if ( website_get_by_id( sockfd ) ) {
 			remove_website( sockfd );
 		}
 
+		general_connection_close( sockfd );
 		goto quit;
 	}
 
@@ -522,25 +543,37 @@ quit:
 
 void command_handler( int sockfd, ptransport_t* transport ) {
 	ptransport_t* response = ptransport_open( sockfd, PT_WO, transport->header->msgid );
+	char* message = "";
+	char buffer[ 1024 ] = "";
 
 	switch ( transport->header->msgid ) {
 
-		case WS_START_CMD:
+		case PD_CMD_WS_START:
 			if ( start_website( transport->message, sockfd ) )
-				ptransport_write( response, "OK", 2 );
+				message = "OK";
 			else
-				ptransport_write( response, "FAIL", 4 );
+				message = "FAIL";
+
+			ptransport_write( response, message, strlen( message ) );
 			break;
 
-		case WS_STOP_CMD:
+		case PD_CMD_WS_STOP:
 			if ( remove_website( sockfd ) )
-				ptransport_write( response, "OK", 2 );
+				message = "OK";
 			else
-				ptransport_write( response, "FAIL", 4 );
+				message = "FAIL";
+
+			ptransport_write( response, message, strlen( message ) );
+			break;
+
+		case PD_CMD_STATUS:
+			message = get_status_message( buffer, sizeof( buffer ) );
+			ptransport_write( response, message, strlen( message ) );
 			break;
 
 		default:
-			ptransport_write( response, "FAIL", 4 );
+			message = "FAIL";
+			ptransport_write( response, message, strlen( message ) );
 			break;
 	}
 

@@ -110,7 +110,7 @@ psocket_t* psocket_create( int sockfd, in_addr_t addr, int portno ) {
 	return p;
 }
 
-void psocket_remove( psocket_t* p ) {
+void psocket_close( psocket_t* p ) {
 
 	p->n_open--;
 
@@ -158,3 +158,6 @@ psocket_t* psocket_get_by_sockfd( int sockfd ) {
 }
 
 
+psocket_t* psocket_get_root( ) {
+	return root_psocket_node;
+}

@@ -30,50 +30,71 @@
 #include "psocket.h"
 #include "pfildes.h"
 
-
-void connection_handler( int sockfd, void* udata ) {
-	puts( "hi" );
-	int msgid;
-	ptransport_t* transport = ptransport_open( sockfd, PT_RO, 0 );
-
-	if ( ptransport_read( transport ) <= 0 || PT_MSG_IS_LAST( transport ) ) {
-		puts( "done" );
-	}
-	msgid = transport->header->msgid;
-
-	puts( inet_ntoa( *(struct in_addr*) transport->message ) );
-	puts( transport->message + 4 );
-	puts( transport->message + 4 + strlen( transport->message + 4 ) + 1 );
-
-	ptransport_close( transport );
-
-	transport = ptransport_open( sockfd, PT_WO, msgid );
-	ptransport_write( transport, "hello world", 11 );
-	ptransport_close( transport );
+void print_usage( ) {
+	printf(
+"\nUsage: podora [OPTIONS] COMMAND\n\
+	-h --help\n\
+	--option\n\
+"
+	);
 }
 
 int main( int argc, char* argv[ ] ) {
-	psocket_t* proxy = psocket_connect( inet_addr( PROXY_ADDR ), PROXY_PORT );
+	int command = 0;
+
+	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n" );
+
+	///////////////////////////////////////////////
+	// parse command line options
+	int i;
+	for ( i = 1; i < argc; i++ ) {
+		if ( argv[ i ][ 0 ] != '-' ) break;
+		if ( strcmp( argv[ i ], "--option" ) == 0 ) {
+		} else {
+			if ( strcmp( argv[ i ], "--help" ) != 0 && strcmp( argv[ i ], "-h" ) != 0 )
+				printf( "\nUnknown Option: %s\n", argv[ i ] );
+			print_usage( );
+			exit( 0 );
+		}
+	}
+
+	if ( i == argc ) {
+		print_usage( );
+		exit( 0 );
+	}
+
+	// parse command line commands
+	for ( i = i; i < argc; i++ ) {
+		if ( strcmp( argv[ i ], "status" ) == 0 ) {
+			command = PD_CMD_STATUS;
+			break;
+		} else {
+			printf( "\nUnknown Command: %s\n", argv[ i ] );
+			print_usage( );
+			exit( 0 );
+		}
+	}
+	/////////////////////////////////////////////////
+
+	psocket_t* proxy = psocket_connect( inet_addr( PD_PROXY_ADDR ), PD_PROXY_PORT );
 
 	if ( !proxy ) {
 		printf( "could not connect to proxy.\n" );
 		return EXIT_FAILURE;
 	}
 
-	ptransport_t* trans_out = ptransport_open( proxy->sockfd, PT_WO, -1 );
-	ptransport_t* trans_in  = ptransport_open( proxy->sockfd, PT_RO, 0 );
-	ptransport_write( trans_out, "podora:8080", 11 );
-	ptransport_close( trans_out );
-	ptransport_read( trans_in );
+	ptransport_t* transport;
 
-	if ( strcmp( "OK", trans_in->message ) != 0 )
-		return EXIT_FAILURE;
+	transport = ptransport_open( proxy->sockfd, PT_WO, command );
+	ptransport_close( transport );
 
-	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR connection_handler );
+	transport  = ptransport_open( proxy->sockfd, PT_RO, 0 );
+	ptransport_read( transport );
+	ptransport_close( transport );
 
-	pfd_set( proxy->sockfd, PFD_TYPE_INT_CONNECTED, NULL );
+	puts( transport->message );
 
-	pfd_start( );
-
+	psocket_close( proxy );
+	puts( "quit" );
 	return EXIT_SUCCESS;
 }

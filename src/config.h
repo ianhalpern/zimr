@@ -34,6 +34,15 @@
 #define PD_NUM_PROXY_DEATH_RETRIES 5
 #define PD_PROXY_DEATH_RETRY_DELAY 2
 
+/******* PD_CMD's *********/
+
+// Commands MUST be NEGATIVE
+#define PD_CMD_WS_START  -1
+#define PD_CMD_WS_STOP   -2
+#define PD_CMD_STATUS    -3
+
+/**************************/
+
 /****** ptransmission config *******/
 
 #define PT_MSG_SIZE ( PT_BUF_SIZE - PT_HDR_SIZE )

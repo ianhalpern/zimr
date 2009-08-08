@@ -20,35 +20,16 @@
  *
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
+#ifndef _PD_PCNF_H
+#define _PD_PCNF_H
 
-#include "podora.h"
+#include <yaml.h>
 
-void empty_sighandler(){}
+#include "website.h"
 
-int main( int argc, char *argv[ ] ) {
-	signal( SIGINT, empty_sighandler );
+typedef struct {
+	char* url;
+	char* pubdir;
+} podora_cnf_website_t;
 
-	website_t* website1 = podora_website_create( "podora" );
-	podora_website_enable( website1 );
-
-	website_t* website2 = podora_website_create( "podora:8080" );
-	podora_website_enable( website2 );
-
-	website_t* website3 = podora_website_create( "podora:8081" );
-	podora_website_enable( website3 );
-
-	podora_init( );
-
-	//assert( podora_cnf_load( ) );
-
-	podora_start( );
-
-	podora_shutdown( );
-	printf( "quit\n" );
-	return 0;
-}
-
+#endif

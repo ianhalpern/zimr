@@ -23,17 +23,11 @@
 #include "podora.h"
 
 typedef struct {
-	char* url;
-	char* pubdir;
-} podora_cnf_website_t;
-
-typedef struct {
 	char page_type[ 10 ];
 	void (*page_handler)( connection_t*, const char*, void* );
 	void* udata;
 } page_handler_t;
 
-static int res_fd;
 static int page_handler_count = 0;
 static page_handler_t page_handlers[ 100 ];
 
@@ -45,8 +39,7 @@ const char* podora_build_date( ) {
 	return BUILD_DATE;
 }
 
-int podora_init( ) {
-	int pid, res_filenum;
+void podora_init( ) {
 
 #if defined(DEBUG)
 // Setup syslog logging - see SETLOGMASK(3)
@@ -57,292 +50,172 @@ int podora_init( ) {
 	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
 #endif
 
-	char filename[ 128 ];
-	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
-	mkdir( filename, S_IRWXU );
-	chmod( filename, 0744 );
+	// Register file descriptor type handlers
+	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR podora_connection_handler );
+	//pfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR podora_file_handler );
 
-	if ( !podora_read_server_info( &pid, &res_filenum ) )
-		return 0;
-
-	if ( ( res_fd = pcom_connect( pid, res_filenum ) ) < 0 ) {
-		return 0;
-	}
-
-	pfd_register_type( PFD_TYPE_PCOM, PFD_TYPE_HDLR &podora_connection_handler );
-	pfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR &podora_file_handler );
-
-	return 1;
 }
 
 void podora_shutdown( ) {
 	while ( website_get_root( ) ) {
 		podora_website_destroy( website_get_root( ) );
 	}
-
-	char filename[ 128 ];
-	sprintf( filename, PD_TMPDIR "/%d", getpid( ) );
-	remove( filename );
-}
-
-int podora_read_server_info( int* pid, int* res_fn ) {
-	int fd;
-
-	if ( ( fd = open( PD_TMPDIR "/" PD_INFO_FILE, O_RDONLY ) ) < 0 ) {
-		syslog( LOG_ERR, "read_podora_info: open() failed: %s", strerror( errno ) );
-		perror( "[fatal] read_podora_info: open() failed" );
-		return 0;
-	}
-
-	read( fd, pid, sizeof( *pid ) );
-	read( fd, res_fn, sizeof( *res_fn ) );
-
-	close( fd );
-
-	return 1;
-}
-
-int podora_daemonize( int flags ) {
-#if defined(DEBUG)
-	flags |= D_KEEPSTDF;
-#endif
-	return daemonize( flags );
 }
 
 void podora_start( ) {
-	pfd_start( );
-}
-
-int podora_cnf_walk( yaml_document_t* document, int index, int depth ) {
-	int i;
-	yaml_node_t *node = yaml_document_get_node( document, index );
-
-	if ( ! node )
-		return 0;
-
-	switch ( node->type ) {
-		case YAML_SCALAR_NODE:
-			printf( "%d: %s\n", depth, node->data.scalar.value );
-			break;
-		case YAML_SEQUENCE_NODE:
-			depth++;
-			for ( i = 0; i < node->data.sequence.items.top - node->data.sequence.items.start; i++ ) {
-				podora_cnf_walk( document, node->data.sequence.items.start[ i ], depth );
-			}
-			break;
-		case YAML_MAPPING_NODE:
-			depth++;
-			for ( i = 0; i < node->data.mapping.pairs.top - node->data.mapping.pairs.start; i++ ) {
-				podora_cnf_walk( document, node->data.mapping.pairs.start[ i ].key, depth );
-				podora_cnf_walk( document, node->data.mapping.pairs.start[ i ].value, depth );
-			}
-			break;
-		default:
-			return 0;
-	}
-
-	return 1;
-}
-
-int podora_cnf_load_websites( yaml_document_t* document, int index ) {
-	yaml_node_t* root = yaml_document_get_node( document, index );
-	int i, j;
-	podora_cnf_website_t website_cnf;
-	website_t* website;
-
-	if ( ! root || root->type != YAML_SEQUENCE_NODE )
-		return 0;
-
-	for ( i = 0; i < root->data.sequence.items.top - root->data.sequence.items.start; i++ ) {
-		yaml_node_t* website_node = yaml_document_get_node( document, root->data.sequence.items.start[ i ] );
-
-		if ( !website_node || website_node->type != YAML_MAPPING_NODE )
-			return 0;
-
-		website_cnf.url = NULL;
-		website_cnf.pubdir = NULL;
-
-		for ( j = 0; j < website_node->data.mapping.pairs.top - website_node->data.mapping.pairs.start; j++ ) {
-			yaml_node_t* attr_key = yaml_document_get_node( document, website_node->data.mapping.pairs.start[ j ].key );
-
-			if ( !attr_key || attr_key->type != YAML_SCALAR_NODE )
-				return 0;
-
-			yaml_node_t* attr_val = yaml_document_get_node( document, website_node->data.mapping.pairs.start[ j ].value );
-			if ( ! attr_val )
-				return 0;
-
-			// url
-			if ( strcmp( "url", attr_key->data.scalar.value ) == 0 ) {
-				if ( attr_val->type != YAML_SCALAR_NODE )
-					return 0;
-				website_cnf.url = attr_val->data.scalar.value;
-			}
-
-			// public directory
-			else if ( strcmp( "public directory", attr_key->data.scalar.value ) == 0 ) {
-				if ( attr_val->type != YAML_SCALAR_NODE )
-					return 0;
-				website_cnf.pubdir = attr_val->data.scalar.value;
-			}
-
-		}
-
-		if ( website_cnf.url )
-			website = podora_website_create( website_cnf.url );
-
-		if ( website_cnf.pubdir )
-			podora_website_set_pubdir( website, website_cnf.pubdir );
-
-		podora_website_enable( website );
-
-	}
-
-	return 1;
-}
-
-int podora_cnf_load( ) {
-	int ret = 1, i;
-
-	FILE* cnf_file;
-	yaml_parser_t parser;
-	yaml_document_t document;
-
-	cnf_file = fopen( PD_WS_CONF_FILE, "rb" );
-	if ( ! cnf_file ) {
-		return 0;
-	}
-
-	if ( ! yaml_parser_initialize( &parser ) ) {
-		ret = 0;
-		goto quit;
-	}
-
-	yaml_parser_set_input_file( &parser, cnf_file );
-
-	if ( ! yaml_parser_load( &parser, &document ) ) {
-		ret = 0;
-		goto quit;
-	}
-
-	if ( ! yaml_document_get_root_node( &document ) ) {
-		ret = 0;
-		goto quit;
-	}
-
-	// start parsing config settings
-	yaml_node_t* root = yaml_document_get_node( &document, 1 );
-
-	if ( ! root || root->type != YAML_MAPPING_NODE ) {
-		ret = 0;
-		goto quit;
-	}
-
-	for ( i = 0; i < root->data.mapping.pairs.top - root->data.mapping.pairs.start; i++ ) {
-		yaml_node_t* node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].key );
-
-		if ( ! node || node->type != YAML_SCALAR_NODE ) {
-			ret = 0;
-			goto quit;
-		}
-
-		if ( strcmp( "websites", node->data.scalar.value ) == 0 ) {
-			if ( ! podora_cnf_load_websites( &document, root->data.mapping.pairs.start[ i ].value ) ) {
-				ret = 0;
-				goto quit;
-			}
-		}
-	}
-
-quit:
-	yaml_document_delete( &document );
-	yaml_parser_delete( &parser );
-
-	fclose( cnf_file );
-
-	return ret;
-}
-
-void podora_send_cmd( int cmd, int key, void* message, int size ) {
-	pcom_transport_t* transport = pcom_open( res_fd, PCOM_WO, cmd, key );
-	pcom_write( transport, message, size );
-	pcom_close( transport );
-}
-
-website_t* podora_website_create( char* url ) {
-	int req_fd;
-
-	if ( ( req_fd = pcom_create( ) ) < 0 ) {
-		return NULL;
-	}
-
+	int timeout = 0;
 	website_t* website;
 	website_data_t* website_data;
 
-	if ( !( website = website_add( randkey( ), url ) ) )
+	do {
+		timeout = 0; // reset timeout value
+
+		website = website_get_root( );
+
+		// Test and Start website proxies
+		while ( website ) {
+			website_data = (website_data_t*) website->udata;
+
+			if ( !website_data->socket && website_data->status == WS_STATUS_ENABLING ) {
+
+				/* connect to the Podora Daemon Proxy for routing external
+				   requests or commands to this process. */
+				if ( !podora_website_enable( website ) ) {
+					printf( "could not connect to proxy, " );
+
+					if ( PD_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries ) {
+						timeout = PD_PROXY_DEATH_RETRY_DELAY;
+						puts( "retrying..." );
+					}
+
+					/* giving up ... */
+					else {
+						puts( "giving up." );
+						podora_website_disable( website );
+						//podora_website_destroy( website );
+					}
+
+				}
+
+				/* successfully connected to Podora Daemon Proxy, reset number of retries */
+				else
+					website_data->conn_tries = 0;
+			}
+
+			website = website->next;
+		}
+
+	} while ( website_get_root( ) && pfd_select( timeout ) );
+
+}
+
+int podora_send_cmd( psocket_t* socket, int cmd, void* message, int size ) {
+
+	int ret = 1;
+	ptransport_t* transport;
+
+	transport = ptransport_open( socket->sockfd, PT_WO, cmd );
+
+	if ( ptransport_write( transport, message, size ) <= 0 ) {
+		ret = 0;
+		goto quit;
+	}
+
+	ptransport_close( transport );
+
+	transport = ptransport_open( socket->sockfd, PT_RO, 0 );
+
+	if ( ptransport_read( transport ) <= 0 ) {
+		ret = 0;
+		goto quit;
+	}
+
+	if ( strcmp( "OK", transport->message ) != 0 ) {
+		printf( "command failed %s\n", (char*) transport->message );
+		ret = 0;
+	}
+
+quit:
+	ptransport_close( transport );
+	return ret;
+}
+
+website_t* podora_website_create( char* url ) {
+	website_t* website;
+	website_data_t* website_data;
+
+	if ( !( website = website_add( -1, url ) ) )
 		return NULL;
 
 	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
-	website->data = (void*) website_data;
+	website->udata = (void*) website_data;
 
-	website_data->req_fd = req_fd;
+	website_data->socket = NULL;
 	website_data->pubdir = strdup( "./" );
 	website_data->status = WS_STATUS_DISABLED;
 	website_data->connection_handler = NULL;
-
-	pfd_set( website_data->req_fd, PFD_TYPE_PCOM, website );
+	website_data->conn_tries = 0;
 
 	return website;
 }
 
 void podora_website_destroy( website_t* website ) {
-	website_data_t* website_data = (website_data_t*) website->data;
+	website_data_t* website_data = (website_data_t*) website->udata;
 
 	podora_website_disable( website );
 
 	if ( website_data->pubdir )
 		free( website_data->pubdir );
 
-	pfd_clr( website_data->req_fd );
-	pcom_destroy( website_data->req_fd );
-
 	free( website_data );
 	website_remove( website );
 }
 
 int podora_website_enable( website_t* website ) {
-	website_data_t* website_data = (website_data_t*) website->data;
+	website_data_t* website_data = (website_data_t*) website->udata;
 
-	if ( website_data->status == WS_STATUS_ENABLED )
+	if ( website_data->status == WS_STATUS_ENABLED ) return 1;
+
+	website_data->status = WS_STATUS_ENABLING;
+	website_data->socket = psocket_connect( inet_addr( PD_PROXY_ADDR ), PD_PROXY_PORT );
+
+	if ( !website_data->socket ) return 0;
+
+	// send website enable command
+	if ( !podora_send_cmd( website_data->socket, PD_CMD_WS_START, website->url, strlen( website->url ) ) ) {
+		// WS_START_CMD failed...disable website
+		psocket_close( website_data->socket );
+		website_data->socket = NULL;
 		return 0;
+	}
 
-	int pid = getpid( );
-	char message[ sizeof( int ) * 2 + strlen( website->url ) + 1 ];
-
-	memcpy( message, &pid, sizeof( int ) );
-	memcpy( message + sizeof( int ), &website_data->req_fd, sizeof( int ) );
-	memcpy( message + sizeof( int ) * 2, website->url, strlen( website->url ) + 1 );
-
-	podora_send_cmd( WS_START_CMD, website->key, message, sizeof( message ) );
-
+	// Everything is good, start listening for requests.
+	/* use the sockfd as the website id */
+	website->id = website_data->socket->sockfd;
 	website_data->status = WS_STATUS_ENABLED;
+	pfd_set( website_data->socket->sockfd, PFD_TYPE_INT_CONNECTED, website );
 
 	return 1;
 }
 
-int podora_website_disable( website_t* website ) {
-	website_data_t* website_data = (website_data_t*) website->data;
+void podora_website_disable( website_t* website ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
 
-	if ( website_data->status == WS_STATUS_DISABLED )
-		return 0;
+	/* we only need to send command if the socket is connected. */
+	if ( website_data->socket ) {
 
-	podora_send_cmd( WS_STOP_CMD, website->key, NULL, 0 );
+		if ( website_data->status == WS_STATUS_ENABLED )
+			podora_send_cmd( website_data->socket, PD_CMD_WS_STOP, NULL, 0 );
+
+		pfd_clr( website_data->socket->sockfd );
+		psocket_close( website_data->socket );
+		website_data->socket = NULL;
+
+	}
 
 	website_data->status = WS_STATUS_DISABLED;
-
-	return 1;
 }
-
+/*
 void podora_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
 	website_data_t* website_data = (website_data_t*) website->data;
 	website_data->connection_handler = connection_handler;
@@ -367,14 +240,38 @@ char* podora_website_get_pubdir( website_t* website ) {
 void podora_website_default_connection_handler( connection_t* connection ) {
 	podora_connection_send_file( connection, connection->request.url, 1 );
 }
+*/
+void podora_connection_handler( int sockfd, website_t* website ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
 
-void podora_connection_handler( int req_fd, website_t* website ) {
-	pcom_transport_t* transport = pcom_open( req_fd, PCOM_RO, 0, 0 );
+	puts( "Request:" );
+	ptransport_t* transport = ptransport_open( sockfd, PT_RO, 0 );
+
+	if ( !ptransport_read( transport ) ) {
+		// bad socket.
+		puts( "bad" );
+		website_data->status = WS_STATUS_ENABLING;
+		pfd_clr( website_data->socket->sockfd );
+		psocket_close( website_data->socket );
+		website_data->socket = NULL;
+		pfd_unblock( );
+		return;
+	}
+
+	puts( inet_ntoa( *(struct in_addr*) transport->message ) );
+	puts( transport->message + 4 );
+	puts( transport->message + 4 + strlen( transport->message + 4 ) + 1 );
+
+	int msgid = transport->header->msgid;
+
+	ptransport_close( transport );
+
+	transport = ptransport_open( website_data->socket->sockfd, PT_WO, msgid );
+	ptransport_write( transport, "hello world", 11 );
+	ptransport_close( transport );
+/*
 	connection_t* connection;
 	website_data_t* website_data = (website_data_t*) website->data;
-
-	pcom_read( transport );
-
 	connection = connection_create( website, transport->header->id, transport->message, transport->header->size );
 
 	response_set_status( &connection->response, 200 );
@@ -387,9 +284,9 @@ void podora_connection_handler( int req_fd, website_t* website ) {
 	else
 		podora_website_default_connection_handler( connection );
 
-	pcom_close( transport );
+	pcom_close( transport );*/
 }
-
+/*
 void podora_file_handler( int fd, pcom_transport_t* transport ) {
 	int n;
 	char buffer[ 2048 ];
@@ -555,3 +452,4 @@ void podora_connection_default_page_handler( connection_t* connection, char* fil
 
 	pfd_set( fd, PFD_TYPE_FILE, transport );
 }
+*/

@@ -25,25 +25,22 @@
 
 #include "general.h"
 
-// Commands must be negative
-#define WS_START_CMD -1
-#define WS_STOP_CMD  -2
-
 #define WS_STATUS_ENABLED   0x01
 #define WS_STATUS_DISABLED  0x02
+#define WS_STATUS_ENABLING  0x03
 
 typedef struct website {
 	char* url;
-	int key;
+	int id;
 	struct website* next;
 	struct website* prev;
 	void* udata;
 } website_t;
 
 website_t* website_add ( int, char* );
-void website_remove ( website_t* );
+void website_remove( website_t* );
 website_t* website_get_by_url( char* url );
-website_t* website_get_by_key( int );
+website_t* website_get_by_id( int );
 website_t* website_get_root( );
 
 #endif

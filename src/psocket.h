@@ -48,14 +48,16 @@ typedef struct psocket {
 	SSL_CTX* ssl; // TODO
 	struct psocket* next;
 	struct psocket* prev;
+	void* udata;
 } psocket_t;
 
 psocket_t* psocket_open( in_addr_t addr, int portno );
 psocket_t* psocket_connect( in_addr_t addr, int portno );
 int psocket_init( in_addr_t addr, int portno, int type );
 psocket_t* psocket_create( int sockfd, in_addr_t addr, int portno );
-void psocket_remove( psocket_t* p );
+void psocket_close( psocket_t* p );
 psocket_t* psocket_get_by_info( in_addr_t addr, int portno );
 psocket_t* psocket_get_by_sockfd( int sockfd );
+psocket_t* psocket_get_root( );
 
 #endif

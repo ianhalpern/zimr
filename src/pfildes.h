@@ -28,6 +28,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <errno.h>
 #include <stdbool.h>
 
@@ -35,7 +36,7 @@
 #define PFD_TYPE_EXT_LISTEN    0x02
 #define PFD_TYPE_INT_CONNECTED 0x03
 #define PFD_TYPE_EXT_CONNECTED 0x04
-#define PFD_TYPE_FILE           0x05
+#define PFD_TYPE_FILE          0x05
 
 typedef struct {
 	int type;
@@ -51,5 +52,6 @@ void pfd_clr( int fd );
 void pfd_register_type( int type, void (*handler)( int, void* ) );
 void* pfd_udata( int fd );
 int pfd_select( );
+void pfd_unblock( );
 
 #endif
