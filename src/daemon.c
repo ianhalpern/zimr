@@ -60,6 +60,13 @@ static int readlockfile( ) {
 	return atoi( pidbuf );
 }
 
+void daemon_redirect_stdio( ) {
+	/* repoen the standard file descriptors */
+	freopen( "/dev/null", "w", stdout );
+	freopen( "/dev/null", "w", stderr );
+	freopen( "/dev/null", "r", stdin  );
+}
+
 int daemon_start( int flags ) {
 
 	printf( " * starting daemon ... " );
@@ -126,11 +133,8 @@ int daemon_start( int flags ) {
 
 	printf( "started.\n" );
 
-	if ( !FLAG_ISSET( D_KEEPSTDF, flags ) ) {
-		/* repoen the standard file descriptors */
-		freopen( "/dev/null", "w", stdout );
-		freopen( "/dev/null", "w", stderr );
-		freopen( "/dev/null", "r", stdin  );
+	if ( !FLAG_ISSET( D_KEEPSTDIO, flags ) ) {
+		daemon_redirect_stdio( );
 	}
 	return 1;
 }

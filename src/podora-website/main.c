@@ -30,8 +30,10 @@
 void empty_sighandler(){}
 
 int main( int argc, char *argv[ ] ) {
-	signal( SIGINT, empty_sighandler );
+	podora_init( );
 
+	signal( SIGINT, empty_sighandler );
+/*
 	website_t* website1 = podora_website_create( "podora" );
 	podora_website_enable( website1 );
 
@@ -40,10 +42,9 @@ int main( int argc, char *argv[ ] ) {
 
 	website_t* website3 = podora_website_create( "podora:8081" );
 	podora_website_enable( website3 );
+*/
 
-	podora_init( );
-
-	//assert( podora_cnf_load( ) );
+	assert( podora_cnf_load( ) );
 
 	podora_start( );
 

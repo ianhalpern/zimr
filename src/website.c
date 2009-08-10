@@ -24,10 +24,10 @@
 
 static website_t* root_website_node = NULL;
 
-website_t* website_add( int id, char* url ) {
+website_t* website_add( int sockfd, char* url ) {
 	website_t* w = (website_t* ) malloc( sizeof( website_t ) );
 
-	w->id = id;
+	w->sockfd = sockfd;
 	w->url = strdup( url );
 
 	w->next = root_website_node;
@@ -69,12 +69,12 @@ website_t* website_get_by_url( char* url ) {
 	return NULL;
 }
 
-website_t* website_get_by_id( int id ) {
+website_t* website_get_by_sockfd( int sockfd ) {
 	website_t* w = root_website_node;
 
 	while ( w != NULL ) {
 
-		if ( id == w->id )
+		if ( sockfd == w->sockfd )
 			return w;
 
 		w = w->next;

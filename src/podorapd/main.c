@@ -48,7 +48,7 @@ typedef struct {
 } conn_info_t;
 
 typedef struct {
-	int website_id;
+	int website_sockfd;
 	ptransport_t* transport;
 	int request_type;
 	int postlen;
@@ -141,15 +141,29 @@ int main( int argc, char* argv[ ] ) {
 	signal( SIGINT,  signal_handler );
 	signal( SIGQUIT, signal_handler );
 
-	// stop logging until ready
-	setlogmask( LOG_EMERG + 1 );
+	daemon_flags |= D_KEEPSTDIO;
 
+	// Setup syslog logging - see SETLOGMASK(3)
 #if defined(DEBUG)
-	daemon_flags |= D_KEEPSTDF;
+	setlogmask( LOG_UPTO( LOG_DEBUG ) );
+	openlog( DAEMON_NAME, LOG_CONS | LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_USER );
+#else
+	setlogmask( LOG_UPTO( LOG_INFO ) );
+	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
 #endif
 
+	syslog( LOG_INFO, "starting up" );
+
+	// daemonize
+	if ( make_daemon ) {
+		if ( !daemon_start( daemon_flags ) ) {
+			ret = EXIT_FAILURE;
+			goto quit;
+		}
+	}
+
 	// set the fle handlers for the different types of file desriptors
-	// used in pfd_start()'s select() loop
+	// used in pfd_select()
 	pfd_register_type( PFD_TYPE_INT_LISTEN,    PFD_TYPE_HDLR internal_connection_listener );
 	pfd_register_type( PFD_TYPE_EXT_LISTEN,    PFD_TYPE_HDLR external_connection_listener );
 	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR internal_connection_handler );
@@ -163,24 +177,9 @@ int main( int argc, char* argv[ ] ) {
 
 	pfd_set( socket->sockfd, PFD_TYPE_INT_LISTEN, NULL );
 
-	// daemonize
-	if ( make_daemon ) {
-		if ( !daemon_start( daemon_flags ) ) {
-			ret = EXIT_FAILURE;
-			goto quit;
-		}
-	}
-
-#if defined(DEBUG)
-// Setup syslog logging - see SETLOGMASK(3)
-	setlogmask( LOG_UPTO( LOG_DEBUG ) );
-	openlog( DAEMON_NAME, LOG_CONS | LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_USER );
-#else
-	setlogmask( LOG_UPTO( LOG_INFO ) );
-	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
+#ifndef DEBUG
+	daemon_redirect_stdio( );
 #endif
-
-	syslog( LOG_INFO, "starting up" );
 
 	// starts a select() loop and calls
 	// the associated file descriptor handlers
@@ -189,14 +188,13 @@ int main( int argc, char* argv[ ] ) {
 
 quit:
 	// cleanup
-	// pcom_destroy( res_fd );
 
 	if ( ret == EXIT_FAILURE ) {
-		printf( "exit: failure\n" );
-		syslog( LOG_INFO, "exiting. failure" );
+		puts( "exit: failure" );
+		syslog( LOG_INFO, "exit: failure" );
 	} else {
-		printf( "exit: success\n" );
-		syslog( LOG_INFO, "exiting. success" );
+		puts( "exit: success" );
+		syslog( LOG_INFO, "exit: success" );
 	}
 
 	closelog( );
@@ -212,7 +210,7 @@ char* get_status_message( char* buffer, int size ) {
 	while ( socket ) {
 		strcat( buffer, "  " );
 		inet_ntop( AF_INET, &socket->addr, buffer + strlen( buffer ), INET_ADDRSTRLEN );
-		sprintf( buffer + strlen( buffer ), ":%d\n", socket->portno );
+		sprintf( buffer + strlen( buffer ), ":%d (%d website(s) connected)\n", socket->portno, socket->n_open );
 		socket = socket->next;
 	}
 
@@ -271,10 +269,10 @@ int get_port_from_url( char* url ) {
 	return atoi( port_str );
 }
 
-int remove_website( int id ) {
+int remove_website( int sockfd ) {
 	website_t* website;
 
-	if ( !( website = website_get_by_id( id ) ) ) {
+	if ( !( website = website_get_by_sockfd( sockfd ) ) ) {
 		syslog( LOG_WARNING, "stop_website: tried to stop a nonexisting website" );
 		return 0;
 	}
@@ -295,7 +293,7 @@ int remove_website( int id ) {
 	return 1;
 }
 
-int start_website( char* url, int id ) {
+int start_website( char* url, int sockfd ) {
 	website_t* website;
 	website_data_t* website_data;
 
@@ -304,7 +302,7 @@ int start_website( char* url, int id ) {
 		return 0;
 	}
 
-	if ( !( website = website_add( id, url ) ) ) {
+	if ( !( website = website_add( sockfd, url ) ) ) {
 		syslog( LOG_ERR, "start_website: website_add() failed starting website \"%s\"", url );
 		return 0;
 	}
@@ -318,7 +316,7 @@ int start_website( char* url, int id ) {
 
 	if ( !website_data->socket ) {
 		syslog( LOG_ERR, "start_website: psocket_open() failed" );
-		remove_website( id );
+		remove_website( sockfd );
 		return 0;
 	}
 
@@ -370,7 +368,7 @@ void external_connection_handler( int sockfd, conn_info_t* conn_info ) {
 
 	req_info_t* req_info = conn_info->udata;
 
-	if ( req_info && !website_get_by_id( req_info->website_id ) )
+	if ( req_info && !website_get_by_sockfd( req_info->website_sockfd ) )
 		goto cleanup;
 
 	if ( ( len = read( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
@@ -379,7 +377,7 @@ cleanup:
 		if ( req_info ) {
 			if ( req_info->transport ) {
 				if ( PT_MSG_IS_FIRST( req_info->transport )
-				  || !website_get_by_id( req_info->website_id ) ) {
+				  || !website_get_by_sockfd( req_info->website_sockfd ) ) {
 					ptransport_free( req_info->transport );
 				} else {
 					ptransport_close( req_info->transport );
@@ -401,7 +399,7 @@ cleanup:
 		req_info = (req_info_t*) malloc( sizeof( req_info_t ) );
 		conn_info->udata = req_info;
 		req_info->transport = NULL;
-		req_info->website_id = -1;
+		req_info->website_sockfd = -1;
 		req_info->postlen = 0;
 
 		/* Get HTTP request type */
@@ -422,7 +420,7 @@ cleanup:
 
 		/* Set the website id so that furthur sections of this
 		   request can check if the website is still alive. */
-		req_info->website_id = website->id;
+		req_info->website_sockfd = website->sockfd;
 
 		/* Check the websites socket to make sure the request came in on
 		   the right socket. */
@@ -437,7 +435,7 @@ cleanup:
 		   website. The website's id is the internal file descriptor to
 		   send the request over and the msgid should be set to the
 		   external file descriptor to send the response back to. */
-		req_info->transport = ptransport_open( website->id, PT_WO, sockfd );
+		req_info->transport = ptransport_open( website->sockfd, PT_WO, sockfd );
 
 		struct hostent* hp;
 		hp = gethostbyaddr( (char*) &conn_info->addr.sin_addr.s_addr, sizeof( conn_info->addr.sin_addr.s_addr ), AF_INET );
@@ -494,7 +492,7 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 	if ( !ptransport_read( transport ) ) {
 
 		// if sockfd is a website, we need to remove it
-		if ( website_get_by_id( sockfd ) ) {
+		if ( website_get_by_sockfd( sockfd ) ) {
 			remove_website( sockfd );
 		}
 

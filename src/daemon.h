@@ -42,12 +42,12 @@
 #define D_LOCKFILE_PATH "daemon.pid"
 #endif
 
-#define D_KEEPSTDF    0x01
+#define D_KEEPSTDIO   0x01
 #define D_NOCD        0x02
 #define D_NOLOCKFILE  0x04
 #define D_NOLOCKCHECK 0x08
 
 int daemon_start( int flags );
 int daemon_stop( );
-
+void daemon_redirect_stdio( );
 #endif

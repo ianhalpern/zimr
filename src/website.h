@@ -31,7 +31,7 @@
 
 typedef struct website {
 	char* url;
-	int id;
+	int sockfd;
 	struct website* next;
 	struct website* prev;
 	void* udata;
@@ -40,7 +40,7 @@ typedef struct website {
 website_t* website_add ( int, char* );
 void website_remove( website_t* );
 website_t* website_get_by_url( char* url );
-website_t* website_get_by_id( int );
+website_t* website_get_by_sockfd( int );
 website_t* website_get_root( );
 
 #endif

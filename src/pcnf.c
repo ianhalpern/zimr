@@ -53,11 +53,9 @@ int pcnf_walk( yaml_document_t* document, int index, int depth ) {
 	return 1;
 }
 
-int pcnf_load_websites( yaml_document_t* document, int index ) {
+int pcnf_load_websites( pcnf_t* cnf, yaml_document_t* document, int index ) {
 	yaml_node_t* root = yaml_document_get_node( document, index );
 	int i, j;
-	podora_cnf_website_t website_cnf;
-	website_t* website;
 
 	if ( ! root || root->type != YAML_SEQUENCE_NODE )
 		return 0;
@@ -67,75 +65,71 @@ int pcnf_load_websites( yaml_document_t* document, int index ) {
 
 		if ( !website_node || website_node->type != YAML_MAPPING_NODE )
 			return 0;
-
-		website_cnf.url = NULL;
-		website_cnf.pubdir = NULL;
+		pcnf_website_t* website = (pcnf_website_t*) malloc( sizeof( pcnf_website_t ) );
+		website->url = NULL;
+		website->pubdir = NULL;
+		website->next = cnf->website_node;
+		cnf->website_node = website;
 
 		for ( j = 0; j < website_node->data.mapping.pairs.top - website_node->data.mapping.pairs.start; j++ ) {
 			yaml_node_t* attr_key = yaml_document_get_node( document, website_node->data.mapping.pairs.start[ j ].key );
 
 			if ( !attr_key || attr_key->type != YAML_SCALAR_NODE )
-				return 0;
+				break;
 
 			yaml_node_t* attr_val = yaml_document_get_node( document, website_node->data.mapping.pairs.start[ j ].value );
 			if ( ! attr_val )
-				return 0;
+				break;
 
 			// url
 			if ( strcmp( "url", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
-					return 0;
-				website_cnf.url = (char*) attr_val->data.scalar.value;
+					break;
+				website->url = strdup( (char*) attr_val->data.scalar.value );
 			}
 
 			// public directory
 			else if ( strcmp( "public directory", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
-					return 0;
-				website_cnf.pubdir = (char*) attr_val->data.scalar.value;
+					break;
+				website->pubdir = strdup( (char*) attr_val->data.scalar.value );
 			}
 
 		}
-
-		//if ( website_cnf.url )
-		//	website = podora_website_create( website_cnf.url );
-
-		//if ( website_cnf.pubdir )
-		//	podora_website_set_pubdir( website, website_cnf.pubdir );
-
-		//podora_website_enable( website );
-
 	}
 
 	return 1;
 }
 
-int pcnf_load( ) {
-	int ret = 1, i;
+pcnf_t* pcnf_load( ) {
+	pcnf_t* cnf = NULL;
+	int i;
 
-	FILE* cnf_file;
-	yaml_parser_t parser;
-	yaml_document_t document;
-
-	cnf_file = fopen( PD_WS_CONF_FILE, "rb" );
+	FILE* cnf_file = fopen( PD_WS_CONF_FILE, "rb" );
 	if ( ! cnf_file ) {
-		return 0;
+		return NULL;
 	}
 
+	yaml_parser_t parser;
 	if ( ! yaml_parser_initialize( &parser ) ) {
-		ret = 0;
-		goto quit;
+		fclose( cnf_file );
+		return NULL;
 	}
 
 	yaml_parser_set_input_file( &parser, cnf_file );
 
+	yaml_document_t document;
 	if ( ! yaml_parser_load( &parser, &document ) ) {
-		ret = 0;
-		goto quit;
+		yaml_parser_delete( &parser );
+		fclose( cnf_file );
+		return NULL;
 	}
 
+	// we don't need the parser or file anymore
+	yaml_parser_delete( &parser );
+	fclose( cnf_file );
+
 	if ( ! yaml_document_get_root_node( &document ) ) {
-		ret = 0;
 		goto quit;
 	}
 
@@ -143,32 +137,34 @@ int pcnf_load( ) {
 	yaml_node_t* root = yaml_document_get_node( &document, 1 );
 
 	if ( ! root || root->type != YAML_MAPPING_NODE ) {
-		ret = 0;
 		goto quit;
 	}
 
+	cnf = (pcnf_t*) malloc( sizeof( pcnf_t ) );
+	memset( cnf, 0, sizeof( pcnf_t ) );
 	for ( i = 0; i < root->data.mapping.pairs.top - root->data.mapping.pairs.start; i++ ) {
 		yaml_node_t* node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].key );
 
 		if ( ! node || node->type != YAML_SCALAR_NODE ) {
-			ret = 0;
-			goto quit;
+			pcnf_free( cnf );
+			cnf = NULL;
+			break;
 		}
 
 		if ( strcmp( "websites", (char*) node->data.scalar.value ) == 0 ) {
-			if ( ! pcnf_load_websites( &document, root->data.mapping.pairs.start[ i ].value ) ) {
-				ret = 0;
-				goto quit;
+			if ( ! pcnf_load_websites( cnf, &document, root->data.mapping.pairs.start[ i ].value ) ) {
+				pcnf_free( cnf );
+				cnf = NULL;
+				break;
 			}
 		}
 	}
 
 quit:
 	yaml_document_delete( &document );
-	yaml_parser_delete( &parser );
-
-	fclose( cnf_file );
-
-	return ret;
+	return cnf;
 }
 
+void pcnf_free( pcnf_t* cnf ) {
+	free( cnf );
+}

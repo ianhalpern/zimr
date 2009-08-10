@@ -24,12 +24,18 @@
 #define _PD_PCNF_H
 
 #include <yaml.h>
+#include "config.h"
 
-#include "website.h"
-
-typedef struct {
+typedef struct pcnf_website {
 	char* url;
 	char* pubdir;
-} podora_cnf_website_t;
+	struct pcnf_website* next;
+} pcnf_website_t;
 
+typedef struct {
+	pcnf_website_t* website_node;
+} pcnf_t;
+
+pcnf_t* pcnf_load( );
+void pcnf_free( pcnf_t* cnf );
 #endif
