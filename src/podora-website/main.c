@@ -33,16 +33,6 @@ int main( int argc, char *argv[ ] ) {
 	podora_init( );
 
 	signal( SIGINT, empty_sighandler );
-/*
-	website_t* website1 = podora_website_create( "podora" );
-	podora_website_enable( website1 );
-
-	website_t* website2 = podora_website_create( "podora:8080" );
-	podora_website_enable( website2 );
-
-	website_t* website3 = podora_website_create( "podora:8081" );
-	podora_website_enable( website3 );
-*/
 
 	assert( podora_cnf_load( ) );
 

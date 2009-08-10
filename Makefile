@@ -19,7 +19,7 @@ EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 EXECS       = podorapd podora-website podora
 TEST_EXECS  =
 SHARED_OBJS = libpodora.so
-PYMOD_OBJS  = #podora.so
+PYMOD_OBJS  = podora.so
 
 SRCDIR     = src
 LIB_SRCDIR = $(SRCDIR)/lib

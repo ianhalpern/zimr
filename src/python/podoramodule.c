@@ -386,7 +386,7 @@ typedef struct {
 
 static void pypodora_website_connection_handler( connection_t* _connection ) {
 
-	pypodora_website_t* website = (pypodora_website_t*) ( (website_data_t*) _connection->website->data )->udata;
+	pypodora_website_t* website = (pypodora_website_t*) ( (website_data_t*) _connection->website->udata )->udata;
 
 	pypodora_connection_t* connection = (pypodora_connection_t*) pypodora_connection_type.tp_new( &pypodora_connection_type, NULL, NULL );
 	connection->_connection = _connection;
@@ -414,7 +414,7 @@ static void pypodora_website_connection_handler( connection_t* _connection ) {
 }
 
 static void pypodora_website_dealloc( pypodora_website_t* self ) {
-	( (website_data_t*) self->_website->data )->udata = NULL;
+	( (website_data_t*) self->_website->udata )->udata = NULL;
 	podora_website_destroy( self->_website );
 	if ( self->connection_handler )
 		Py_DECREF( self->connection_handler );
@@ -434,7 +434,7 @@ static int pypodora_website_init( pypodora_website_t* self, PyObject* args, PyOb
 	PyArg_ParseTupleAndKeywords( args, kwargs, "s", kwlist, &url );
 	self->_website = podora_website_create( url );
 
-	( (website_data_t*) self->_website->data )->udata = self;
+	( (website_data_t*) self->_website->udata )->udata = self;
 
 	self->connection_handler = PyObject_GetAttrString( m, "defaultConnectionHandler" );
 	podora_website_set_connection_handler( self->_website, pypodora_website_connection_handler );
@@ -669,9 +669,7 @@ PyMODINIT_FUNC initpodora ( void ) {
 
 	Py_AtExit( &podora_shutdown );
 
-	if ( !podora_init( ) ) {
-		fprintf( stderr, "[fatal] initpodora: podora_init: podora failed to initialize\n" );
-	}
+	podora_init( );
 
 	return;
 }
