@@ -31,7 +31,7 @@
 
 typedef struct {
 	char name[ PARAM_NAME_MAX_LEN ];
-	char value[ PARAM_VALUE_MAX_LEN ];
+	char* value;
 } param_t;
 
 typedef struct {
@@ -39,7 +39,9 @@ typedef struct {
 	param_t list[ PARAMS_MAX_NUM ];
 } params_t;
 
-params_t params_parse_qs( char*, int );
+params_t* params_create( );
+void params_parse_qs( params_t* params, char* raw, int size );
 param_t* params_get_param( params_t* params, const char* name );
+void params_free( params_t* params );
 
 #endif

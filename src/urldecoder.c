@@ -288,7 +288,7 @@ char* url_decode( char* raw_url, char* buffer, int url_len ) {
 	url_ptr = url;
 
 	char* ptr;
-	char hex[ 2 ];
+	char hex[ 3 ];
 	unsigned int i;
 
 	*buffer = '\0';
@@ -300,7 +300,8 @@ char* url_decode( char* raw_url, char* buffer, int url_len ) {
 		if ( *ptr == '\0' || *( ptr + 1 ) == '\0' )
 			break;
 
-		memcpy( hex, ptr, 2 );
+		strncpy( hex, ptr, 2 );
+		hex[ 2 ] = '\0';
 		xtoi( hex, &i );
 		strcat( buffer, urlcodes[ i ] );
 		url_ptr = ptr + 2;

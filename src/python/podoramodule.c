@@ -127,7 +127,7 @@ static PyObject* pypodora_request_get_param( pypodora_request_t* self, PyObject*
 		return NULL;
 	}
 
-	param = params_get_param( &( (pypodora_request_t*) self )->_request->params, param_name );
+	param = params_get_param( ( (pypodora_request_t*) self )->_request->params, param_name );
 
 	if ( !param )
 		Py_RETURN_NONE;
@@ -230,6 +230,7 @@ static void pypodora_connection_dealloc( pypodora_connection_t* self ) {
 	Py_DECREF( self->response );
 	Py_DECREF( self->request );
 	Py_DECREF( self->website );
+	connection_free( self->_connection );
 	self->ob_type->tp_free( (PyObject*) self );
 }
 
@@ -247,10 +248,10 @@ static PyObject* pypodora_connection_send( pypodora_connection_t* self, PyObject
 }
 
 static PyObject* pypodora_connection_send_file( pypodora_connection_t* self, PyObject* args ) {
-	const char* filename;
+	const char* filename = self->_connection->request.url;
 	unsigned char use_pubdir = 1;
 
-	if ( PyArg_ParseTuple( args, "s|b", &filename, &use_pubdir ) ) {
+	if ( PyArg_ParseTuple( args, "|sb", &filename, &use_pubdir ) ) {
 		podora_connection_send_file( self->_connection, (char*) filename, use_pubdir );
 	} else {
 		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
@@ -602,7 +603,6 @@ static void pypodora_page_handler( connection_t* connection, const char* filepat
 			PyErr_SetString( PyExc_TypeError, "The request_handler attribute value must be callable" );
 			return;
 		}
-
 		podora_connection_send( connection, (void*) PyString_AsString( result ), strlen( PyString_AsString( result ) ) );
 
 		Py_DECREF( result );

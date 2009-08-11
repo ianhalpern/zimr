@@ -22,15 +22,20 @@
 
 #include "params.h"
 
-params_t params_parse_qs( char* raw, int size ) {
-	params_t params;
-	params.num = 0;
+params_t* params_create( ) {
+	params_t* params = (params_t*) malloc( sizeof( params_t ) );
+	params->num = 0;
+
+	return params;
+}
+
+void params_parse_qs( params_t* params, char* raw, int size ) {
 	param_t* param;
 	int len;
 
-	char* tmp = raw;
+	char* tmp;
 	while ( size > 0 ) {
-		param = &params.list[ params.num ];
+		param = &params->list[ params->num ];
 
 		// name
 		tmp = strstr( raw, "=" );
@@ -54,9 +59,8 @@ params_t params_parse_qs( char* raw, int size ) {
 		if ( !tmp || tmp - raw > size ) tmp = raw + size;
 
 		len = tmp - raw;
-		if ( len > sizeof( param->value ) )
-			len = sizeof( param->value );
 
+		param->value = (char*) malloc( len + 1 );
 		url_decode( raw, param->value, len );
 
 		size -= tmp - raw;
@@ -66,10 +70,8 @@ params_t params_parse_qs( char* raw, int size ) {
 			raw++;
 		}
 
-		params.num++;
+		params->num++;
 	}
-
-	return params;
 }
 
 param_t* params_get_param( params_t* params, const char* name ) {
@@ -81,4 +83,16 @@ param_t* params_get_param( params_t* params, const char* name ) {
 	}
 
 	return NULL;
+}
+
+void params_free( params_t* params ) {
+	int i;
+	param_t* param;
+
+	for ( i = 0; i < params->num; i++ ) {
+		param = &params->list[ i ];
+		free( param->value );
+	}
+
+	free( params );
 }

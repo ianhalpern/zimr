@@ -85,7 +85,6 @@
 #define PARAMS_MAX_NUM 32
 
 #define PARAM_NAME_MAX_LEN  128
-#define PARAM_VALUE_MAX_LEN 512
 
 /*************************/
 

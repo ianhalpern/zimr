@@ -23,6 +23,13 @@
 #include "podora.h"
 
 typedef struct {
+	int size;
+	char* data;
+} request_data_t;
+
+static request_data_t requests[ 100 ];
+
+typedef struct {
 	char page_type[ 10 ];
 	void (*page_handler)( connection_t*, const char*, void* );
 	void* udata;
@@ -269,21 +276,18 @@ char* podora_website_get_pubdir( website_t* website ) {
 }
 
 void podora_website_default_connection_handler( connection_t* connection ) {
-	podora_connection_send_file( connection, connection->request.url, 1 );
+	podora_connection_send_file( connection, connection->request.url, true );
+	connection_free( connection );
 }
 
 void podora_connection_handler( int sockfd, website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
-	puts( "Request:" );
 	ptransport_t* transport = ptransport_open( sockfd, PT_RO, 0 );
 
-	if ( !ptransport_read( transport )
-		/* TODO: after the || is only temporary until
-		   large requests are handled. */
-		 || !PT_MSG_IS_FIRST( transport ) ) {
+	if ( !ptransport_read( transport ) ) {
 		// bad socket.
-		puts( "bad" );
+		puts( "bad proxy socket...killing" );
 		website_data->status = WS_STATUS_ENABLING;
 		pfd_clr( website_data->socket->sockfd );
 		psocket_close( website_data->socket );
@@ -292,23 +296,42 @@ void podora_connection_handler( int sockfd, website_t* website ) {
 		return;
 	}
 
-	puts( inet_ntoa( *(struct in_addr*) transport->message ) );
-	puts( transport->message + 4 );
-	puts( transport->message + 4 + strlen( transport->message + 4 ) + 1 );
+	int msgid = transport->header->msgid;
+	if ( PT_MSG_IS_FIRST( transport ) ) {
+		requests[ msgid ].data = strdup( "" );
+		requests[ msgid ].size = 0;
+	}
 
-	connection_t* connection;
-	connection = connection_create( website, transport->header->msgid, transport->message, transport->header->size );
+	char* tmp;
+	tmp = requests[ msgid ].data;
+	requests[ msgid ].data = (char*) malloc( transport->header->size + requests[ msgid ].size );
+	memset( requests[ msgid ].data, 0, transport->header->size + requests[ msgid ].size );
+	memcpy( requests[ msgid ].data, tmp, requests[ msgid ].size );
+	memcpy( requests[ msgid ].data + requests[ msgid ].size, transport->message, transport->header->size );
+	requests[ msgid ].size =  transport->header->size + requests[ msgid ].size;
+	free( tmp );
 
-	// start optimistically
-	response_set_status( &connection->response, 200 );
-	// To ensure thier position at the top of the headers
-	headers_set_header( &connection->response.headers, "Date", "" );
-	headers_set_header( &connection->response.headers, "Server", "" );
+	if ( PT_MSG_IS_LAST( transport ) ) {
+		connection_t* connection;
+		connection = connection_create( website, msgid, requests[ msgid ].data, requests[ msgid ].size );
 
-	if ( website_data->connection_handler )
-		website_data->connection_handler( connection );
-	else
-		podora_website_default_connection_handler( connection );
+		printf( "%s %s %s\n",
+			inet_ntoa( connection->ip ),
+			connection->hostname,
+			connection->request.url
+		);
+
+		// start optimistically
+		response_set_status( &connection->response, 200 );
+		// To ensure thier position at the top of the headers
+		headers_set_header( &connection->response.headers, "Date", "" );
+		headers_set_header( &connection->response.headers, "Server", "" );
+
+		if ( website_data->connection_handler )
+			website_data->connection_handler( connection );
+		else
+			podora_website_default_connection_handler( connection );
+	}
 
 	ptransport_close( transport );
 }
@@ -377,7 +400,6 @@ void podora_connection_send( connection_t* connection, void* message, int size )
 
 	ptransport_write( transport, (void*) message, size );
 	ptransport_close( transport );
-	connection_free( connection );
 }
 
 void podora_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir ) {
@@ -451,7 +473,6 @@ void podora_connection_send_error( connection_t* connection ) {
 
 	ptransport_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
 	ptransport_close( transport );
-	connection_free( connection );
 }
 
 void podora_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata ) {
@@ -487,7 +508,6 @@ void podora_connection_default_page_handler( connection_t* connection, char* fil
 
 	podora_connection_send_status( transport, connection );
 	podora_connection_send_headers( transport, connection );
-	connection_free( connection );
 
 	pfd_set( fd, PFD_TYPE_FILE, transport );
 }

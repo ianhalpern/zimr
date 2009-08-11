@@ -71,6 +71,8 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	connection->website = website;
 	connection->sockfd  = sockfd;
 	connection->udata   = NULL;
+	connection->request.post_body = NULL;
+	connection->request.params = params_create( );
 
 	memcpy( &connection->ip, raw, sizeof( connection->ip ) );
 	raw += sizeof( connection->ip );
@@ -114,7 +116,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	if ( tmp[ 0 ] == '?' ) {
 		raw = tmp + 1;
 		tmp = strstr( tmp, " " );
-		connection->request.params = params_parse_qs( raw, tmp - raw );
+		params_parse_qs( connection->request.params, raw, tmp - raw );
 		raw = tmp + 1;
 	} else
 		raw = strstr( tmp, " " ) + 1;
@@ -137,11 +139,17 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 		connection->cookies = cookies_parse( "" );
 
 	// body
-	memset( connection->request.post_body, 0, sizeof( connection->request.post_body ) );
 	if ( connection->request.type == HTTP_POST_TYPE ) {
 		if ( ( tmp = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
+			connection->request.post_body = (char*) malloc( size - (long) ( tmp - start ) );
+			memset( connection->request.post_body, 0, size - (long) ( tmp - start ) );
 			tmp += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
 			strncpy( connection->request.post_body, tmp, size - (long) ( tmp - start ) );
+			header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
+
+			if ( strcmp( header->value, "application/x-www-form-urlencoded" ) == 0 ) {
+				params_parse_qs( connection->request.params, connection->request.post_body, size - (long) ( tmp - start ) );
+			}
 		}
 	}
 
@@ -151,6 +159,9 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 }
 
 void connection_free( connection_t* connection ) {
+	params_free( connection->request.params );
+	if ( connection->request.post_body )
+		free( connection->request.post_body );
 	free( connection );
 }
 

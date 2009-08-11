@@ -34,9 +34,9 @@
 typedef struct {
 	char type;
 	char url[ 512 ];
-	char post_body[ 1024 ];
+	char* post_body;
 	headers_t headers;
-	params_t params;
+	params_t* params;
 } request_t;
 
 typedef struct {
