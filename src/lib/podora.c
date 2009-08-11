@@ -38,9 +38,6 @@ typedef struct {
 static int page_handler_count = 0;
 static page_handler_t page_handlers[ 100 ];
 
-static int default_pages_count = 1;
-static char default_pages[ 100 ][ 100 ] = { "default.html" };
-
 const char* podora_version( ) {
 	return PODORA_VERSION;
 }
@@ -187,7 +184,8 @@ website_t* podora_website_create( char* url ) {
 	website_data->status = WS_STATUS_DISABLED;
 	website_data->connection_handler = NULL;
 	website_data->conn_tries = 0;
-
+	website_data->default_pages_count = 0;
+	podora_website_insert_default_page( website, "default.html", 0 );
 	return website;
 }
 
@@ -275,7 +273,27 @@ char* podora_website_get_pubdir( website_t* website ) {
 	return website_data->pubdir;
 }
 
-void podora_website_default_connection_handler( connection_t* connection ) {
+void podora_website_insert_default_page( website_t* website, const char* default_page, int pos ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
+
+	if ( pos < 0 )
+		pos = website_data->default_pages_count + pos + 1;
+
+	if ( pos > website_data->default_pages_count )
+		pos = website_data->default_pages_count;
+	else if ( pos < 0 )
+		pos = 0;
+
+	int i;
+	for ( i = website_data->default_pages_count; i > pos; i-- ) {
+		strcpy( website_data->default_pages[ i ], website_data->default_pages[ i - 1 ] );
+	}
+
+	strcpy( website_data->default_pages[ pos ], default_page );
+	website_data->default_pages_count++;
+}
+
+static void podora_website_default_connection_handler( connection_t* connection ) {
 	podora_connection_send_file( connection, connection->request.url, true );
 	connection_free( connection );
 }
@@ -407,11 +425,12 @@ void podora_connection_send_file( connection_t* connection, char* filepath, bool
 	char full_filepath[ 256 ] = "";
 	char* ptr;
 	int i;
+	website_data_t* website_data = connection->website->udata;
 
 	// if the filepath is relative to the specified public directory, initialize
 	// the filepath with the public directory.
 	if ( use_pubdir )
-		strcpy( full_filepath, ((website_data_t*) connection->website->udata)->pubdir );
+		strcpy( full_filepath, website_data->pubdir );
 
 	strcat( full_filepath, filepath );
 
@@ -428,8 +447,8 @@ void podora_connection_send_file( connection_t* connection, char* filepath, bool
 
 		// search for the directory default page
 		ptr = full_filepath + strlen( full_filepath );
-		for ( i = 0; i < default_pages_count; i++ ) {
-			strcpy( ptr, default_pages[ i ] );
+		for ( i = 0; i < website_data->default_pages_count; i++ ) {
+			strcpy( ptr, website_data->default_pages[ i ] );
 			if ( !stat( full_filepath, &file_stat ) )
 				break; // default file exists...break loop
 		}

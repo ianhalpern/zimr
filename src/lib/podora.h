@@ -46,6 +46,8 @@ typedef struct website_data {
 	void (*connection_handler)( connection_t* connection );
 	void* udata;
 	int conn_tries;
+	int default_pages_count;
+	char default_pages[ 100 ][ 100 ];
 } website_data_t;
 
 const char* podora_version( );
@@ -68,7 +70,7 @@ void  podora_website_set_pubdir( website_t* website, const char* pubdir );
 char* podora_website_get_pubdir( website_t* website );
 void  podora_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t* ) );
 void  podora_website_unset_connection_handler( website_t* website );
-void  podora_website_default_connection_handler( connection_t* connection );
+void podora_website_insert_default_page( website_t* website, const char* default_page, int pos );
 
 void podora_connection_send_status( ptransport_t* transport, connection_t* connection );
 void podora_connection_send_headers( ptransport_t* transport, connection_t* connection );

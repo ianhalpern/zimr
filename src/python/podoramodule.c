@@ -453,6 +453,21 @@ static PyObject* pypodora_website_disable( pypodora_website_t* self ) {
 	Py_RETURN_NONE;
 }
 
+static PyObject* pypodora_website_insert_default_page( pypodora_website_t* self, PyObject* args, PyObject* kwargs ) {
+	static char* kwlist[ ] = { "default_page", "pos", NULL };
+	const char* default_page = "";
+	int pos = -1;
+
+	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|i", kwlist, &default_page, &pos ) ) {
+		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+		return NULL;
+	}
+
+	podora_website_insert_default_page( self->_website, default_page, pos );
+
+	Py_RETURN_NONE;
+}
+
 static PyObject* pypodora_website_get_public_directory( pypodora_website_t* self, void* closure ) {
 	if ( !podora_website_get_pubdir( self->_website ) ) Py_RETURN_NONE;
 	return PyString_FromString( podora_website_get_pubdir( self->_website ) );
@@ -499,10 +514,10 @@ static int pypdora_website_set_connection_handler( pypodora_website_t* self, PyO
 	return 0;
 }
 
-
 static PyMethodDef pypodora_website_methods[ ] = {
 	{ "enable", (PyCFunction) pypodora_website_enable, METH_NOARGS, "Start the website." },
 	{ "disable", (PyCFunction) pypodora_website_disable, METH_NOARGS, "Stop the website." },
+	{ "insertDefaultPage", (PyCFunction) pypodora_website_insert_default_page, METH_VARARGS | METH_KEYWORDS, "Stop the website." },
 	{ NULL }  /* Sentinel */
 };
 
@@ -588,7 +603,7 @@ static PyObject* pypodora_default_connection_handler( PyObject* self, PyObject* 
 		return NULL;
 	}
 
-	podora_website_default_connection_handler( connection->_connection );
+	podora_connection_send_file( connection->_connection, connection->_connection->request.url, true );
 	Py_RETURN_NONE;
 }
 
