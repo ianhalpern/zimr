@@ -20,25 +20,24 @@
  *
  */
 
-#include <stdio.h>
+#ifndef _PD_PDERR_H
+#define _PD_PDERR_H
+
 #include <stdlib.h>
-#include <string.h>
-#include <signal.h>
 
-#include "podora.h"
+#define PD_OK       0
+#define PDERR_FAILED -1
+#define PDERR_EXISTS -2
+#define PDERR_PSOCK_CREAT -3
+#define PDERR_PSOCK_BIND  -4
+#define PDERR_PSOCK_LISTN -5
+#define PDERR_PSOCK_CONN  -6
+#define PDERR_SOCK_CLOSED -7
+#define PDERR_LAST -8
 
-void empty_sighandler(){}
+int pderrno;
 
-int main( int argc, char *argv[ ] ) {
-	podora_init( );
+const char* pdstrerror( int pderrno );
+void pderr( int pderrno );
 
-	signal( SIGINT, empty_sighandler );
-
-	assert( podora_cnf_load( ) );
-
-	podora_start( );
-
-	podora_shutdown( );
-	return 0;
-}
-
+#endif

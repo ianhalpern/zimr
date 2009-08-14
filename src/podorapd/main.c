@@ -34,6 +34,8 @@
 #include "website.h"
 #include "psocket.h"
 #include "daemon.h"
+#include "pderr.h"
+#include "pcnf.h"
 
 #define DAEMON_NAME "podorapd"
 
@@ -315,7 +317,7 @@ int start_website( char* url, int sockfd ) {
 	website_data->socket = psocket_open( INADDR_ANY, get_port_from_url( website->url ) );
 
 	if ( !website_data->socket ) {
-		syslog( LOG_ERR, "start_website: psocket_open() failed" );
+		syslog( LOG_ERR, "start_website: psocket_open(): %s: %s", pdstrerror( pderrno ), strerror( errno ) );
 		remove_website( sockfd );
 		return 0;
 	}
@@ -402,6 +404,9 @@ cleanup:
 		req_info->website_sockfd = -1;
 		req_info->postlen = 0;
 
+		struct hostent* hp;
+		hp = gethostbyaddr( (char*) &conn_info->addr.sin_addr.s_addr, sizeof( conn_info->addr.sin_addr.s_addr ), AF_INET );
+
 		/* Get HTTP request type */
 		if ( startswith( buffer, HTTP_GET ) )
 			req_info->request_type = HTTP_GET_TYPE;
@@ -411,10 +416,11 @@ cleanup:
 
 		/* Find website for request from HTTP header */
 		website_t* website;
-		int urlbuf[ PT_BUF_SIZE ];
-		get_url_from_http_header( (char*) urlbuf, buffer );
-		if ( !( website = website_get_by_url( (char*) urlbuf ) ) ) {
-			syslog( LOG_WARNING, "external_connection_handler: no website to service request %s", ptr );
+		char urlbuf[ PT_BUF_SIZE ];
+		get_url_from_http_header( urlbuf, buffer );
+		if ( !( website = website_get_by_url( urlbuf ) ) ) {
+			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
+			  inet_ntoa( conn_info->addr.sin_addr ), hp->h_name, urlbuf );
 			goto cleanup;
 		}
 
@@ -427,7 +433,8 @@ cleanup:
 		website_data_t* website_data = website->udata;
 
 		if ( website_data->socket->sockfd != conn_info->fd ) {
-			syslog( LOG_WARNING, "external_connection_handler: no website to service request %s", ptr );
+			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
+			  inet_ntoa( conn_info->addr.sin_addr ), hp->h_name, urlbuf );
 			goto cleanup;
 		}
 
@@ -436,9 +443,6 @@ cleanup:
 		   send the request over and the msgid should be set to the
 		   external file descriptor to send the response back to. */
 		req_info->transport = ptransport_open( website->sockfd, PT_WO, sockfd );
-
-		struct hostent* hp;
-		hp = gethostbyaddr( (char*) &conn_info->addr.sin_addr.s_addr, sizeof( conn_info->addr.sin_addr.s_addr ), AF_INET );
 
 		// Write the ip address and hostname of the request
 		ptransport_write( req_info->transport, (void*) &conn_info->addr.sin_addr, sizeof( conn_info->addr.sin_addr ) );

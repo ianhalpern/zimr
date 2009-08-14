@@ -33,6 +33,7 @@
 #include <signal.h>
 #include <fcntl.h>
 
+#include "general.h"
 #include "config.h"
 
 // to change the lockfile path

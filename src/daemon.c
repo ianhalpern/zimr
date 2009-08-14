@@ -147,26 +147,14 @@ int daemon_stop( ) {
 
 	if ( !pid ) {
 		printf( "failed: no daemon running\n" );
-		return 0;
+		return false;
 	}
 
-	if ( kill( pid, SIGTERM ) != 0 ) { // process not running
+	if ( !stopproc( pid ) ) {
 		printf( "failed: %s\n", strerror( errno ) );
-		return 0;
-	}
-
-	sleep( 1 );
-
-	if ( kill( pid, 0 ) != -1 ) { // process still running, not dead
-		printf( "failed: did not die\n" );
-		return 0;
-	}
-
-	if ( errno != ESRCH ) {// failed on error other than nonexistant pid
-		printf( "failed: %s\n", strerror( errno ) );
-		return 0;
+		return false;
 	}
 
 	printf( "stopped.\n" );
-	return 1;
+	return true;
 }

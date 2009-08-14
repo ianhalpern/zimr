@@ -684,7 +684,7 @@ PyMODINIT_FUNC initpodora ( void ) {
 
 	Py_AtExit( &podora_shutdown );
 
-	podora_init( );
+	podora_init( "" );
 
 	return;
 }

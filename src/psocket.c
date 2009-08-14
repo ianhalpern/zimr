@@ -54,7 +54,7 @@ int psocket_init( in_addr_t addr, int portno, int type ) {
 	int on = 1; // used by setsockopt
 
 	if ( sockfd < 0 ) {
-		perror( "[error] psocket_open: socket() failed" );
+		pderr( PDERR_PSOCK_CREAT );
 		return -1;
 	}
 
@@ -68,18 +68,18 @@ int psocket_init( in_addr_t addr, int portno, int type ) {
 		setsockopt( sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof( on ) );
 
 		if ( bind( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
-			perror( "[error] psocket_open: bind() failed" );
+			pderr( PDERR_PSOCK_BIND );
 			close( sockfd );
 			return -1;
 		}
 
 		if ( listen( sockfd, PSOCK_N_PENDING ) < 0 ) {
-			perror( "[error] psocket_open: listen() failed" );
+			pderr( PDERR_PSOCK_LISTN );
 			return -1;
 		}
 	} else if ( type == PSOCK_CONNECT ) {
 		if ( connect( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
-			perror( "[error] psocket_open: connect() failed" );
+			pderr( PDERR_PSOCK_CONN );
 			return -1;
 		}
 	} else {

@@ -46,7 +46,11 @@ const char* podora_build_date( ) {
 	return BUILD_DATE;
 }
 
-void podora_init( ) {
+static void empty_signal(){}
+
+bool podora_init( ) {
+
+	signal( SIGTERM, empty_signal );
 
 	// Setup syslog logging - see SETLOGMASK(3)
 #if defined(DEBUG)
@@ -61,18 +65,25 @@ void podora_init( ) {
 	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR podora_connection_handler );
 	pfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR podora_file_handler );
 
+	syslog( LOG_INFO, "initialized." );
+	return true;
 }
 
 void podora_shutdown( ) {
 	while ( website_get_root( ) ) {
 		podora_website_destroy( website_get_root( ) );
 	}
+	syslog( LOG_INFO, "shutdown." );
 }
 
 void podora_start( ) {
 	int timeout = 0;
 	website_t* website;
 	website_data_t* website_data;
+
+	// TODO: also check to see if there are any enabled websites.
+	if ( !website_get_root( ) )
+		syslog( LOG_WARNING, "podora_start() failed: No websites created" );
 
 	do {
 		timeout = 0; // reset timeout value
@@ -88,25 +99,29 @@ void podora_start( ) {
 				/* connect to the Podora Daemon Proxy for routing external
 				   requests or commands to this process. */
 				if ( !podora_website_enable( website ) ) {
-					printf( "could not connect to proxy, " );
+					if ( pderrno == PDERR_FAILED )
+						website_data->conn_tries = PD_NUM_PROXY_DEATH_RETRIES - 1; // we do not want to retry
 
-					if ( PD_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries ) {
+					if ( website_data->conn_tries == 0 )
+						syslog( LOG_WARNING, "%s could not connect to proxy...will retry.", website->url );
+
+					if ( PD_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries )
 						timeout = PD_PROXY_DEATH_RETRY_DELAY;
-						puts( "retrying..." );
-					}
 
 					/* giving up ... */
 					else {
-						puts( "giving up." );
-						podora_website_disable( website );
-						//podora_website_destroy( website );
+						syslog( LOG_ERR, "\"%s\" is destroying: %s", website->url, pdstrerror( pderrno ) );
+						//podora_website_disable( website );
+						podora_website_destroy( website );
 					}
 
 				}
 
 				/* successfully connected to Podora Daemon Proxy, reset number of retries */
-				else
+				/*else {
+					syslog( LOG_INFO, "%s is enabled!", website->url );
 					website_data->conn_tries = 0;
+				}*/
 			}
 
 			website = website->next;
@@ -116,15 +131,16 @@ void podora_start( ) {
 
 }
 
-int podora_send_cmd( psocket_t* socket, int cmd, void* message, int size ) {
+bool podora_send_cmd( psocket_t* socket, int cmd, void* message, int size ) {
 
-	int ret = 1;
+	int ret = true;
 	ptransport_t* transport;
 
 	transport = ptransport_open( socket->sockfd, PT_WO, cmd );
 
 	if ( ptransport_write( transport, message, size ) <= 0 ) {
-		ret = 0;
+		pderr( PDERR_SOCK_CLOSED );
+		ret = false;
 		goto quit;
 	}
 
@@ -133,13 +149,14 @@ int podora_send_cmd( psocket_t* socket, int cmd, void* message, int size ) {
 	transport = ptransport_open( socket->sockfd, PT_RO, 0 );
 
 	if ( ptransport_read( transport ) <= 0 ) {
-		ret = 0;
+		pderr( PDERR_SOCK_CLOSED );
+		ret = false;
 		goto quit;
 	}
 
 	if ( strcmp( "OK", transport->message ) != 0 ) {
-		printf( "command failed %s\n", (char*) transport->message );
-		ret = 0;
+		pderr( PDERR_FAILED );
+		ret = false;
 	}
 
 quit:
@@ -148,7 +165,7 @@ quit:
 }
 
 int podora_cnf_load( ) {
-	pcnf_t* cnf = pcnf_load( );
+	pcnf_app_t* cnf = pcnf_app_load( );
 	if ( !cnf ) return 0;
 
 	pcnf_website_t* website_cnf = cnf->website_node;
@@ -165,7 +182,7 @@ int podora_cnf_load( ) {
 		website_cnf = website_cnf->next;
 	}
 
-	pcnf_free( cnf );
+	pcnf_app_free( cnf );
 	return 1;
 }
 
@@ -183,7 +200,7 @@ website_t* podora_website_create( char* url ) {
 	website_data->pubdir = strdup( "./" );
 	website_data->status = WS_STATUS_DISABLED;
 	website_data->connection_handler = NULL;
-	website_data->conn_tries = 0;
+	website_data->conn_tries = PD_NUM_PROXY_DEATH_RETRIES - 1;
 	website_data->default_pages_count = 0;
 	podora_website_insert_default_page( website, "default.html", 0 );
 	return website;
@@ -201,22 +218,28 @@ void podora_website_destroy( website_t* website ) {
 	website_remove( website );
 }
 
-int podora_website_enable( website_t* website ) {
+bool podora_website_enable( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
-	if ( website_data->status == WS_STATUS_ENABLED ) return 1;
+	if ( website_data->status == WS_STATUS_ENABLED ) {
+		pderr( PDERR_EXISTS );
+		return false;
+	}
 
 	website_data->status = WS_STATUS_ENABLING;
 	website_data->socket = psocket_connect( inet_addr( PD_PROXY_ADDR ), PD_PROXY_PORT );
 
-	if ( !website_data->socket ) return 0;
+	if ( !website_data->socket ) {
+		pderr( PDERR_PSOCK_CONN );
+		return false;
+	}
 
 	// send website enable command
 	if ( !podora_send_cmd( website_data->socket, PD_CMD_WS_START, website->url, strlen( website->url ) ) ) {
-		// WS_START_CMD failed...disable website
+		// WS_START_CMD failed...close socket
 		psocket_close( website_data->socket );
 		website_data->socket = NULL;
-		return 0;
+		return false;
 	}
 
 	// Everything is good, start listening for requests.
@@ -225,7 +248,9 @@ int podora_website_enable( website_t* website ) {
 	website_data->status = WS_STATUS_ENABLED;
 	pfd_set( website_data->socket->sockfd, PFD_TYPE_INT_CONNECTED, website );
 
-	return 1;
+	syslog( LOG_INFO, "%s is enabled!", website->url );
+	website_data->conn_tries = 0;
+	return true;
 }
 
 void podora_website_disable( website_t* website ) {
@@ -305,7 +330,7 @@ void podora_connection_handler( int sockfd, website_t* website ) {
 
 	if ( !ptransport_read( transport ) ) {
 		// bad socket.
-		puts( "bad proxy socket...killing" );
+		pderr( PDERR_SOCK_CLOSED );
 		website_data->status = WS_STATUS_ENABLING;
 		pfd_clr( website_data->socket->sockfd );
 		psocket_close( website_data->socket );

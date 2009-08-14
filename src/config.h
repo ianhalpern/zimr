@@ -26,12 +26,13 @@
 #define FLAG_ISSET( flag, flags ) ( (flag) & (flags) )
 
 #define D_LOCKFILE_PATH "/tmp/podorapd.pid" // used by daemon.c
-#define PD_WS_CONF_FILE "podora.cnf"
+#define PD_APP_CNF_FILE "podora.cnf"
+#define PD_USR_STATE_FILE "~/.podora.state"
 
 #define PD_PROXY_ADDR "127.0.0.1"
 #define PD_PROXY_PORT 8888
 
-#define PD_NUM_PROXY_DEATH_RETRIES 5
+#define PD_NUM_PROXY_DEATH_RETRIES 1000
 #define PD_PROXY_DEATH_RETRY_DELAY 2
 
 /******* PD_CMD's *********/
@@ -40,6 +41,7 @@
 #define PD_CMD_WS_START  -1
 #define PD_CMD_WS_STOP   -2
 #define PD_CMD_STATUS    -3
+#define PD_CMD_APP_HELLO -4
 
 /**************************/
 

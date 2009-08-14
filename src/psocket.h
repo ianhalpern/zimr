@@ -36,6 +36,7 @@
 #include <openssl/ssl.h>
 
 #include "config.h"
+#include "pderr.h"
 
 #define PSOCK_LISTEN  0x01
 #define PSOCK_CONNECT 0x02

@@ -28,6 +28,7 @@
 #include <syslog.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #include "website.h"
 #include "ptransport.h"
@@ -35,6 +36,7 @@
 #include "connection.h"
 #include "mime.h"
 #include "pcnf.h"
+#include "pderr.h"
 
 #define DAEMON_NAME "podora-website"
 #define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
@@ -53,18 +55,19 @@ typedef struct website_data {
 const char* podora_version( );
 const char* podora_build_date( );
 
-void podora_init( );
+bool podora_init( );
 int  podora_cnf_load( );
 void podora_start( );
 void podora_shutdown( );
-int  podora_send_cmd( psocket_t* socket, int cmd, void* message, int size );
+bool podora_send_hello( );
+bool podora_send_cmd( psocket_t* socket, int cmd, void* message, int size );
 
 void podora_connection_handler( int sockfd, website_t* website );
 void podora_file_handler( int fd, ptransport_t* transport );
 
 website_t* podora_website_create( char* url );
 void  podora_website_destroy( website_t* website );
-int   podora_website_enable( website_t* website );
+bool  podora_website_enable( website_t* website );
 void  podora_website_disable( website_t* website );
 void  podora_website_set_pubdir( website_t* website, const char* pubdir );
 char* podora_website_get_pubdir( website_t* website );

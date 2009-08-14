@@ -158,3 +158,40 @@ int xtoi( const char* xs, unsigned int* result ) {
 	 // Nothing to convert
 	 return 1;
 }
+
+char* expand_tilde( char* path, char* buffer, int size ) {
+	*buffer = 0;
+	if ( *path != '~' ) {
+		if ( strlen( path ) > size ) return NULL;
+		strcpy( buffer, path );
+		return buffer;
+	}
+
+	char* home = getenv( "HOME" );
+	if ( strlen( home ) + strlen( path + 1 ) > size ) return NULL;
+
+	strcat( buffer, home );
+	strcat( buffer, path + 1 );
+
+	return buffer;
+}
+
+bool stopproc( pid_t pid ) {
+
+	if ( kill( pid, SIGTERM ) != 0 ) { // process not running
+		return false;
+	}
+
+	sleep( 1 );
+
+	if ( kill( pid, 0 ) != -1 ) { // process still running, not dead
+		errno = EBUSY;
+		return false;
+	}
+
+	if ( errno != ESRCH ) {// failed on error other than nonexistant pid
+		return false;
+	}
+
+	return true;
+}

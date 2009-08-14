@@ -30,6 +30,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <stdbool.h>
+#include <errno.h>
 
 #include "config.h"
 
@@ -39,6 +41,8 @@ void wait_for_kill( );
 int startswith( const char*, const char* );
 char* normalize( char* normpath, const char* path );
 int xtoi( const char* xs, unsigned int* result );
+char* expand_tilde( char* path, char* buffer, int size );
+bool stopproc( pid_t pid );
 
 #endif
 

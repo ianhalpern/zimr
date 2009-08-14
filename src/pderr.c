@@ -20,25 +20,27 @@
  *
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
+#include "pderr.h"
 
-#include "podora.h"
+static const char* errorstrings[ ] = {
+/* PD_OK */				"OK",
+/* PDERR_FAILED  */		"Failed",
+/* PDERR_EXISTS  */		"Already Exists",
+/* PDERR_PSOCK_CREAT */	"Could not create socket",
+/* PDERR_PSOCK_BIND  */	"Could not bind to socket",
+/* PDERR_PSOCK_LISTN */	"Could not listen on socket",
+/* PDERR_PSOCK_CONN  */	"Could not connect to socket",
+/* PDERR_SOCK_CLOSED */	"Connection Closed"
+};
 
-void empty_sighandler(){}
-
-int main( int argc, char *argv[ ] ) {
-	podora_init( );
-
-	signal( SIGINT, empty_sighandler );
-
-	assert( podora_cnf_load( ) );
-
-	podora_start( );
-
-	podora_shutdown( );
-	return 0;
+const char* pdstrerror( int my_pderrno ) {
+	if ( my_pderrno > 0 || my_pderrno <= PDERR_LAST )
+		return "";
+	return errorstrings[ abs( my_pderrno ) ];
 }
 
+void pderr( int my_pderrno ) {
+	if ( my_pderrno > 0 || my_pderrno <= PDERR_LAST )
+		return;
+	pderrno = my_pderrno;
+}
