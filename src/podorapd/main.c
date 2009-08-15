@@ -147,6 +147,7 @@ int main( int argc, char* argv[ ] ) {
 
 	// Setup syslog logging - see SETLOGMASK(3)
 #if defined(DEBUG)
+	daemon_flags |= D_NOCD;
 	setlogmask( LOG_UPTO( LOG_DEBUG ) );
 	openlog( DAEMON_NAME, LOG_CONS | LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_USER );
 #else

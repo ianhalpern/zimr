@@ -27,14 +27,25 @@
 
 #include "podora.h"
 
+
+/*int die() {
+
+        char *err = NULL;
+        strcpy(err, "gonner");
+        return 0;
+}*/
+
 void empty_sighandler(){}
 
 int main( int argc, char *argv[ ] ) {
 	podora_init( );
 
+	signal( SIGTERM, empty_sighandler );
 	signal( SIGINT, empty_sighandler );
 
 	assert( podora_cnf_load( ) );
+
+//	die( );
 
 	podora_start( );
 

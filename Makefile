@@ -1,10 +1,10 @@
 CC          = gcc -Wall
 CFLAGS      = -c -fPIC
 LDFLAGS     =
-DBFLAGS     = -ggdb -O0 -pg
+DBFLAGS     = -ggdb -g -O0 -pg
 TARGET_ARCH =
 PTHREAD     = -pthread
-DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPODORA_VERSION=\"$(VERNUM)\"
+DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPODORA_VERSION="\"$(VERSION)\""
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions -I/usr/include/python$(PYVERSION)
@@ -25,7 +25,7 @@ SRCDIR     = src
 LIB_SRCDIR = $(SRCDIR)/lib
 PY_SRCDIR  = $(SRCDIR)/python
 
-VERNUM  = `vernum`
+VERSION  = `vernum`
 
 OBJ_DEPENDS         = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
 EXEC_DEPENDS        = %: $(SRCDIR)/%/main.c $(SRCDIR)/config.h
@@ -38,7 +38,7 @@ OBJ_COMPILE  = $(CC) $(CFLAGS) $(TARGET_ARCH) $(OUTPUT) $<
 ##### USER BUILD COMMANDS #####
 ###############################
 
-make debug beta: $(SHARED_OBJS) $(EXECS) $(PYMOD_OBJS)
+make debug: $(SHARED_OBJS) $(EXECS) $(PYMOD_OBJS)
 
 tests: $(TEST_EXECS)
 
@@ -83,5 +83,5 @@ debug: CC += $(DBFLAGS)
 debug: DSYMBOLS += -DDEBUG
 tests: CC += $(DBFLAGS)
 $(TEST_EXECS): CC += $(DBFLAGS)
-debug: VERNUM = `vernum 1`b-debug
-beta:  VERNUM = `vernum 1`b
+debug: VERSION := $(VERSION)-debug
+#debug: EXEC_COMPILE += -rdynamic -ldl $(SRCDIR)/sigsegv.c

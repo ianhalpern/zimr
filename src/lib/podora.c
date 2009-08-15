@@ -46,11 +46,7 @@ const char* podora_build_date( ) {
 	return BUILD_DATE;
 }
 
-static void empty_signal(){}
-
 bool podora_init( ) {
-
-	signal( SIGTERM, empty_signal );
 
 	// Setup syslog logging - see SETLOGMASK(3)
 #if defined(DEBUG)
