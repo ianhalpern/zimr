@@ -417,8 +417,13 @@ cleanup:
 
 		/* Find website for request from HTTP header */
 		website_t* website;
-		char urlbuf[ PT_BUF_SIZE ];
+		char urlbuf[ PT_BUF_SIZE ] = NULL;
 		get_url_from_http_header( urlbuf, buffer );
+		if ( !urlbuf ) {
+			syslog( LOG_WARNING, "external_connection_handler: no url found in http request headers: %s %s",
+			  inet_ntoa( conn_info->addr.sin_addr ), hp->h_name );
+			goto cleanup;
+		}
 		if ( !( website = website_get_by_url( urlbuf ) ) ) {
 			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
 			  inet_ntoa( conn_info->addr.sin_addr ), hp->h_name, urlbuf );
