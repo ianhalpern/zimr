@@ -16,7 +16,7 @@ OBJS        = general.o ptransport.o website.o pfildes.o psocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o pcnf.o pderr.o simclist.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 
-EXECS       = podorapd podora-website podora
+EXECS       = podora-proxy podora-application podora
 TEST_EXECS  =
 SHARED_OBJS = libpodora.so
 PYMOD_OBJS  = podora.so
@@ -51,10 +51,10 @@ clean:
 podora: $(EXEC_DEPENDS) psocket.o ptransport.o pfildes.o pderr.o pcnf.o general.o simclist.o
 	$(EXEC_COMPILE) -lyaml
 
-podorapd: $(EXEC_DEPENDS) general.o pfildes.o website.o psocket.o daemon.o ptransport.o pderr.o
+podora-proxy: $(EXEC_DEPENDS) general.o pfildes.o website.o psocket.o daemon.o ptransport.o pderr.o
 	$(EXEC_COMPILE)
 
-podora-website: $(EXEC_DEPENDS) libpodora.so
+podora-application: $(EXEC_DEPENDS) libpodora.so
 	$(EXEC_COMPILE) $(LDPODORA)
 
 ##### SHARED OBJS #####

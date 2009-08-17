@@ -37,7 +37,7 @@
 #include "pderr.h"
 #include "pcnf.h"
 
-#define DAEMON_NAME "podorapd"
+#define DAEMON_NAME "podora-proxy"
 
 typedef struct {
 	psocket_t* socket;
@@ -79,7 +79,7 @@ void signal_handler( int sig ) {
 
 void print_usage( ) {
 	printf(
-"\nUsage: podorapd [OPTIONS] {start|stop|restart}\n\
+"\nUsage: podora-proxy [OPTIONS] {start|stop|restart}\n\
 	-h --help\n\
 	--no-daemon\n\
 	--no-lockfile\n\
@@ -92,7 +92,7 @@ int main( int argc, char* argv[ ] ) {
 	int ret = EXIT_SUCCESS;
 	int make_daemon = 1, daemon_flags = 0;
 
-	printf( "Podora Proxy Daemon " PODORA_VERSION " (" BUILD_DATE ")\n" );
+	printf( "Podora Proxy " PODORA_VERSION " (" BUILD_DATE ")\n" );
 
 	///////////////////////////////////////////////
 	// parse command line options
@@ -527,18 +527,18 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 
 		/* if msgid is zero or greater it refers to a socket file
 		   descriptor that the message should be routed to. */
-
-		if ( write( transport->header->msgid, transport->message, transport->header->size ) != transport->header->size ) {
-			/* TODO: sent transmission to stop sending data for this
-			   external connection, it does not exist anymore. */
-			syslog( LOG_ERR, "internal_connection_handler: write failed: %s", strerror( errno ) );
-			goto quit;
-		}
-
-		if ( PT_MSG_IS_LAST( transport ) ) {
+		int n;
+		if ( ( n = write( transport->header->msgid, transport->message, transport->header->size ) ) != transport->header->size
+		 || PT_MSG_IS_LAST( transport ) ) {
 			// clean up external connection
 			pfd_clr( transport->header->msgid );
 			close( transport->header->msgid );
+
+			if ( n == -1 )
+			/* TODO: sent transmission to stop sending data for this
+			   external connection, it does not exist anymore. */
+				syslog( LOG_ERR, "internal_connection_handler: write failed: %s", strerror( errno ) );
+			//goto quit;
 		}
 
 	}

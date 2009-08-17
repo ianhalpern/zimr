@@ -189,21 +189,21 @@ int main( int argc, char* argv[ ] ) {
 			if ( i + 1 < argc )
 				start_application( argv[ i + 1 ], cwd );
 			else
-				start_application( "podora-website", cwd );
+				start_application( "podora-application", cwd );
 			break;
 		} else if ( strcmp( argv[ i ], "stop" ) == 0 ) {
 			if ( i + 1 < argc )
 				stop_application( argv[ i + 1 ], cwd );
 			else
-				stop_application( "podora-website", cwd );
+				stop_application( "podora-application", cwd );
 			break;
 		} else if ( strcmp( argv[ i ], "restart" ) == 0 ) {
 			if ( i + 1 < argc ) {
 				stop_application( argv[ i + 1 ], cwd );
 				start_application( argv[ i + 1 ], cwd );
 			} else {
-				stop_application( "podora-website", cwd );
-				start_application( "podora-website", cwd );
+				stop_application( "podora-application", cwd );
+				start_application( "podora-application", cwd );
 			}
 			break;
 		} else if ( strcmp( argv[ i ], "reload" ) == 0 ) {

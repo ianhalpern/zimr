@@ -25,7 +25,7 @@
 
 #define FLAG_ISSET( flag, flags ) ( (flag) & (flags) )
 
-#define D_LOCKFILE_PATH "/tmp/podorapd.pid" // used by daemon.c
+#define D_LOCKFILE_PATH "/tmp/podora-proxy.pid" // used by daemon.c
 #define PD_APP_CNF_FILE "podora.cnf"
 #define PD_USR_STATE_FILE "~/.podora.state"
 
