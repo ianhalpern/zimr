@@ -229,7 +229,7 @@ char* get_status_message( char* buffer, int size ) {
 	return buffer;
 }
 
-char* get_url_from_http_header( char* url, char* raw ) {
+char* get_url_from_http_header( char* raw, char* url, int size ) {
 	char* ptr,* ptr2;
 
 	if ( !( ptr = strstr( raw, "Host: " ) ) )
@@ -238,14 +238,16 @@ char* get_url_from_http_header( char* url, char* raw ) {
 	ptr += 6;
 
 	ptr2 = strstr( ptr, HTTP_HDR_ENDL );
+	if ( ptr2 - ptr > size ) return NULL;
 	strncpy( url, ptr, ptr2 - ptr );
 
-	*( url + ( ptr2 - ptr ) ) = '\0';
+	*( url + ( ptr2 - ptr ) ) = 0;
 
 	raw = strstr( raw, " " );
 	raw++;
 
 	ptr = strstr( raw, " " );
+	if ( ptr - raw + strlen( url ) + 1 > size ) return NULL;
 	strncat( url, raw, ptr - raw );
 
 	return url;
@@ -418,7 +420,7 @@ cleanup:
 		/* Find website for request from HTTP header */
 		website_t* website;
 		char urlbuf[ PT_BUF_SIZE ];
-		if ( !get_url_from_http_header( urlbuf, buffer ) ) {
+		if ( !get_url_from_http_header( buffer, urlbuf, sizeof( urlbuf ) ) ) {
 			syslog( LOG_WARNING, "external_connection_handler: no url found in http request headers: %s %s",
 			  inet_ntoa( conn_info->addr.sin_addr ), hp->h_name );
 			goto cleanup;
