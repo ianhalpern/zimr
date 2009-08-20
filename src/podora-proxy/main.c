@@ -232,23 +232,21 @@ char* get_status_message( char* buffer, int size ) {
 char* get_url_from_http_header( char* raw, char* url, int size ) {
 	char* ptr,* ptr2;
 
-	if ( !( ptr = strstr( raw, "Host: " ) ) )
+	if ( !( ptr = strnstr( raw, "Host: ", size ) ) )
 		return NULL;
 
 	ptr += 6;
 
-	ptr2 = strstr( ptr, HTTP_HDR_ENDL );
-	if ( ptr2 - ptr > size ) return NULL;
+	ptr2 = strnstr( ptr, HTTP_HDR_ENDL, size - ( ptr - raw ) - 1 );
 	strncpy( url, ptr, ptr2 - ptr );
 
 	*( url + ( ptr2 - ptr ) ) = 0;
 
-	raw = strstr( raw, " " );
-	raw++;
+	ptr = strnstr( raw, " ", size - 1 );
+	ptr++;
 
-	ptr = strstr( raw, " " );
-	if ( ptr - raw + strlen( url ) + 1 > size ) return NULL;
-	strncat( url, raw, ptr - raw );
+	ptr2 = strnstr( ptr, " ", size - ( ptr - raw ) - 1 );
+	strncat( url, ptr, ptr2 - ptr );
 
 	return url;
 }

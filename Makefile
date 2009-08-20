@@ -13,7 +13,8 @@ LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
 PYVERSION = 2.6
 
 OBJS        = general.o ptransport.o website.o pfildes.o psocket.o connection.o\
-			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o pcnf.o pderr.o simclist.o
+			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o pcnf.o pderr.o\
+			  simclist.o
 EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
 
 EXECS       = podora-proxy podora-application podora
