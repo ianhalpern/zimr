@@ -1,26 +1,26 @@
-/*   Podora - Next Generation Web Server
+/*   Poroda - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Podora.org
+ *@  http://Poroda.org
  *
- *   This file is part of Podora.
+ *   This file is part of Poroda.
  *
- *   Podora is free software: you can redistribute it and/or modify
+ *   Poroda is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Podora is distributed in the hope that it will be useful,
+ *   Poroda is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Poroda.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
-#include "podora.h"
+#include "poroda.h"
 
 typedef struct {
 	int size;
@@ -38,15 +38,15 @@ typedef struct {
 static int page_handler_count = 0;
 static page_handler_t page_handlers[ 100 ];
 
-const char* podora_version( ) {
-	return PODORA_VERSION;
+const char* poroda_version( ) {
+	return PORODA_VERSION;
 }
 
-const char* podora_build_date( ) {
+const char* poroda_build_date( ) {
 	return BUILD_DATE;
 }
 
-bool podora_init( ) {
+bool poroda_init( ) {
 
 	// Setup syslog logging - see SETLOGMASK(3)
 #if defined(DEBUG)
@@ -58,28 +58,28 @@ bool podora_init( ) {
 #endif
 
 	// Register file descriptor type handlers
-	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR podora_connection_handler );
-	pfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR podora_file_handler );
+	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR poroda_connection_handler );
+	pfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR poroda_file_handler );
 
 	syslog( LOG_INFO, "initialized." );
 	return true;
 }
 
-void podora_shutdown( ) {
+void poroda_shutdown( ) {
 	while ( website_get_root( ) ) {
-		podora_website_destroy( website_get_root( ) );
+		poroda_website_destroy( website_get_root( ) );
 	}
 	syslog( LOG_INFO, "shutdown." );
 }
 
-void podora_start( ) {
+void poroda_start( ) {
 	int timeout = 0;
 	website_t* website;
 	website_data_t* website_data;
 
 	// TODO: also check to see if there are any enabled websites.
 	if ( !website_get_root( ) )
-		syslog( LOG_WARNING, "podora_start() failed: No websites created" );
+		syslog( LOG_WARNING, "poroda_start() failed: No websites created" );
 
 	do {
 		timeout = 0; // reset timeout value
@@ -92,9 +92,9 @@ void podora_start( ) {
 
 			if ( !website_data->socket && website_data->status == WS_STATUS_ENABLING ) {
 
-				/* connect to the Podora Daemon Proxy for routing external
+				/* connect to the Poroda Daemon Proxy for routing external
 				   requests or commands to this process. */
-				if ( !podora_website_enable( website ) ) {
+				if ( !poroda_website_enable( website ) ) {
 					if ( pderrno == PDERR_FAILED )
 						website_data->conn_tries = PD_NUM_PROXY_DEATH_RETRIES - 1; // we do not want to retry
 
@@ -107,13 +107,13 @@ void podora_start( ) {
 					/* giving up ... */
 					else {
 						syslog( LOG_ERR, "\"%s\" is destroying: %s", website->url, pdstrerror( pderrno ) );
-						//podora_website_disable( website );
-						podora_website_destroy( website );
+						//poroda_website_disable( website );
+						poroda_website_destroy( website );
 					}
 
 				}
 
-				/* successfully connected to Podora Daemon Proxy, reset number of retries */
+				/* successfully connected to Poroda Daemon Proxy, reset number of retries */
 				/*else {
 					syslog( LOG_INFO, "%s is enabled!", website->url );
 					website_data->conn_tries = 0;
@@ -127,7 +127,7 @@ void podora_start( ) {
 
 }
 
-bool podora_send_cmd( psocket_t* socket, int cmd, void* message, int size ) {
+bool poroda_send_cmd( psocket_t* socket, int cmd, void* message, int size ) {
 
 	int ret = true;
 	ptransport_t* transport;
@@ -160,7 +160,7 @@ quit:
 	return ret;
 }
 
-int podora_cnf_load( ) {
+int poroda_cnf_load( ) {
 	pcnf_app_t* cnf = pcnf_app_load( );
 	if ( !cnf ) return 0;
 
@@ -168,12 +168,12 @@ int podora_cnf_load( ) {
 
 	while ( website_cnf ) {
 		if ( website_cnf->url ) {
-			website_t* website = podora_website_create( website_cnf->url );
+			website_t* website = poroda_website_create( website_cnf->url );
 
 			if ( website_cnf->pubdir )
-				podora_website_set_pubdir( website, website_cnf->pubdir );
+				poroda_website_set_pubdir( website, website_cnf->pubdir );
 
-			podora_website_enable( website );
+			poroda_website_enable( website );
 		}
 		website_cnf = website_cnf->next;
 	}
@@ -182,7 +182,7 @@ int podora_cnf_load( ) {
 	return 1;
 }
 
-website_t* podora_website_create( char* url ) {
+website_t* poroda_website_create( char* url ) {
 	website_t* website;
 	website_data_t* website_data;
 
@@ -198,14 +198,14 @@ website_t* podora_website_create( char* url ) {
 	website_data->connection_handler = NULL;
 	website_data->conn_tries = PD_NUM_PROXY_DEATH_RETRIES - 1;
 	website_data->default_pages_count = 0;
-	podora_website_insert_default_page( website, "default.html", 0 );
+	poroda_website_insert_default_page( website, "default.html", 0 );
 	return website;
 }
 
-void podora_website_destroy( website_t* website ) {
+void poroda_website_destroy( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
-	podora_website_disable( website );
+	poroda_website_disable( website );
 
 	if ( website_data->pubdir )
 		free( website_data->pubdir );
@@ -214,7 +214,7 @@ void podora_website_destroy( website_t* website ) {
 	website_remove( website );
 }
 
-bool podora_website_enable( website_t* website ) {
+bool poroda_website_enable( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	if ( website_data->status == WS_STATUS_ENABLED ) {
@@ -231,7 +231,7 @@ bool podora_website_enable( website_t* website ) {
 	}
 
 	// send website enable command
-	if ( !podora_send_cmd( website_data->socket, PD_CMD_WS_START, website->url, strlen( website->url ) ) ) {
+	if ( !poroda_send_cmd( website_data->socket, PD_CMD_WS_START, website->url, strlen( website->url ) ) ) {
 		// WS_START_CMD failed...close socket
 		psocket_close( website_data->socket );
 		website_data->socket = NULL;
@@ -249,14 +249,14 @@ bool podora_website_enable( website_t* website ) {
 	return true;
 }
 
-void podora_website_disable( website_t* website ) {
+void poroda_website_disable( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	/* we only need to send command if the socket is connected. */
 	if ( website_data->socket ) {
 
 		if ( website_data->status == WS_STATUS_ENABLED )
-			podora_send_cmd( website_data->socket, PD_CMD_WS_STOP, NULL, 0 );
+			poroda_send_cmd( website_data->socket, PD_CMD_WS_STOP, NULL, 0 );
 
 		pfd_clr( website_data->socket->sockfd );
 		psocket_close( website_data->socket );
@@ -267,17 +267,17 @@ void podora_website_disable( website_t* website ) {
 	website_data->status = WS_STATUS_DISABLED;
 }
 
-void podora_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
+void poroda_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	website_data->connection_handler = connection_handler;
 }
 
-void podora_website_unset_connection_handler( website_t* website ) {
+void poroda_website_unset_connection_handler( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	website_data->connection_handler = NULL;
 }
 
-void podora_website_set_pubdir( website_t* website, const char* pubdir ) {
+void poroda_website_set_pubdir( website_t* website, const char* pubdir ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	if ( website_data->pubdir ) free( website_data->pubdir );
@@ -289,12 +289,12 @@ void podora_website_set_pubdir( website_t* website, const char* pubdir ) {
 		strcat( website_data->pubdir, "/" );
 }
 
-char* podora_website_get_pubdir( website_t* website ) {
+char* poroda_website_get_pubdir( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	return website_data->pubdir;
 }
 
-void podora_website_insert_default_page( website_t* website, const char* default_page, int pos ) {
+void poroda_website_insert_default_page( website_t* website, const char* default_page, int pos ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	if ( pos < 0 )
@@ -314,12 +314,12 @@ void podora_website_insert_default_page( website_t* website, const char* default
 	website_data->default_pages_count++;
 }
 
-static void podora_website_default_connection_handler( connection_t* connection ) {
-	podora_connection_send_file( connection, connection->request.url, true );
+static void poroda_website_default_connection_handler( connection_t* connection ) {
+	poroda_connection_send_file( connection, connection->request.url, true );
 	connection_free( connection );
 }
 
-void podora_connection_handler( int sockfd, website_t* website ) {
+void poroda_connection_handler( int sockfd, website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	ptransport_t* transport = ptransport_open( sockfd, PT_RO, 0 );
@@ -354,9 +354,10 @@ void podora_connection_handler( int sockfd, website_t* website ) {
 		connection_t* connection;
 		connection = connection_create( website, msgid, requests[ msgid ].data, requests[ msgid ].size );
 
-		printf( "%s %s %s\n",
+		printf( "%s %s http://%s/%s\n",
 			inet_ntoa( connection->ip ),
 			connection->hostname,
+			connection->website->url,
 			connection->request.url
 		);
 
@@ -369,13 +370,13 @@ void podora_connection_handler( int sockfd, website_t* website ) {
 		if ( website_data->connection_handler )
 			website_data->connection_handler( connection );
 		else
-			podora_website_default_connection_handler( connection );
+			poroda_website_default_connection_handler( connection );
 	}
 
 	ptransport_close( transport );
 }
 
-void podora_file_handler( int fd, ptransport_t* transport ) {
+void poroda_file_handler( int fd, ptransport_t* transport ) {
 	int n;
 	char buffer[ 2048 ];
 
@@ -394,14 +395,14 @@ void podora_file_handler( int fd, ptransport_t* transport ) {
 	}
 }
 
-void podora_connection_send_status( ptransport_t* transport, connection_t* connection ) {
+void poroda_connection_send_status( ptransport_t* transport, connection_t* connection ) {
 	char status_line[ 100 ];
 	sprintf( status_line, "HTTP/%s %s" HTTP_HDR_ENDL, connection->http_version, response_status( connection->response.http_status ) );
 
 	ptransport_write( transport, status_line, strlen( status_line ) );
 }
 
-void podora_connection_send_headers( ptransport_t* transport, connection_t* connection ) {
+void poroda_connection_send_headers( ptransport_t* transport, connection_t* connection ) {
 	time_t now;
 	char now_str[ 80 ];
 
@@ -409,7 +410,7 @@ void podora_connection_send_headers( ptransport_t* transport, connection_t* conn
 	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
 
 	headers_set_header( &connection->response.headers, "Date", now_str );
-	headers_set_header( &connection->response.headers, "Server", "Podora/" PODORA_VERSION );
+	headers_set_header( &connection->response.headers, "Server", "Poroda/" PORODA_VERSION );
 
 	char* cookies = cookies_to_string( &connection->cookies, (char*) malloc( 1024 ), 1024 );
 
@@ -423,7 +424,7 @@ void podora_connection_send_headers( ptransport_t* transport, connection_t* conn
 	free( headers );
 }
 
-void podora_connection_send( connection_t* connection, void* message, int size ) {
+void poroda_connection_send( connection_t* connection, void* message, int size ) {
 	char sizebuf[ 32 ];
 	ptransport_t* transport = ptransport_open( connection->website->sockfd, PT_WO, connection->sockfd );
 
@@ -434,14 +435,14 @@ void podora_connection_send( connection_t* connection, void* message, int size )
 	sprintf( sizebuf, "%d", size );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
-	podora_connection_send_status( transport, connection );
-	podora_connection_send_headers( transport, connection );
+	poroda_connection_send_status( transport, connection );
+	poroda_connection_send_headers( transport, connection );
 
 	ptransport_write( transport, (void*) message, size );
 	ptransport_close( transport );
 }
 
-void podora_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir ) {
+void poroda_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir ) {
 	struct stat file_stat;
 	char full_filepath[ 256 ] = "";
 	char* ptr;
@@ -457,7 +458,7 @@ void podora_connection_send_file( connection_t* connection, char* filepath, bool
 
 	if ( stat( full_filepath, &file_stat ) ) {
 		// Does not exist.
-		podora_connection_send_error( connection );
+		poroda_connection_send_error( connection );
 		return;
 	}
 
@@ -495,11 +496,11 @@ void podora_connection_send_file( connection_t* connection, char* filepath, bool
 
 	// check if a page handler was found, if not use the default.
 	if ( i == page_handler_count )
-		podora_connection_default_page_handler( connection, full_filepath );
+		poroda_connection_default_page_handler( connection, full_filepath );
 
 }
 
-void podora_connection_send_error( connection_t* connection ) {
+void poroda_connection_send_error( connection_t* connection ) {
 	char sizebuf[ 10 ];
 	ptransport_t* transport = ptransport_open( connection->website->sockfd, PT_WO, connection->sockfd );
 
@@ -508,33 +509,33 @@ void podora_connection_send_error( connection_t* connection ) {
 	sprintf( sizebuf, "%d", 48 );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
-	podora_connection_send_status( transport, connection );
-	podora_connection_send_headers( transport, connection );
+	poroda_connection_send_status( transport, connection );
+	poroda_connection_send_headers( transport, connection );
 
 	ptransport_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
 	ptransport_close( transport );
 }
 
-void podora_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata ) {
+void poroda_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata ) {
 	strcpy( page_handlers[ page_handler_count ].page_type, page_type );
 	page_handlers[ page_handler_count ].page_handler = page_handler;
 	page_handlers[ page_handler_count ].udata = udata;
 	page_handler_count++;
 }
 
-void podora_connection_default_page_handler( connection_t* connection, char* filepath ) {
+void poroda_connection_default_page_handler( connection_t* connection, char* filepath ) {
 	int fd;
 	struct stat file_stat;
 	char sizebuf[ 32 ];
 	ptransport_t* transport;
 
 	if ( stat( filepath, &file_stat ) ) {
-		podora_connection_send_error( connection );
+		poroda_connection_send_error( connection );
 		return;
 	}
 
 	if ( ( fd = open( filepath, O_RDONLY ) ) < 0 ) {
-		podora_connection_send_error( connection );
+		poroda_connection_send_error( connection );
 		return;
 	}
 
@@ -546,8 +547,8 @@ void podora_connection_default_page_handler( connection_t* connection, char* fil
 	sprintf( sizebuf, "%d", (int) file_stat.st_size );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
-	podora_connection_send_status( transport, connection );
-	podora_connection_send_headers( transport, connection );
+	poroda_connection_send_status( transport, connection );
+	poroda_connection_send_headers( transport, connection );
 
 	pfd_set( fd, PFD_TYPE_FILE, transport );
 }

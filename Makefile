@@ -4,23 +4,23 @@ LDFLAGS     =
 DBFLAGS     = -ggdb -g -O0 -pg
 TARGET_ARCH =
 PTHREAD     = -pthread
-DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPODORA_VERSION="\"$(VERSION)\""
+DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPORODA_VERSION="\"$(VERSION)\""
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions -I/usr/include/python$(PYVERSION)
-LDPODORA    = -lpodora -L. -Wl,-rpath,`pwd`
+LDPORODA    = -lporoda -L. -Wl,-rpath,`pwd`
 
 PYVERSION = 2.6
 
 OBJS        = general.o ptransport.o website.o pfildes.o psocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o pcnf.o pderr.o\
 			  simclist.o
-EXEC_OBJS   = podora.o podora-website.o pcom-test-client.o pcom-test-server.o
+EXEC_OBJS   = poroda.o poroda-website.o pcom-test-client.o pcom-test-server.o
 
-EXECS       = podora-proxy podora-application podora
+EXECS       = poroda-proxy poroda-application poroda
 TEST_EXECS  =
-SHARED_OBJS = libpodora.so
-PYMOD_OBJS  = podora.so
+SHARED_OBJS = libporoda.so
+PYMOD_OBJS  = poroda.so
 
 SRCDIR     = src
 LIB_SRCDIR = $(SRCDIR)/lib
@@ -49,25 +49,25 @@ clean:
 ##### EXECS #####
 #################
 
-podora: $(EXEC_DEPENDS) psocket.o ptransport.o pfildes.o pderr.o pcnf.o general.o simclist.o
+poroda: $(EXEC_DEPENDS) psocket.o ptransport.o pfildes.o pderr.o pcnf.o general.o simclist.o
 	$(EXEC_COMPILE) -lyaml
 
-podora-proxy: $(EXEC_DEPENDS) general.o pfildes.o website.o psocket.o daemon.o ptransport.o pderr.o
+poroda-proxy: $(EXEC_DEPENDS) general.o pfildes.o website.o psocket.o daemon.o ptransport.o pderr.o
 	$(EXEC_COMPILE)
 
-podora-application: $(EXEC_DEPENDS) libpodora.so
-	$(EXEC_COMPILE) $(LDPODORA)
+poroda-application: $(EXEC_DEPENDS) libporoda.so
+	$(EXEC_COMPILE) $(LDPORODA)
 
 ##### SHARED OBJS #####
 
-libpodora.so: $(SHARED_OBJ_DEPENDS) general.o ptransport.o pfildes.o website.o mime.o connection.o\
-			 					    headers.o params.o cookies.o urldecoder.o daemon.o pcnf.o psocket.o pderr.o simclist.o
+libporoda.so: $(SHARED_OBJ_DEPENDS) general.o ptransport.o pfildes.o website.o mime.o connection.o\
+			 					    headers.o params.o cookies.o urldecoder.o pcnf.o psocket.o pderr.o simclist.o
 	$(EXEC_COMPILE) $(SHARED) -lyaml
 
 ##### PYTHON MODS #####
 
-podora.so: $(PYMOD_DEPENDS) libpodora.so
-	$(EXEC_COMPILE) $(PYMOD) $(LDPODORA)
+poroda.so: $(PYMOD_DEPENDS) libporoda.so
+	$(EXEC_COMPILE) $(PYMOD) $(LDPORODA)
 
 ##### OBJS ######
 #################

@@ -1,22 +1,22 @@
-/*   Podora - Next Generation Web Server
+/*   Poroda - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Podora.org
+ *@  http://Poroda.org
  *
- *   This file is part of Podora.
+ *   This file is part of Poroda.
  *
- *   Podora is free software: you can redistribute it and/or modify
+ *   Poroda is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Podora is distributed in the hope that it will be useful,
+ *   Poroda is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Poroda.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
@@ -35,7 +35,7 @@
 
 void print_usage( ) {
 	printf(
-"\nUsage: podora [OPTIONS] COMMAND\n\
+"\nUsage: poroda [OPTIONS] COMMAND\n\
 	-h --help\n\
 	--option\n\
 "
@@ -157,7 +157,7 @@ void reload_state( ) {
 
 int main( int argc, char* argv[ ] ) {
 
-	printf( "Podora " PODORA_VERSION " (" BUILD_DATE ")\n" );
+	printf( "Poroda " PORODA_VERSION " (" BUILD_DATE ")\n" );
 
 	///////////////////////////////////////////////
 	// parse command line options
@@ -189,21 +189,21 @@ int main( int argc, char* argv[ ] ) {
 			if ( i + 1 < argc )
 				start_application( argv[ i + 1 ], cwd );
 			else
-				start_application( "podora-application", cwd );
+				start_application( "poroda-application", cwd );
 			break;
 		} else if ( strcmp( argv[ i ], "stop" ) == 0 ) {
 			if ( i + 1 < argc )
 				stop_application( argv[ i + 1 ], cwd );
 			else
-				stop_application( "podora-application", cwd );
+				stop_application( "poroda-application", cwd );
 			break;
 		} else if ( strcmp( argv[ i ], "restart" ) == 0 ) {
 			if ( i + 1 < argc ) {
 				stop_application( argv[ i + 1 ], cwd );
 				start_application( argv[ i + 1 ], cwd );
 			} else {
-				stop_application( "podora-application", cwd );
-				start_application( "podora-application", cwd );
+				stop_application( "poroda-application", cwd );
+				start_application( "poroda-application", cwd );
 			}
 			break;
 		} else if ( strcmp( argv[ i ], "reload" ) == 0 ) {

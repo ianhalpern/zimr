@@ -1,22 +1,22 @@
-/*   Podora - Next Generation Web Server
+/*   Poroda - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Podora.org
+ *@  http://Poroda.org
  *
- *   This file is part of Podora.
+ *   This file is part of Poroda.
  *
- *   Podora is free software: you can redistribute it and/or modify
+ *   Poroda is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Podora is distributed in the hope that it will be useful,
+ *   Poroda is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Podora.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Poroda.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
@@ -37,7 +37,7 @@
 #include "pderr.h"
 #include "pcnf.h"
 
-#define DAEMON_NAME "podora-proxy"
+#define DAEMON_NAME "poroda-proxy"
 
 typedef struct {
 	psocket_t* socket;
@@ -71,6 +71,9 @@ void signal_handler( int sig ) {
 		case SIGTERM:
 			syslog( LOG_WARNING, "received SIGTERM signal." );
 			break;
+		case SIGPIPE:
+			syslog( LOG_WARNING, "received SIGPIPE signal." );
+			break;
 		default:
 			syslog( LOG_WARNING, "unhandled signal %d", sig );
 			break;
@@ -79,7 +82,7 @@ void signal_handler( int sig ) {
 
 void print_usage( ) {
 	printf(
-"\nUsage: podora-proxy [OPTIONS] {start|stop|restart}\n\
+"\nUsage: poroda-proxy [OPTIONS] {start|stop|restart}\n\
 	-h --help\n\
 	--no-daemon\n\
 	--no-lockfile\n\
@@ -92,7 +95,7 @@ int main( int argc, char* argv[ ] ) {
 	int ret = EXIT_SUCCESS;
 	int make_daemon = 1, daemon_flags = 0;
 
-	printf( "Podora Proxy " PODORA_VERSION " (" BUILD_DATE ")\n" );
+	printf( "Poroda Proxy " PORODA_VERSION " (" BUILD_DATE ")\n" );
 
 	///////////////////////////////////////////////
 	// parse command line options
@@ -142,6 +145,9 @@ int main( int argc, char* argv[ ] ) {
 	signal( SIGTERM, signal_handler );
 	signal( SIGINT,  signal_handler );
 	signal( SIGQUIT, signal_handler );
+
+	// Trap SIGPIPE
+	signal( SIGPIPE, signal_handler );
 
 	daemon_flags |= D_KEEPSTDIO;
 
@@ -420,12 +426,12 @@ cleanup:
 		char urlbuf[ PT_BUF_SIZE ];
 		if ( !get_url_from_http_header( buffer, urlbuf, sizeof( urlbuf ) ) ) {
 			syslog( LOG_WARNING, "external_connection_handler: no url found in http request headers: %s %s",
-			  inet_ntoa( conn_info->addr.sin_addr ), hp->h_name );
+			  inet_ntoa( conn_info->addr.sin_addr ), hp ? hp->h_name : "" );
 			goto cleanup;
 		}
 		if ( !( website = website_get_by_url( urlbuf ) ) ) {
 			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
-			  inet_ntoa( conn_info->addr.sin_addr ), hp->h_name, urlbuf );
+			  inet_ntoa( conn_info->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
 			goto cleanup;
 		}
 
@@ -439,7 +445,7 @@ cleanup:
 
 		if ( website_data->socket->sockfd != conn_info->fd ) {
 			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
-			  inet_ntoa( conn_info->addr.sin_addr ), hp->h_name, urlbuf );
+			  inet_ntoa( conn_info->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
 			goto cleanup;
 		}
 
