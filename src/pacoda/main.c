@@ -347,7 +347,26 @@ void application_status_cmd( int optc, char* optv[ ] ) {
 
 // State Functions ////////////////////////////
 
-void state_stop( ) {
+void state_unload( ) {
+	pcnf_state_t* state = pcnf_state_load( );
+
+	if ( !state ) {
+		puts( "failed to load state" );
+		exit( EXIT_FAILURE );
+	}
+
+	pcnf_state_app_t* app;
+
+	int i;
+	for ( i = 0; i < list_size( &state->apps ); i++ ) {
+		app = list_get_at( &state->apps, i );
+		application_kill( app->pid );
+	}
+
+	pcnf_state_free( state );
+}
+
+void state_clear( ) {
 	pcnf_state_t* state = pcnf_state_load( );
 
 	if ( !state ) {
@@ -408,8 +427,12 @@ void state_reload_cmd( int optc, char* optv[ ] ) {
 	state_reload( );
 }
 
-void state_stop_cmd( int optc, char* optv[ ] ) {
-	state_reload( );
+void state_unload_cmd( int optc, char* optv[ ] ) {
+	state_unload( );
+}
+
+void state_clear_cmd( int optc, char* optv[ ] ) {
+	state_clear( );
 }
 
 void state_status_cmd( int optc, char* optv[ ] ) {
@@ -454,22 +477,23 @@ void proxy_status_cmd( int optc, char* optv[ ] ) {
 
 int main( int argc, char* argv[ ] ) {
 	command_t app_commands[ ] = {
-		{ "start",   "options: [ <exec>, -dir <path>, -a [...] ]", NULL, &application_start_cmd },
-		{ "stop",    "options: [ <exec>, -dir <path>, -n ]", NULL, &application_stop_cmd },
-		{ "restart", "options: [ <exec>, -dir <path>, -n ]", NULL, &application_restart_cmd },
-		{ "status",  "options: [ <exec>, -dir <path>, -n ]", NULL, &application_status_cmd },
+		{ "start",   "options: <exec> [ -dir <path>, -a [...] ]", NULL, &application_start_cmd },
+		{ "stop",    "options: <exec> [ -dir <path>, -n ]", NULL, &application_stop_cmd },
+		{ "restart", "options: <exec> [ -dir <path>, -n ]", NULL, &application_restart_cmd },
+		{ "status",  "options: <exec> [ -dir <path>, -n ]", NULL, &application_status_cmd },
 		{ NULL }
 	};
 
 	command_t state_commands[ ] = {
-		{ "reload",  "options: [ <config path> ]", NULL, &state_reload_cmd },
-		{ "stop",    "options: [ <config path> ]", NULL, &state_stop_cmd },
-		{ "status",  "options: [ <config path> ]", NULL, &state_status_cmd },
+		{ "reload", "options: <config path>", NULL, &state_reload_cmd },
+		{ "unload", "options: <config path>", NULL, &state_unload_cmd },
+		{ "clear",  "options: <config path>", NULL, &state_clear_cmd },
+		{ "status", "options: <config path>", NULL, &state_status_cmd },
 		{ NULL }
 	};
 
 	command_t proxy_commands[ ] = {
-		{ "status", "options: [ <host>[ :<port> ] ]", NULL, &proxy_status_cmd },
+		{ "status", "options: <host>[:<port>]", NULL, &proxy_status_cmd },
 		{ NULL }
 	};
 
