@@ -160,7 +160,7 @@ quit:
 	return ret;
 }
 
-int pacoda_cnf_load( ) {
+int pacoda_cnf_load( char* cnf_path ) {
 	pcnf_app_t* cnf = pcnf_app_load( );
 	if ( !cnf ) return 0;
 

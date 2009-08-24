@@ -215,3 +215,12 @@ char *strnstr( const char *s, const char *find, size_t slen)
        }
        return ((char *)s);
 }
+
+char* strtolower( char* s ) {
+	char* ptr = s;
+	while( *ptr ) {
+		*ptr = tolower( *ptr );
+		ptr++;
+	}
+	return s;
+}

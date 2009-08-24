@@ -27,25 +27,19 @@
 
 #include "pacoda.h"
 
-
-/*int die() {
-
-        char *err = NULL;
-        strcpy(err, "gonner");
-        return 0;
-}*/
-
 void empty_sighandler(){}
 
 int main( int argc, char *argv[ ] ) {
 	pacoda_init( );
 
 	signal( SIGTERM, empty_sighandler );
-	signal( SIGINT, empty_sighandler );
+	signal( SIGINT,  empty_sighandler );
 
-	assert( pacoda_cnf_load( ) );
+	char* cnf_path = NULL;
+	if ( argc > 1 )
+		cnf_path = argv[ 1 ];
 
-//	die( );
+	assert( pacoda_cnf_load( cnf_path ) );
 
 	pacoda_start( );
 

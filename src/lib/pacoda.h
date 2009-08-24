@@ -56,7 +56,7 @@ const char* pacoda_version( );
 const char* pacoda_build_date( );
 
 bool pacoda_init( );
-int  pacoda_cnf_load( );
+int  pacoda_cnf_load( char* cnf_path );
 void pacoda_start( );
 void pacoda_shutdown( );
 bool pacoda_send_hello( );

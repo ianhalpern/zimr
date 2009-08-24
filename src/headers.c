@@ -22,6 +22,17 @@
 
 #include "headers.h"
 
+char* header_formatname( char* name ) {
+	char* ptr = name - 1;
+
+	do {
+		ptr++;
+		*ptr = toupper( *ptr );
+	} while( ( ptr = strstr( ptr, "-" ) ) );
+
+	return name;
+}
+
 headers_t headers_parse( char* raw ) {
 	headers_t headers;
 	headers.num = 0;
@@ -39,6 +50,7 @@ headers_t headers_parse( char* raw ) {
 
 		strncpy( headers.list[ headers.num ].name, raw, tmp - raw );
 		headers.list[ headers.num ].name[ tmp - raw ] = '\0';
+		header_formatname( strtolower( headers.list[ headers.num ].name ) );
 		raw = tmp + 2;
 
 		// value
@@ -47,7 +59,6 @@ headers_t headers_parse( char* raw ) {
 		headers.list[ headers.num ].value[ tmp - raw ] = '\0';
 
 		raw = tmp + strlen( HTTP_HDR_ENDL );
-
 		headers.num++;
 	}
 
@@ -81,13 +92,16 @@ void headers_set_header( headers_t* headers, char* name, char* value ) {
 	strcpy( header->value, value );
 }
 
-header_t* headers_get_header( headers_t* headers, char* name ) {
-	int i;
+header_t* headers_get_header( headers_t* headers, char* orig_name ) {
+	char* name = strdup( orig_name );
+	header_formatname( strtolower( name ) );
 
+	int i;
 	for ( i = 0; i < headers->num; i++ ) {
 		if ( strcmp( headers->list[ i ].name, name ) == 0 )
 			return &headers->list[ i ];
 	}
 
+	free( name );
 	return NULL;
 }

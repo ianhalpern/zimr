@@ -73,6 +73,7 @@ typedef struct {
 typedef struct pcnf_state_app {
 	char* exec;
 	char* dir;
+	list_t args;
 	pid_t pid;
 } pcnf_state_app_t;
 
@@ -85,7 +86,7 @@ pcnf_state_t* pcnf_state_load( );
 pcnf_app_t* pcnf_app_load( );
 
 bool pcnf_state_app_is_running( pcnf_state_t* state, const char* exec, const char* cwd );
-void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* cwd, pid_t pid );
+void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* cwd, pid_t pid, list_t* args );
 void pcnf_state_save( pcnf_state_t* state );
 
 void pcnf_app_free( pcnf_app_t* cnf );

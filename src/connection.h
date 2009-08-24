@@ -33,7 +33,7 @@
 
 typedef struct {
 	char type;
-	char url[ 512 ];
+	char url[ PATH_MAX ];
 	char* post_body;
 	headers_t headers;
 	params_t* params;

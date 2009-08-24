@@ -32,6 +32,7 @@
 #include "psocket.h"
 #include "pfildes.h"
 #include "pcnf.h"
+#include "simclist.h"
 
 typedef struct command {
 	char* name;
@@ -91,7 +92,41 @@ bool run_commands( command_t* command, int argc, char* argv[ ] ) {
 
 // Application Functions ////////////////////////////
 
-void application_start( char* exec, char* dir ) {
+pid_t application_exec( char* exec, char* dir, list_t* args ) {
+	pid_t pid = fork( );
+
+	if ( pid == 0 ) {
+		// in the child, do exec
+		chdir( dir );
+		char* argv[ list_size( args ) + 2 ];
+		argv[ 0 ] = exec;
+		argv[ list_size( args ) + 1 ] = NULL;
+
+		int i;
+		for ( i = 1; i < list_size( args ) + 1; i++ ) {
+			argv[ i ] = list_get_at( args, i - 1 );
+		}
+
+
+		execvp( argv[ 0 ], argv );
+		puts( "error" );
+	} else if ( pid == (pid_t) -1 ) {
+		// still in parent, but there is no child
+		puts( "parent error: no child" );
+	}
+
+	return pid;
+}
+
+bool application_kill( pid_t pid ) {
+	if ( !stopproc( pid ) && errno != ESRCH ) {
+		printf( "failed: %s\n", strerror( errno ) );
+		return false;
+	}
+	return true;
+}
+
+void application_start( char* exec, char* dir, list_t* args ) {
 	pcnf_state_t* state = pcnf_state_load( );
 	if ( !state ) {
 		puts( "failed to load state" );
@@ -110,20 +145,8 @@ void application_start( char* exec, char* dir ) {
 		}
 	}
 
-	pid_t pid = fork( );
-
-	if ( pid == 0 ) {
-		// in the child, do exec
-		chdir( dir );
-		char* args[ ] = { exec, NULL };
-		execvp( args[ 0 ], args );
-		puts( "error" );
-	} else if ( pid == (pid_t) -1 ) {
-		// still in parent, but there is no child
-		puts( "parent error: no child" );
-	}
-
-	pcnf_state_set_app( state, exec, dir, pid );
+	pid_t pid = application_exec( exec, dir, args );
+	pcnf_state_set_app( state, exec, dir, pid, args );
 	pcnf_state_save( state );
 	pcnf_state_free( state );
 }
@@ -150,15 +173,45 @@ void application_stop( char* exec, char* dir ) {
 	if ( !app ) {
 		puts( "application not in state" );
 	} else {
-		if ( !stopproc( app->pid ) && errno != ESRCH ) {
-			printf( "failed: %s\n", strerror( errno ) );
-		} else {
+		if ( application_kill( app->pid ) ) {
 			list_delete_at( &state->apps, i );
 			pcnf_state_app_free( app );
 			pcnf_state_save( state );
 		}
 	}
 
+	pcnf_state_free( state );
+}
+
+void application_restart( char* exec, char* dir ) {
+	pcnf_state_t* state = pcnf_state_load( );
+
+	if ( !state ) {
+		puts( "failed to load state" );
+		exit( EXIT_FAILURE );
+	}
+
+	pcnf_state_app_t* app = NULL;
+
+	int i;
+	for ( i = 0; i < list_size( &state->apps ); i++ ) {
+		app = list_get_at( &state->apps, i );
+		if ( strcmp( app->dir, dir ) == 0 && strcmp( app->exec, exec ) == 0 ) {
+			break;
+		}
+		app = NULL;
+	}
+
+	if ( !app ) {
+		puts( "application not in state" );
+	} else {
+		if ( application_kill( app->pid ) ) {
+			pid_t pid = application_exec( app->exec, app->dir, &app->args );
+			pcnf_state_set_app( state, app->exec, app->dir, pid, NULL );
+		}
+	}
+
+	pcnf_state_save( state );
 	pcnf_state_free( state );
 }
 
@@ -196,7 +249,10 @@ void application_status( char* exec, char* dir ) {
 void application_start_cmd( int optc, char* optv[ ] ) {
 	char* exec = "pacoda-application";
 	char dir[ PATH_MAX ] = "";
+	list_t args;
+
 	getcwd( dir, sizeof( dir ) );
+	list_init( &args );
 
 	int i;
 	for ( i = 0; i < optc; i++ ) {
@@ -205,13 +261,22 @@ void application_start_cmd( int optc, char* optv[ ] ) {
 		} else if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
 			realpath( optv[ i + 1 ], dir );
 			i++;
+		} else if ( strcmp( optv[ i ], "-a" ) == 0 ) {
+			while ( ++i < optc ) {
+				if ( strcmp( optv[ i ], "-dir" ) == 0 ) {
+					i--;
+					break;
+				}
+				list_append( &args, optv[ i ] );
+			}
 		} else {
 			print_usage( );
 			return;
 		}
 	}
 
-	application_start( exec, dir );
+	application_start( exec, dir, &args );
+	list_destroy( &args );
 }
 
 void application_stop_cmd( int optc, char* optv[ ] ) {
@@ -253,8 +318,7 @@ void application_restart_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	application_stop( exec, dir );
-	application_start( exec, dir );
+	application_restart( exec, dir );
 }
 
 void application_status_cmd( int optc, char* optv[ ] ) {
@@ -315,8 +379,7 @@ void state_reload( ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		application_stop( app->exec, app->dir );
-		application_start( app->exec, app->dir );
+		application_restart( app->exec, app->dir );
 	}
 
 	pcnf_state_free( state );
@@ -391,7 +454,7 @@ void proxy_status_cmd( int optc, char* optv[ ] ) {
 
 int main( int argc, char* argv[ ] ) {
 	command_t app_commands[ ] = {
-		{ "start",   "options: [ <exec>, -a [...], -dir <path> ]", NULL, &application_start_cmd },
+		{ "start",   "options: [ <exec>, -dir <path>, -a [...] ]", NULL, &application_start_cmd },
 		{ "stop",    "options: [ <exec>, -dir <path>, -n ]", NULL, &application_stop_cmd },
 		{ "restart", "options: [ <exec>, -dir <path>, -n ]", NULL, &application_restart_cmd },
 		{ "status",  "options: [ <exec>, -dir <path>, -n ]", NULL, &application_status_cmd },

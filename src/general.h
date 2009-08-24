@@ -46,6 +46,7 @@ int xtoi( const char* xs, unsigned int* result );
 char* expand_tilde( char* path, char* buffer, int size );
 bool stopproc( pid_t pid );
 char *strnstr( const char *s, const char *find, size_t slen);
+char* strtolower( char* s );
 
 #endif
 

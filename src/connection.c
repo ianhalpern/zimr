@@ -79,6 +79,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	strncpy( connection->hostname, raw, sizeof( connection->hostname ) );
 	//printf( "%s %s %d\n", connection->hostname, inet_ntoa( connection->ip ), strlen( raw ) );
 	raw += strlen( raw ) + 1;
+
 	// type
 	if ( startswith( raw, HTTP_GET ) ) {
 		connection->request.type = HTTP_GET_TYPE;
@@ -146,8 +147,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 			tmp += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
 			strncpy( connection->request.post_body, tmp, size - (long) ( tmp - start ) );
 			header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
-
-			if ( strcmp( header->value, "application/x-www-form-urlencoded" ) == 0 ) {
+			if ( header && startswith( header->value, "application/x-www-form-urlencoded" ) ) {
 				params_parse_qs( connection->request.params, connection->request.post_body, size - (long) ( tmp - start ) );
 			}
 		}

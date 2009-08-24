@@ -148,6 +148,7 @@ bool pcnf_state_load_apps( pcnf_state_t* state, yaml_document_t* document, int i
 		app->exec = NULL;
 		app->dir = NULL;
 		app->pid = 0;
+		list_init( &app->args );
 
 		for ( j = 0; j < app_node->data.mapping.pairs.top - app_node->data.mapping.pairs.start; j++ ) {
 			yaml_node_t* attr_key = yaml_document_get_node( document, app_node->data.mapping.pairs.start[ j ].key );
@@ -178,6 +179,20 @@ bool pcnf_state_load_apps( pcnf_state_t* state, yaml_document_t* document, int i
 				if ( attr_val->type != YAML_SCALAR_NODE )
 					continue;
 				app->pid = atoi( (char*) attr_val->data.scalar.value );
+			}
+
+			// args
+			else if ( strcmp( "args", (char*) attr_key->data.scalar.value ) == 0 ) {
+				if ( attr_val->type != YAML_SEQUENCE_NODE )
+					continue;
+				int k;
+				for ( k = 0; k < attr_val->data.sequence.items.top - attr_val->data.sequence.items.start; k++ ) {
+					yaml_node_t* arg_node = yaml_document_get_node( document, attr_val->data.sequence.items.start[ k ] );
+					if ( arg_node->type != YAML_SCALAR_NODE )
+						continue;
+					// TODO: remember to free strdup value
+					list_append( &app->args, strdup( (char*) arg_node->data.scalar.value ) );
+				}
 			}
 
 		}
@@ -236,13 +251,15 @@ quit:
 	return state;
 }
 
-pcnf_app_t* pcnf_app_load( ) {
+pcnf_app_t* pcnf_app_load( char* cnf_path ) {
 	char filepath[ 128 ];
 	pcnf_app_t* cnf = NULL;
 	yaml_document_t document;
 	int i;
 
-	if ( !expand_tilde( PD_APP_CNF_FILE, filepath, sizeof( filepath ) ) )
+	if ( !cnf_path ) cnf_path = PD_APP_CNF_FILE;
+
+	if ( !expand_tilde( cnf_path, filepath, sizeof( filepath ) ) )
 		return NULL;
 
 	if ( !pcnf_load( &document, filepath ) )
@@ -280,24 +297,33 @@ quit:
 	return cnf;
 }
 
-void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* dir, pid_t pid ) {
+void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* dir, pid_t pid, list_t* args ) {
 	pcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
 		if ( strcmp( app->exec, exec ) == 0 && strcmp( app->dir, dir ) == 0 ) {
-			app->pid = pid;
-			return;
+			break;
 		}
 	}
 
-	app = (pcnf_state_app_t*) malloc( sizeof( pcnf_state_app_t ) );
-	app->exec = strdup( exec );
-	app->dir  = strdup( dir );
-	app->pid  = pid;
+	if ( i == list_size( &state->apps ) ) {
+		app = (pcnf_state_app_t*) malloc( sizeof( pcnf_state_app_t ) );
+		app->exec = strdup( exec );
+		app->dir  = strdup( dir );
+		list_init( &app->args );
+		list_append( &state->apps, app );
+	}
 
-	list_append( &state->apps, app );
+	app->pid = pid;
+	if ( args ) {
+		list_clear( &app->args );
+		for ( i = 0; i < list_size( args ); i++ ) {
+			list_append( &app->args, list_get_at( args, i ) );
+		}
+	}
+
 }
 
 bool pcnf_state_app_is_running( pcnf_state_t* state, const char* exec, const char* dir ) {
@@ -327,8 +353,8 @@ void pcnf_state_save( pcnf_state_t* state ) {
 	memset( &document, 0, sizeof( yaml_document_t ) );
 	assert( yaml_document_initialize( &document, NULL, NULL, NULL, 0, 0 ) );
 
-	assert( ( root = yaml_document_add_mapping( &document, NULL, YAML_BLOCK_SEQUENCE_STYLE ) ) );
-	assert( ( apps = yaml_document_add_sequence( &document, NULL, YAML_BLOCK_MAPPING_STYLE ) ) );
+	assert( ( root = yaml_document_add_mapping( &document, NULL, YAML_BLOCK_MAPPING_STYLE ) ) );
+	assert( ( apps = yaml_document_add_sequence( &document, NULL, YAML_BLOCK_SEQUENCE_STYLE ) ) );
 	assert( ( name = yaml_document_add_scalar( &document, NULL, (unsigned char*) "applications", 12, YAML_PLAIN_SCALAR_STYLE ) ) );
 
 	assert( yaml_document_append_mapping_pair( &document, root, name, apps ) );
@@ -336,30 +362,45 @@ void pcnf_state_save( pcnf_state_t* state ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		pcnf_state_app_t* app = list_get_at( &state->apps, i );
-		int app_map, exec_name, exec_value, dir_name, dir_value, pid_name, pid_value;
+		int app_map, exec_name, exec_value, dir_name, dir_value, pid_name, pid_value, args_name, args_value;
+
+		assert( ( app_map = yaml_document_add_mapping( &document, NULL, YAML_BLOCK_SEQUENCE_STYLE ) ) );
 
 		assert( ( exec_name = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) "exec", 4, YAML_PLAIN_SCALAR_STYLE ) ) );
 		assert( ( exec_value = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) app->exec, strlen( app->exec ), YAML_PLAIN_SCALAR_STYLE ) ) );
+		assert( yaml_document_append_mapping_pair( &document, app_map, exec_name, exec_value ) );
 
 		assert( ( dir_name = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) "dir", 3, YAML_PLAIN_SCALAR_STYLE ) ) );
 		assert( ( dir_value = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) app->dir, strlen( app->dir ), YAML_PLAIN_SCALAR_STYLE ) ) );
+		assert( yaml_document_append_mapping_pair( &document, app_map, dir_name, dir_value ) );
 
 		sprintf( number, "%d", app->pid );
 		assert( ( pid_name = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) "pid", 3, YAML_PLAIN_SCALAR_STYLE ) ) );
 		assert( ( pid_value = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) number, -1, YAML_PLAIN_SCALAR_STYLE ) ) );
-
-		assert( ( app_map = yaml_document_add_mapping( &document, NULL, YAML_BLOCK_SEQUENCE_STYLE ) ) );
-		assert( yaml_document_append_sequence_item( &document, apps, app_map ) );
-
-		assert( yaml_document_append_mapping_pair( &document, app_map, exec_name, exec_value ) );
-		assert( yaml_document_append_mapping_pair( &document, app_map, dir_name, dir_value ) );
 		assert( yaml_document_append_mapping_pair( &document, app_map, pid_name, pid_value ) );
+
+		if ( list_size( &app->args ) ) {
+			assert( ( args_name = yaml_document_add_scalar( &document, NULL,
+			  (unsigned char*) "args", -1, YAML_PLAIN_SCALAR_STYLE ) ) );
+			assert( ( args_value = yaml_document_add_sequence( &document, NULL, YAML_FLOW_SEQUENCE_STYLE ) ) );
+			assert( yaml_document_append_mapping_pair( &document, app_map, args_name, args_value ) );
+
+			int j;
+			for ( j = 0; j < list_size( &app->args ); j++ ) {
+				int arg_item;
+				assert( ( arg_item = yaml_document_add_scalar( &document, NULL,
+				  (unsigned char*) list_get_at( &app->args, j ), -1, YAML_PLAIN_SCALAR_STYLE ) ) );
+				assert( yaml_document_append_sequence_item( &document, args_value, arg_item ) );
+			}
+		}
+
+		assert( yaml_document_append_sequence_item( &document, apps, app_map ) );
 
 	}
 
@@ -385,6 +426,7 @@ void pcnf_app_free( pcnf_app_t* cnf ) {
 }
 
 void pcnf_state_app_free( pcnf_state_app_t* app ) {
+	list_destroy( &app->args );
 	free( app->exec );
 	free( app->dir );
 	free( app );
