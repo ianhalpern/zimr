@@ -1,22 +1,22 @@
-/*   Poroda - Next Generation Web Server
+/*   Pacoda - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Poroda.org
+ *@  http://Pacoda.org
  *
- *   This file is part of Poroda.
+ *   This file is part of Pacoda.
  *
- *   Poroda is free software: you can redistribute it and/or modify
+ *   Pacoda is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Poroda is distributed in the hope that it will be useful,
+ *   Pacoda is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Poroda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
@@ -146,7 +146,7 @@ bool pcnf_state_load_apps( pcnf_state_t* state, yaml_document_t* document, int i
 		pcnf_state_app_t* app = (pcnf_state_app_t*) malloc( sizeof( pcnf_state_app_t ) );
 		list_append( &state->apps, app );
 		app->exec = NULL;
-		app->cwd = NULL;
+		app->dir = NULL;
 		app->pid = 0;
 
 		for ( j = 0; j < app_node->data.mapping.pairs.top - app_node->data.mapping.pairs.start; j++ ) {
@@ -166,11 +166,11 @@ bool pcnf_state_load_apps( pcnf_state_t* state, yaml_document_t* document, int i
 				app->exec = strdup( (char*) attr_val->data.scalar.value );
 			}
 
-			// cwd
-			else if ( strcmp( "cwd", (char*) attr_key->data.scalar.value ) == 0 ) {
+			// dir
+			else if ( strcmp( "dir", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
 					continue;
-				app->cwd = strdup( (char*) attr_val->data.scalar.value );
+				app->dir = strdup( (char*) attr_val->data.scalar.value );
 			}
 
 			// pid
@@ -280,13 +280,13 @@ quit:
 	return cnf;
 }
 
-void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* cwd, pid_t pid ) {
+void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* dir, pid_t pid ) {
 	pcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( strcmp( app->exec, exec ) == 0 && strcmp( app->cwd, cwd ) == 0 ) {
+		if ( strcmp( app->exec, exec ) == 0 && strcmp( app->dir, dir ) == 0 ) {
 			app->pid = pid;
 			return;
 		}
@@ -294,19 +294,19 @@ void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* cwd,
 
 	app = (pcnf_state_app_t*) malloc( sizeof( pcnf_state_app_t ) );
 	app->exec = strdup( exec );
-	app->cwd  = strdup( cwd );
+	app->dir  = strdup( dir );
 	app->pid  = pid;
 
 	list_append( &state->apps, app );
 }
 
-bool pcnf_state_app_is_running( pcnf_state_t* state, const char* exec, const char* cwd ) {
+bool pcnf_state_app_is_running( pcnf_state_t* state, const char* exec, const char* dir ) {
 	pcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( strcmp( app->exec, exec ) == 0 && strcmp( app->cwd, cwd ) == 0 ) {
+		if ( strcmp( app->exec, exec ) == 0 && strcmp( app->dir, dir ) == 0 ) {
 			if ( !app->pid ) return false;
 			return true;
 		}
@@ -336,17 +336,17 @@ void pcnf_state_save( pcnf_state_t* state ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		pcnf_state_app_t* app = list_get_at( &state->apps, i );
-		int app_map, exec_name, exec_value, cwd_name, cwd_value, pid_name, pid_value;
+		int app_map, exec_name, exec_value, dir_name, dir_value, pid_name, pid_value;
 
 		assert( ( exec_name = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) "exec", 4, YAML_PLAIN_SCALAR_STYLE ) ) );
 		assert( ( exec_value = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) app->exec, strlen( app->exec ), YAML_PLAIN_SCALAR_STYLE ) ) );
 
-		assert( ( cwd_name = yaml_document_add_scalar( &document, NULL,
-		  (unsigned char*) "cwd", 3, YAML_PLAIN_SCALAR_STYLE ) ) );
-		assert( ( cwd_value = yaml_document_add_scalar( &document, NULL,
-		  (unsigned char*) app->cwd, strlen( app->cwd ), YAML_PLAIN_SCALAR_STYLE ) ) );
+		assert( ( dir_name = yaml_document_add_scalar( &document, NULL,
+		  (unsigned char*) "dir", 3, YAML_PLAIN_SCALAR_STYLE ) ) );
+		assert( ( dir_value = yaml_document_add_scalar( &document, NULL,
+		  (unsigned char*) app->dir, strlen( app->dir ), YAML_PLAIN_SCALAR_STYLE ) ) );
 
 		sprintf( number, "%d", app->pid );
 		assert( ( pid_name = yaml_document_add_scalar( &document, NULL,
@@ -358,7 +358,7 @@ void pcnf_state_save( pcnf_state_t* state ) {
 		assert( yaml_document_append_sequence_item( &document, apps, app_map ) );
 
 		assert( yaml_document_append_mapping_pair( &document, app_map, exec_name, exec_value ) );
-		assert( yaml_document_append_mapping_pair( &document, app_map, cwd_name, cwd_value ) );
+		assert( yaml_document_append_mapping_pair( &document, app_map, dir_name, dir_value ) );
 		assert( yaml_document_append_mapping_pair( &document, app_map, pid_name, pid_value ) );
 
 	}
@@ -386,7 +386,7 @@ void pcnf_app_free( pcnf_app_t* cnf ) {
 
 void pcnf_state_app_free( pcnf_state_app_t* app ) {
 	free( app->exec );
-	free( app->cwd );
+	free( app->dir );
 	free( app );
 }
 

@@ -1,33 +1,35 @@
-/*   Poroda - Next Generation Web Server
+/*   Pacoda - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Poroda.org
+ *@  http://Pacoda.org
  *
- *   This file is part of Poroda.
+ *   This file is part of Pacoda.
  *
- *   Poroda is free software: you can redistribute it and/or modify
+ *   Pacoda is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Poroda is distributed in the hope that it will be useful,
+ *   Pacoda is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Poroda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
 #ifndef _PD_CONFIG_H
 #define _PD_CONFIG_H
 
+#define PACODA_WEBSITE "http://Pacoda.org"
+
 #define FLAG_ISSET( flag, flags ) ( (flag) & (flags) )
 
-#define D_LOCKFILE_PATH "/tmp/poroda-proxy.pid" // used by daemon.c
-#define PD_APP_CNF_FILE "poroda.cnf"
-#define PD_USR_STATE_FILE "~/.poroda.state"
+#define D_LOCKFILE_PATH "/tmp/pacoda-proxy.pid" // used by daemon.c
+#define PD_APP_CNF_FILE "pacoda.cnf"
+#define PD_USR_STATE_FILE "~/.pacoda.state"
 
 #define PD_PROXY_ADDR "127.0.0.1"
 #define PD_PROXY_PORT 8888
