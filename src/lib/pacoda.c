@@ -107,7 +107,8 @@ void pacoda_start( ) {
 					if ( website_data->conn_tries == 0 )
 						syslog( LOG_WARNING, "%s could not connect to proxy...will retry.", website->url );
 
-					if ( !PD_NUM_PROXY_DEATH_RETRIES || PD_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries )
+					if ( ( !PD_NUM_PROXY_DEATH_RETRIES && website_data->conn_tries != -1 )
+					  || PD_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries )
 						timeout = PD_PROXY_DEATH_RETRY_DELAY;
 
 					/* giving up ... */
@@ -202,7 +203,7 @@ website_t* pacoda_website_create( char* url ) {
 	website_data->pubdir = strdup( "./" );
 	website_data->status = WS_STATUS_DISABLED;
 	website_data->connection_handler = NULL;
-	website_data->conn_tries = PD_NUM_PROXY_DEATH_RETRIES - 1;
+	website_data->conn_tries = 0; //PD_NUM_PROXY_DEATH_RETRIES - 1;
 	website_data->default_pages_count = 0;
 	pacoda_website_insert_default_page( website, "default.html", 0 );
 	return website;

@@ -1,10 +1,11 @@
 #! /bin/sh
 
 ### BEGIN INIT INFO
-# Provides:          
-# Required-Start:    $pacoda-proxy $syslog
-# Required-Stop:     $pacoda-proxy
-# Should-Start:      
+# Provides:
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Should-Start:      $networking $named $time
+# Should-Stop:       $networking $named $time
 # Default-Start:     2 3 4 5
 # Default-Stop:      1
 # Short-Description: starts all users applications defined thier pacoda state files
