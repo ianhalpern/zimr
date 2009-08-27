@@ -69,7 +69,7 @@ void daemon_redirect_stdio( ) {
 
 int daemon_start( int flags ) {
 
-	printf( " * starting daemon ... " );
+	printf( " * starting daemon..." );
 	fflush( stdout );
 
 	if ( is_daemon ) {// already daemonized
@@ -142,7 +142,7 @@ int daemon_start( int flags ) {
 int daemon_stop( ) {
 	int pid = readlockfile( );
 
-	printf( " * stopping daemon ... " );
+	printf( " * stopping daemon..." );
 	fflush( stdout );
 
 	if ( !pid ) {

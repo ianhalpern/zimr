@@ -202,13 +202,13 @@ bool pcnf_state_load_apps( pcnf_state_t* state, yaml_document_t* document, int i
 	return 1;
 }
 
-pcnf_state_t* pcnf_state_load( ) {
+pcnf_state_t* pcnf_state_load( uid_t uid ) {
 	char filepath[ 128 ];
 	pcnf_state_t* state = NULL;
 	yaml_document_t document;
 	int i;
 
-	if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ) ) )
+	if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
 		return NULL;
 
 	// create the file if it doesn't exist.
@@ -219,13 +219,18 @@ pcnf_state_t* pcnf_state_load( ) {
 	}
 	fclose( state_file );
 
-
 	if ( !pcnf_load( &document, filepath ) ) {
 		return NULL;
 	}
 
 	state = (pcnf_state_t*) malloc( sizeof( pcnf_state_t ) );
 	list_init( &state->apps );
+	state->uid = uid;
+
+	/*struct stat state_stat_info;
+	if ( !stat( filepath, &state_stat_info ) ) {
+		state->uid = state_stat_info.st_uid;
+	}*/
 
 	yaml_node_t* root = yaml_document_get_root_node( &document );
 	if ( !root || root->type != YAML_MAPPING_NODE ) {
@@ -259,7 +264,7 @@ pcnf_app_t* pcnf_app_load( char* cnf_path ) {
 
 	if ( !cnf_path ) cnf_path = PD_APP_CNF_FILE;
 
-	if ( !expand_tilde( cnf_path, filepath, sizeof( filepath ) ) )
+	if ( !expand_tilde( cnf_path, filepath, sizeof( filepath ), getuid( ) ) )
 		return NULL;
 
 	if ( !pcnf_load( &document, filepath ) )
@@ -347,7 +352,7 @@ void pcnf_state_save( pcnf_state_t* state ) {
 	int root, apps, name;
 	char number[64];
 
-	if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ) ) )
+	if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ), state->uid ) )
 		return;
 
 	memset( &document, 0, sizeof( yaml_document_t ) );

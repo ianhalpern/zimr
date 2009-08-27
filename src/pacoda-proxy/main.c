@@ -81,6 +81,7 @@ void signal_handler( int sig ) {
 }
 
 void print_usage( ) {
+	printf( "Pacoda Proxy " PACODA_VERSION " (" BUILD_DATE ") - "  PACODA_WEBSITE "\n" );
 	printf(
 "\nUsage: pacoda-proxy [OPTIONS] {start|stop|restart}\n\
 	-h --help\n\
@@ -94,8 +95,6 @@ void print_usage( ) {
 int main( int argc, char* argv[ ] ) {
 	int ret = EXIT_SUCCESS;
 	int make_daemon = 1, daemon_flags = 0;
-
-	printf( "Pacoda Proxy " PACODA_VERSION " (" BUILD_DATE ")\n" );
 
 	///////////////////////////////////////////////
 	// parse command line options
@@ -380,6 +379,7 @@ void external_connection_handler( int sockfd, conn_info_t* conn_info ) {
 	if ( req_info && !website_get_by_sockfd( req_info->website_sockfd ) )
 		goto cleanup;
 
+	// TODO: wait for entire header before looking up website
 	if ( ( len = read( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
 cleanup:
 		// cleanup

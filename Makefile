@@ -1,10 +1,11 @@
 CC          = gcc -Wall
 CFLAGS      = -c -fPIC
 LDFLAGS     =
-DBFLAGS     = -ggdb -g -O0 -pg
+DBFLAGS     = -ggdb -g -O0
+PROFILEFLAGS= -pg
 TARGET_ARCH =
 PTHREAD     = -pthread
-DSYMBOLS    = -DBUILD_DATE="\"`date`\"" -DPACODA_VERSION="\"$(VERSION)\""
+DSYMBOLS    = -DPACODA_VERSION="\"$(VERSION)\""
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions -I/usr/include/python$(PYVERSION)
@@ -26,6 +27,10 @@ SRCDIR     = src
 LIB_SRCDIR = $(SRCDIR)/lib
 PY_SRCDIR  = $(SRCDIR)/python
 
+INSTALL_EXECDIR = /usr/bin
+INSTALL_LIBDIR  = /usr/lib
+INSTALL_PYDIR   = /usr/lib/python$(PYVERSION)
+
 VERSION  = `vernum`
 
 OBJ_DEPENDS         = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
@@ -36,15 +41,39 @@ PYMOD_DEPENDS       = %.so: $(PY_SRCDIR)/%module.c $(SRCDIR)/config.h
 EXEC_COMPILE = $(CC) $(LDFLAGS) $(TARGET_ARCH) $(DSYMBOLS) -I$(SRCDIR) -I$(LIB_SRCDIR) $(OUTPUT) $^
 OBJ_COMPILE  = $(CC) $(CFLAGS) $(TARGET_ARCH) $(OUTPUT) $<
 
-##### USER BUILD COMMANDS #####
+##### TOP-LEVEL COMMANDS #####
 ###############################
+.PHONY: make debug profile-debug tests clean install
 
-make debug: $(SHARED_OBJS) $(EXECS) $(PYMOD_OBJS)
+make debug profile-debug: $(SHARED_OBJS) $(EXECS) $(PYMOD_OBJS)
 
 tests: $(TEST_EXECS)
 
 clean:
 	rm -f $(EXECS) $(TEST_EXECS) *.o *.so gmon.out
+
+install:
+	@#if [ -f /etc/init.d/pacoda ]; then \
+	#	echo \\n--- Shutting down running pacoda ---; \
+	#	/etc/init.d/pacoda stop; \
+	#fi
+	@#echo --- Success ---;
+	@echo \\n--- Copying pacoda execs, libs, and config files ---;
+	cp -f $(EXECS) $(INSTALL_EXECDIR)
+	cp -f $(SHARED_OBJS) $(INSTALL_LIBDIR)
+	cp -f $(PYMOD_OBJS) $(INSTALL_PYDIR)
+	cp -f init.d/pacoda init.d/pacoda-proxy /etc/init.d/
+	@echo --- Success ---;
+	@echo \\n--- Setting up system to autostart pacoda ---;
+	chmod 755 /etc/init.d/pacoda
+	chmod 755 /etc/init.d/pacoda-proxy
+	update-rc.d pacoda defaults > /dev/null
+	update-rc.d pacoda-proxy defaults > /dev/null
+	@echo --- Success ---;
+	@#echo \\n--- Starting pacoda ---;
+	@#/etc/init.d/pacoda start
+	@#echo --- Success ---;
+	@echo \\nFinished. Installation succeeded!;
 
 ##### EXECS #####
 #################
@@ -80,9 +109,8 @@ $(OBJS): $(OBJ_DEPENDS)
 ##### COMMAND VARIABLE MODS #####
 #################################
 
-debug: CC += $(DBFLAGS)
-debug: DSYMBOLS += -DDEBUG
-tests: CC += $(DBFLAGS)
-$(TEST_EXECS): CC += $(DBFLAGS)
-debug: VERSION := $(VERSION)-debug
+$(TEST_EXECS ) tests profile-debug debug: CC += $(DBFLAGS)
+profile-debug debug: DSYMBOLS += -DDEBUG
+profile-debug debug: VERSION := $(VERSION)-debug
+profile-debug: CC += $(PROFILEFLAGS)
 #debug: EXEC_COMPILE += -rdynamic -ldl $(SRCDIR)/sigsegv.c

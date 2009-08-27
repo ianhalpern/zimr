@@ -53,6 +53,7 @@ websites:
 #include <stdbool.h>
 #include <yaml.h>
 #include <assert.h>
+#include <sys/stat.h>
 
 #include "simclist.h"
 #include "general.h"
@@ -79,10 +80,11 @@ typedef struct pcnf_state_app {
 
 typedef struct {
 	list_t apps;
+	uid_t uid;
 } pcnf_state_t;
 ///////////////////////////
 
-pcnf_state_t* pcnf_state_load( );
+pcnf_state_t* pcnf_state_load( uid_t uid );
 pcnf_app_t* pcnf_app_load( );
 
 bool pcnf_state_app_is_running( pcnf_state_t* state, const char* exec, const char* cwd );

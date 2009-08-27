@@ -159,7 +159,7 @@ int xtoi( const char* xs, unsigned int* result ) {
 	 return 1;
 }
 
-char* expand_tilde( char* path, char* buffer, int size ) {
+char* expand_tilde( char* path, char* buffer, int size, uid_t uid ) {
 	*buffer = 0;
 	if ( *path != '~' ) {
 		if ( strlen( path ) > size ) return NULL;
@@ -167,7 +167,10 @@ char* expand_tilde( char* path, char* buffer, int size ) {
 		return buffer;
 	}
 
-	char* home = getenv( "HOME" );
+	struct passwd* pwd;
+	pwd = getpwuid( uid );
+	char* home = pwd->pw_dir;
+
 	if ( strlen( home ) + strlen( path + 1 ) > size ) return NULL;
 
 	strcat( buffer, home );

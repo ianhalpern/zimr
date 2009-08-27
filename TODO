@@ -1,0 +1,26 @@
+*setup autostart/stop/etc. (init.d)
+*make install build routine
+*website redirects
+*thorough testing (use socat for request testing, check for memleaks)
+*folder view
+*error files/website handling
+*ignore files/ext's
+*add daemon functions to pacoda and remove them from pacoda-proxy
+*make ubuntu package
+*setup launchpad
+*setup autostart
+*update lists to use simclist data structure
+*update python-pacoda bindings error checking and methods/member/etc. descriptions
+*look through and update logging
+*update website
+*finish all pacoda command line options
+^ Milestone v0.1.0 ^
+*make pacoda info commands return yaml
+*ability to change cwd of pacoda proc
+*add logging by website and configurable via pacoda.cnf file
+*SSL
+*multipart/form-data support and attachments http://community.roxen.com/developers/idocs/rfc/rfc1867.html
+*make proxy config file
+*comb through rfc specs and add missing features, or features that need to be updated to conform to it to the TODO list
+*write man page/documentation
+*remove asserts

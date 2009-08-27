@@ -83,4 +83,8 @@ void pacoda_connection_send_error( );
 void pacoda_connection_default_page_handler( connection_t* connection, char* filepath );
 
 void pacoda_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata );
+
+bool pacoda_open_request_log( );
+void pacoda_log_request( connection_t* connection );
+void pacoda_close_request_log( );
 #endif

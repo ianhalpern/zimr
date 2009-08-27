@@ -22,6 +22,8 @@
 
 #include "pacoda.h"
 
+static int reqlogfd = -1;
+
 typedef struct {
 	int size;
 	char* data;
@@ -57,6 +59,9 @@ bool pacoda_init( ) {
 	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
 #endif
 
+	if ( !pacoda_open_request_log( ) )
+		return false;
+
 	// Register file descriptor type handlers
 	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR pacoda_connection_handler );
 	pfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR pacoda_file_handler );
@@ -70,6 +75,7 @@ void pacoda_shutdown( ) {
 		pacoda_website_destroy( website_get_root( ) );
 	}
 	syslog( LOG_INFO, "shutdown." );
+	pacoda_close_request_log( );
 }
 
 void pacoda_start( ) {
@@ -101,7 +107,7 @@ void pacoda_start( ) {
 					if ( website_data->conn_tries == 0 )
 						syslog( LOG_WARNING, "%s could not connect to proxy...will retry.", website->url );
 
-					if ( PD_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries )
+					if ( !PD_NUM_PROXY_DEATH_RETRIES || PD_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries )
 						timeout = PD_PROXY_DEATH_RETRY_DELAY;
 
 					/* giving up ... */
@@ -354,13 +360,6 @@ void pacoda_connection_handler( int sockfd, website_t* website ) {
 		connection_t* connection;
 		connection = connection_create( website, msgid, requests[ msgid ].data, requests[ msgid ].size );
 
-		printf( "%s %s http://%s/%s\n",
-			inet_ntoa( connection->ip ),
-			connection->hostname,
-			connection->website->url,
-			connection->request.url
-		);
-
 		// start optimistically
 		response_set_status( &connection->response, 200 );
 		// To ensure thier position at the top of the headers
@@ -422,6 +421,8 @@ void pacoda_connection_send_headers( ptransport_t* transport, connection_t* conn
 	ptransport_write( transport, (void*) headers, strlen( headers ) );
 	free( cookies );
 	free( headers );
+
+	pacoda_log_request( connection );
 }
 
 void pacoda_connection_send( connection_t* connection, void* message, int size ) {
@@ -553,3 +554,39 @@ void pacoda_connection_default_page_handler( connection_t* connection, char* fil
 	pfd_set( fd, PFD_TYPE_FILE, transport );
 }
 
+bool pacoda_open_request_log( ) {
+	if ( ( reqlogfd = open( PD_REQ_LOGFILE, O_WRONLY | O_APPEND ) ) == -1 ) {
+		if ( errno != ENOENT
+		 || ( reqlogfd = creat( PD_REQ_LOGFILE, S_IRUSR | S_IWUSR ) ) == -1 ) {
+			syslog( LOG_ERR, "error opening request logfile: %s", strerror( errno ) );
+			return false;
+		}
+	}
+	return true;
+}
+
+void pacoda_log_request( connection_t* connection ) {
+	time_t now;
+	char now_str[ 80 ], buffer[ 1024 ];
+
+	time( &now );
+	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
+
+	sprintf( buffer, "%s, %s, %s, %s, http://%s/%s, %d\n",
+		now_str,
+		inet_ntoa( connection->ip ),
+		connection->hostname,
+		HTTP_TYPE( connection->request.type ),
+		connection->website->url,
+		connection->request.url,
+		connection->response.http_status
+	);
+
+	if ( write( reqlogfd, buffer, strlen( buffer ) ) == -1 ) {
+		perror( "error" );
+	}
+}
+
+void pacoda_close_request_log( ) {
+	close( reqlogfd );
+}

@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <pwd.h>
 
 #include "general.h"
 #include "ptransport.h"
@@ -65,6 +66,7 @@ void print_command( command_t* command, int depth ) {
 }
 
 void print_usage( ) {
+	printf( "Pacoda " PACODA_VERSION " (" BUILD_DATE ") - " PACODA_WEBSITE "\n\n" );
 	printf( "Commands:\n" );
 	print_command( &root_command, 0 );
 }
@@ -92,7 +94,7 @@ bool run_commands( command_t* command, int argc, char* argv[ ] ) {
 
 // Application Functions ////////////////////////////
 
-pid_t application_exec( char* exec, char* dir, list_t* args ) {
+pid_t application_exec( uid_t uid, char* exec, char* dir, list_t* args ) {
 	pid_t pid = fork( );
 
 	if ( pid == 0 ) {
@@ -107,6 +109,8 @@ pid_t application_exec( char* exec, char* dir, list_t* args ) {
 			argv[ i ] = list_get_at( args, i - 1 );
 		}
 
+		setuid( uid );
+		setgid( uid );
 
 		execvp( argv[ 0 ], argv );
 		puts( "error" );
@@ -126,12 +130,15 @@ bool application_kill( pid_t pid ) {
 	return true;
 }
 
-void application_start( char* exec, char* dir, list_t* args ) {
-	pcnf_state_t* state = pcnf_state_load( );
+bool application_start( char* exec, char* dir, list_t* args ) {
+	printf( " * starting %s@%s ...", exec, dir ); fflush( stdout );
+	pcnf_state_t* state = pcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
-		exit( EXIT_FAILURE );
+		return false;
 	}
+
+	bool retval = true;
 
 	pcnf_state_app_t* app;
 
@@ -141,23 +148,37 @@ void application_start( char* exec, char* dir, list_t* args ) {
 		if ( strcmp( app->dir, dir ) == 0 && strcmp( app->exec, exec ) == 0 ) {
 			pcnf_state_free( state );
 			puts( "application is already running" );
-			return;
+			retval = false;
+			goto quit;
 		}
 	}
 
-	pid_t pid = application_exec( exec, dir, args );
+	pid_t pid = application_exec( state->uid, exec, dir, args );
+	if ( pid == -1 ) {
+		pcnf_state_free( state );
+		retval = false;
+		printf( "failed\n" );
+		goto quit;
+	}
+
+	printf( "success.\n" );
 	pcnf_state_set_app( state, exec, dir, pid, args );
 	pcnf_state_save( state );
+
+quit:
 	pcnf_state_free( state );
+	return retval;
 }
 
-void application_stop( char* exec, char* dir ) {
-	pcnf_state_t* state = pcnf_state_load( );
-
+bool application_stop( char* exec, char* dir ) {
+	printf( " * stopping %s@%s...", exec, dir ); fflush( stdout );
+	pcnf_state_t* state = pcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
-		exit( EXIT_FAILURE );
+		return false;
 	}
+
+	bool retval = true;
 
 	pcnf_state_app_t* app = NULL;
 
@@ -172,24 +193,31 @@ void application_stop( char* exec, char* dir ) {
 
 	if ( !app ) {
 		puts( "application not in state" );
+		retval = false;
+		goto quit;
 	} else {
 		if ( application_kill( app->pid ) ) {
+			printf( "success.\n" );
 			list_delete_at( &state->apps, i );
 			pcnf_state_app_free( app );
 			pcnf_state_save( state );
-		}
+		} else retval = false;
 	}
 
+quit:
 	pcnf_state_free( state );
+	return retval;
 }
 
-void application_restart( char* exec, char* dir ) {
-	pcnf_state_t* state = pcnf_state_load( );
-
+bool application_restart( uid_t uid, char* exec, char* dir ) {
+	printf( " * restarting %s@%s...", exec, dir ); fflush( stdout );
+	pcnf_state_t* state = pcnf_state_load( uid );
 	if ( !state ) {
 		puts( "failed to load state" );
-		exit( EXIT_FAILURE );
+		return false;
 	}
+
+	bool retval = true;
 
 	pcnf_state_app_t* app = NULL;
 
@@ -204,23 +232,33 @@ void application_restart( char* exec, char* dir ) {
 
 	if ( !app ) {
 		puts( "application not in state" );
+		retval = false;
 	} else {
 		if ( application_kill( app->pid ) ) {
-			pid_t pid = application_exec( app->exec, app->dir, &app->args );
+			pid_t pid = application_exec( state->uid, app->exec, app->dir, &app->args );
+			if ( pid == -1 ) {
+				retval = false;
+				goto quit;
+			}
 			pcnf_state_set_app( state, app->exec, app->dir, pid, NULL );
-		}
+			pcnf_state_save( state );
+			printf( "success.\n" );
+		} else retval = false;
 	}
 
-	pcnf_state_save( state );
+quit:
 	pcnf_state_free( state );
+	return retval;
 }
 
-void application_status( char* exec, char* dir ) {
-	pcnf_state_t* state = pcnf_state_load( );
+bool application_status( char* exec, char* dir ) {
+	pcnf_state_t* state = pcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
-		exit( EXIT_FAILURE );
+		return false;
 	}
+
+	bool retval = true;
 
 	pcnf_state_app_t* app;
 
@@ -236,14 +274,18 @@ void application_status( char* exec, char* dir ) {
 
 			printf( "\n   directory: %s\n", app->dir );
 			// TODO: proxy address, uptime, memory usage, running websites, etc
+			printf( "\n" );
 			break;
 		}
 	}
 
-	if ( i == list_size( &state->apps ) )
+	if ( i == list_size( &state->apps ) ) {
 		puts( "application is not in state." );
+		retval = false;
+	}
 
 	pcnf_state_free( state );
+	return retval;
 }
 
 void application_start_cmd( int optc, char* optv[ ] ) {
@@ -275,7 +317,8 @@ void application_start_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	application_start( exec, dir, &args );
+	if ( !application_start( exec, dir, &args ) )
+		exit( EXIT_FAILURE );
 	list_destroy( &args );
 }
 
@@ -297,7 +340,8 @@ void application_stop_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	application_stop( exec, dir );
+	if ( !application_stop( exec, dir ) )
+		exit( EXIT_FAILURE );
 }
 
 void application_restart_cmd( int optc, char* optv[ ] ) {
@@ -318,7 +362,8 @@ void application_restart_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	application_restart( exec, dir );
+	if ( !application_restart( getuid( ), exec, dir ) )
+		exit( EXIT_FAILURE );
 }
 
 void application_status_cmd( int optc, char* optv[ ] ) {
@@ -339,7 +384,8 @@ void application_status_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	application_status( exec, dir );
+	if ( !application_status( exec, dir ) )
+		exit( EXIT_FAILURE );
 }
 
 ///////////////////////////////////////////////
@@ -347,96 +393,177 @@ void application_status_cmd( int optc, char* optv[ ] ) {
 
 // State Functions ////////////////////////////
 
-void state_unload( ) {
-	pcnf_state_t* state = pcnf_state_load( );
+bool state_unload( uid_t uid ) {
+	pcnf_state_t* state = pcnf_state_load( uid );
 
 	if ( !state ) {
 		puts( "failed to load state" );
-		exit( EXIT_FAILURE );
+		return false;
 	}
+
+	bool retval = true;
 
 	pcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		application_kill( app->pid );
+		printf( " * stopping %s@%s...", app->exec, app->dir ); fflush( stdout );
+		if ( !application_kill( app->pid ) ) {
+			retval = false;
+			goto quit;
+		}
 	}
 
+	printf( "success.\n" );
+quit:
 	pcnf_state_free( state );
+	return retval;
 }
 
-void state_clear( ) {
-	pcnf_state_t* state = pcnf_state_load( );
-
+bool state_clear( ) {
+	pcnf_state_t* state = pcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
-		exit( EXIT_FAILURE );
+		return false;
 	}
+
+	bool retval = true;
 
 	pcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		application_stop( app->exec, app->dir );
+		if ( !application_stop( app->exec, app->dir ) ) {
+			retval = false;
+			goto quit;
+		}
 	}
 
+quit:
 	pcnf_state_free( state );
+	return retval;
 }
 
-void state_reload( ) {
-	pcnf_state_t* state = pcnf_state_load( );
-
+bool state_reload( uid_t uid ) {
+	pcnf_state_t* state = pcnf_state_load( uid );
 	if ( !state ) {
 		puts( "failed to load state" );
-		exit( EXIT_FAILURE );
+		return false;
 	}
+
+	bool retval = true;
 
 	pcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		application_restart( app->exec, app->dir );
+		if ( !application_restart( uid, app->exec, app->dir ) ) {
+			retval = false;
+			goto quit;
+		}
 	}
 
+quit:
 	pcnf_state_free( state );
+	return retval;
 }
 
-void state_status( ) {
-	pcnf_state_t* state = pcnf_state_load( );
-
+bool state_status( ) {
+	pcnf_state_t* state = pcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
-		exit( EXIT_FAILURE );
+		return false;
 	}
+
+	bool retval = true;
 
 	pcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		application_status( app->exec, app->dir );
+		if ( !application_status( app->exec, app->dir ) ) {
+			retval = false;
+			goto quit;
+		}
 	}
 
+quit:
 	pcnf_state_free( state );
+	return retval;
 }
 
 void state_reload_cmd( int optc, char* optv[ ] ) {
-	state_reload( );
+	int i;
+	for ( i = 0; i < optc; i++ ) {
+		if ( strcmp( optv[ i ], "all" ) == 0 ) {
+			/* yea...this whole bit is a hack */
+			char line[ 64 ];
+			FILE* fp;
+			fp = popen( "awk -F\":\" '{ print $3 }' /etc/passwd", "r" );
+			while ( fgets( line, sizeof( line ), fp ) ) {
+				uid_t uid = atoi( line );
+
+				char filepath[ 128 ];
+				if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
+					continue;
+
+				int fd;
+				if ( ( fd = open( filepath, O_RDONLY ) ) == -1 ) continue;
+				close( fd );
+
+				printf( "%d:%s\n", uid, filepath );
+
+				state_reload( uid );
+			}
+			pclose(fp);
+			exit( EXIT_SUCCESS );
+		}
+	}
+
+	if ( !state_reload( getuid( ) ) ) exit( EXIT_FAILURE );
 }
 
 void state_unload_cmd( int optc, char* optv[ ] ) {
-	state_unload( );
+	int i;
+	for ( i = 0; i < optc; i++ ) {
+		if ( strcmp( optv[ i ], "all" ) == 0 ) {
+			/* yea...this whole bit is a hack */
+			char line[ 64 ];
+			FILE* fp;
+			fp = popen( "awk -F\":\" '{ print $3 }' /etc/passwd", "r" );
+			while ( fgets( line, sizeof( line ), fp ) ) {
+				uid_t uid = atoi( line );
+
+				char filepath[ 128 ];
+				if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
+					continue;
+
+				int fd;
+				if ( ( fd = open( filepath, O_RDONLY ) ) == -1 ) continue;
+				close( fd );
+
+				printf( "%d:%s\n", uid, filepath );
+
+				state_unload( uid );
+			}
+			pclose(fp);
+			exit( EXIT_SUCCESS );
+		}
+	}
+
+	if ( !state_unload( getuid( ) ) ) exit( EXIT_FAILURE );
 }
 
 void state_clear_cmd( int optc, char* optv[ ] ) {
-	state_clear( );
+	if ( !state_clear( ) ) exit( EXIT_FAILURE );
 }
 
 void state_status_cmd( int optc, char* optv[ ] ) {
-	state_status( );
+	if ( !state_status( ) ) exit( EXIT_FAILURE );
 }
 
 ///////////////////////////////////////////////
@@ -485,10 +612,10 @@ int main( int argc, char* argv[ ] ) {
 	};
 
 	command_t state_commands[ ] = {
-		{ "reload", "options: <config path>", NULL, &state_reload_cmd },
-		{ "unload", "options: <config path>", NULL, &state_unload_cmd },
-		{ "clear",  "options: <config path>", NULL, &state_clear_cmd },
-		{ "status", "options: <config path>", NULL, &state_status_cmd },
+		{ "reload", "options: [all, <config path>]", NULL, &state_reload_cmd },
+		{ "unload", "options: [all, <config path>]", NULL, &state_unload_cmd },
+		{ "clear",  "options: [<config path>]", NULL, &state_clear_cmd },
+		{ "status", "options: [<config path>]", NULL, &state_status_cmd },
 		{ NULL }
 	};
 
@@ -509,7 +636,8 @@ int main( int argc, char* argv[ ] ) {
 	root_command.sub_commands = pacoda_commands;
 	root_command.func = NULL;
 
-	printf( "Pacoda " PACODA_VERSION " (" BUILD_DATE ")\n" PACODA_WEBSITE "\n\n" );
+	char* last_slash = strrchr( argv[ 0 ], '/' );
+	if ( last_slash ) argv[ 0 ] = last_slash + 1;
 
 	if ( !run_commands( &root_command, argc, argv ) )
 		print_usage( );

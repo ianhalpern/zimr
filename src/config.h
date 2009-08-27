@@ -23,6 +23,8 @@
 #ifndef _PD_CONFIG_H
 #define _PD_CONFIG_H
 
+#define BUILD_DATE __DATE__ " " __TIME__
+
 #define PACODA_WEBSITE "http://Pacoda.org"
 
 #define FLAG_ISSET( flag, flags ) ( (flag) & (flags) )
@@ -30,11 +32,12 @@
 #define D_LOCKFILE_PATH "/tmp/pacoda-proxy.pid" // used by daemon.c
 #define PD_APP_CNF_FILE "pacoda.cnf"
 #define PD_USR_STATE_FILE "~/.pacoda.state"
+#define PD_REQ_LOGFILE "pacoda.log"
 
 #define PD_PROXY_ADDR "127.0.0.1"
 #define PD_PROXY_PORT 8888
 
-#define PD_NUM_PROXY_DEATH_RETRIES 1000
+#define PD_NUM_PROXY_DEATH_RETRIES 1000 // set to 0(ZERO) for infinite retries
 #define PD_PROXY_DEATH_RETRY_DELAY 2
 
 /******* PD_CMD's *********/
@@ -43,7 +46,6 @@
 #define PD_CMD_WS_START  -1
 #define PD_CMD_WS_STOP   -2
 #define PD_CMD_STATUS    -3
-#define PD_CMD_APP_HELLO -4
 
 /**************************/
 
@@ -68,6 +70,8 @@
 
 #define HTTP_GET_TYPE  0x01
 #define HTTP_POST_TYPE 0x02
+
+#define HTTP_TYPE(X) ( (X) == HTTP_GET_TYPE ? HTTP_GET : HTTP_POST )
 
 #define HTTP_HDR_ENDL "\r\n"
 

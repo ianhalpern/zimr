@@ -1,0 +1,38 @@
+#! /bin/sh
+
+### BEGIN INIT INFO
+# Provides:          pacoda-proxy
+# Required-Start:    $syslog
+# Required-Stop:     $syslog
+# Should-Start:      
+# Default-Start:     2 3 4 5
+# Default-Stop:      1
+# Short-Description: virtual http host proxy
+# Description:       pacoda-proxy is a specialized http proxy to route
+#                    http(s) requests to internally or externally connected applications.
+### END INIT INFO
+
+# /etc/init.d/pacoda-proxy: start and stop the pacoda proxy
+
+exitval=0
+
+case "$1" in
+	start)
+		pacoda-proxy start
+		exitval=$?
+	;;
+	stop)
+		pacoda-proxy stop
+		exitval=$?
+	;;
+	restart)
+		pacoda-proxy restart
+		exitval=$?
+	;;
+	*)
+		echo "Usage: /etc/init.d/pacoda-proxy {start|stop}"
+		exit 1
+	;;
+esac
+
+exit $exitval
