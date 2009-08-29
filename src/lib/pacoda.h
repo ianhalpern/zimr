@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <dirent.h>
 
 #include "website.h"
 #include "ptransport.h"

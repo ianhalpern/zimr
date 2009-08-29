@@ -380,7 +380,7 @@ void pacoda_file_handler( int fd, ptransport_t* transport ) {
 	int n;
 	char buffer[ 2048 ];
 
-	if ( ( n = read( fd, buffer, sizeof( buffer ) ) ) ) {
+	if ( ( n = read( fd, buffer, sizeof( buffer ) ) ) > 0 ) {
 		if ( !ptransport_write( transport, buffer, n ) ) {
 			ptransport_close( transport );
 			pfd_clr( fd );
@@ -466,7 +466,7 @@ void pacoda_connection_send_file( connection_t* connection, char* filepath, bool
 
 	if ( S_ISDIR( file_stat.st_mode ) ) {
 
-		if ( full_filepath[ strlen( filepath ) ] != '/' )
+		if ( full_filepath[ strlen( full_filepath ) - 1 ] != '/' )
 			strcat( full_filepath, "/" );
 
 		// search for the directory default page
@@ -477,8 +477,11 @@ void pacoda_connection_send_file( connection_t* connection, char* filepath, bool
 				break; // default file exists...break loop
 		}
 
-	}
+		if ( i == website_data->default_pages_count ) {
+			*ptr = 0;
+		}
 
+	}
 
 	// search for a page handler by file extension
 	ptr = strrchr( full_filepath, '.' );
@@ -518,6 +521,77 @@ void pacoda_connection_send_error( connection_t* connection ) {
 	ptransport_close( transport );
 }
 
+void pacoda_connection_send_dir( connection_t* connection, char* filepath ) {
+	int i;
+	DIR* dir;
+	struct dirent* dp;
+	if ( ( dir = opendir( filepath ) ) == NULL) {
+		pacoda_connection_send_error( connection );
+		return;
+	}
+
+	int num = 0;
+	char* files[ 512 ];
+
+	char html_header_fmt[ ] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>%s</h1>\n";
+	char html_file_fmt[ ]   = "<a href=\"%s\">%s</a><br/>\n";
+	char html_dir_fmt[ ]   = "<a href=\"%s/\">%s/</a><br/>\n";
+	char html_header[ strlen( html_header_fmt ) + strlen( filepath ) - 1 ];
+	sprintf( html_header, html_header_fmt, filepath + 1 );
+	char html_footer[ ] = "<br/>"  "Pacoda/" PACODA_VERSION "\n</body></html>";
+
+	int size = strlen( html_header ) + strlen( html_footer );
+	while ( ( dp = readdir( dir ) ) != NULL && num < sizeof( files ) / sizeof( char* ) ) {
+		char fullpath[ strlen( filepath ) + strlen( dp->d_name ) + 1 ];
+		sprintf( fullpath, "%s%s", filepath, dp->d_name );
+
+		struct stat file_stat;
+		if ( stat( fullpath, &file_stat ) ) {
+			continue;
+		}
+
+		if ( S_ISDIR( file_stat.st_mode ) ) {
+			files[ num ] = (char*) malloc( strlen( dp->d_name ) * 2 + sizeof( html_dir_fmt ) + 1 );
+			sprintf( files[ num ], html_dir_fmt, dp->d_name, dp->d_name );
+		} else {
+			files[ num ] = (char*) malloc( strlen( dp->d_name ) * 2 + sizeof( html_file_fmt ) + 1 );
+			sprintf( files[ num ], html_file_fmt, dp->d_name, dp->d_name );
+		}
+		size += strlen( files[ num ] );
+		num++;
+
+		for ( i = num - 1; i > 0; i-- ) {
+			if ( files[ i ][ 10 ] < files[ i - 1 ][ 10 ] ) {
+				char* tmp = files[ i ];
+				files[ i ] = files[ i - 1 ];
+				files[ i - 1 ] = tmp;
+			} else break;
+		}
+	}
+	closedir( dir );
+
+	char sizebuf[ 10 ];
+	ptransport_t* transport = ptransport_open( connection->website->sockfd, PT_WO, connection->sockfd );
+	response_set_status( &connection->response, 200 );
+	headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
+	sprintf( sizebuf, "%d", size );
+	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
+
+	pacoda_connection_send_status( transport, connection );
+	pacoda_connection_send_headers( transport, connection );
+
+	ptransport_write( transport, html_header, strlen( html_header ) );
+
+	for ( i = 0; i < num; i++ ) {
+		ptransport_write( transport, files[ i ], strlen( files[ i ] ) );
+		free( files[ i ] );
+	}
+
+	ptransport_write( transport, html_footer, strlen( html_footer ) );
+
+	ptransport_close( transport );
+}
+
 void pacoda_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata ) {
 	strcpy( page_handlers[ page_handler_count ].page_type, page_type );
 	page_handlers[ page_handler_count ].page_handler = page_handler;
@@ -533,6 +607,11 @@ void pacoda_connection_default_page_handler( connection_t* connection, char* fil
 
 	if ( stat( filepath, &file_stat ) ) {
 		pacoda_connection_send_error( connection );
+		return;
+	}
+
+	if ( S_ISDIR( file_stat.st_mode ) ) {
+		pacoda_connection_send_dir( connection, filepath );
 		return;
 	}
 

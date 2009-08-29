@@ -1,14 +1,14 @@
-*setup autostart/stop/etc. (init.d)
-*make install build routine
+x*setup autostart/stop/etc. (init.d)
+x*make install build routine
+x*setup autostart
+*folder view
+*redirect if folders don't have trailing /
 *website redirects
 *thorough testing (use socat for request testing, check for memleaks)
-*folder view
 *error files/website handling
 *ignore files/ext's
-*add daemon functions to pacoda and remove them from pacoda-proxy
 *make ubuntu package
 *setup launchpad
-*setup autostart
 *update lists to use simclist data structure
 *update python-pacoda bindings error checking and methods/member/etc. descriptions
 *look through and update logging
@@ -24,3 +24,7 @@
 *comb through rfc specs and add missing features, or features that need to be updated to conform to it to the TODO list
 *write man page/documentation
 *remove asserts
+*credentials
+*default configuration for applications/websites in state
+*wikipedia page
+*make proxy kill website connections when website dies
