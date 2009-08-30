@@ -1,22 +1,22 @@
-/*   Pacoda - Next Generation Web Server
+/*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Pacoda.org
+ *@  http://Zimr.org
  *
- *   This file is part of Pacoda.
+ *   This file is part of Zimr.
  *
- *   Pacoda is free software: you can redistribute it and/or modify
+ *   Zimr is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Pacoda is distributed in the hope that it will be useful,
+ *   Zimr is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
@@ -84,16 +84,19 @@ char* normalize( char* normpath, const char* path ) {
 	while ( ( ptr = strstr( path, "/" ) ) || ( ptr = (char*) path + strlen( path ) ) ) {
 		len = ptr - path;
 		if ( len > PATH_MAX - 1 ) len = PATH_MAX - 1;
-		if ( len ) {
-			strncpy( patharr[ i ], path, len );
-			patharr[ i ][ len ] = '\0';
-			if ( strcmp( patharr[ i ], "." ) != 0 && strcmp( patharr[ i ], ".." ) != 0 ) {
+
+		if ( i > 1 && patharr[ i - 1 ][ 0 ] == '\0' )
+			i--;
+
+		strncpy( patharr[ i ], path, len );
+		patharr[ i ][ len ] = '\0';
+
+		if ( strcmp( patharr[ i ], "." ) != 0 && strcmp( patharr[ i ], ".." ) != 0 ) {
+			i++;
+		} else if ( strcmp( patharr[ i ], ".." ) == 0 ) {
+			if ( !i || strcmp( patharr[ i - 1 ], ".." ) == 0 )
 				i++;
-			} else if ( strcmp( patharr[ i ], ".." ) == 0 ) {
-				if ( !i || strcmp( patharr[ i - 1 ], ".." ) == 0 )
-					i++;
-				else i--;
-			}
+			else i--;
 		}
 
 		if ( ptr[ 0 ] == '\0' )

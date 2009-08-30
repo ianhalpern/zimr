@@ -1,22 +1,22 @@
-/*   Pacoda - Next Generation Web Server
+/*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Pacoda.org
+ *@  http://Zimr.org
  *
- *   This file is part of Pacoda.
+ *   This file is part of Zimr.
  *
- *   Pacoda is free software: you can redistribute it and/or modify
+ *   Zimr is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Pacoda is distributed in the hope that it will be useful,
+ *   Zimr is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
@@ -29,10 +29,10 @@
 #include <pwd.h>
 
 #include "general.h"
-#include "ptransport.h"
-#include "psocket.h"
-#include "pfildes.h"
-#include "pcnf.h"
+#include "ztransport.h"
+#include "zsocket.h"
+#include "zfildes.h"
+#include "zcnf.h"
 #include "simclist.h"
 
 typedef struct command {
@@ -66,7 +66,7 @@ void print_command( command_t* command, int depth ) {
 }
 
 void print_usage( ) {
-	printf( "Pacoda " PACODA_VERSION " (" BUILD_DATE ") - " PACODA_WEBSITE "\n\n" );
+	printf( "Zimr " ZIMR_VERSION " (" BUILD_DATE ") - " ZIMR_WEBSITE "\n\n" );
 	printf( "Commands:\n" );
 	print_command( &root_command, 0 );
 }
@@ -132,7 +132,7 @@ bool application_kill( pid_t pid ) {
 
 bool application_start( char* exec, char* dir, list_t* args ) {
 	printf( " * starting %s@%s ...", exec, dir ); fflush( stdout );
-	pcnf_state_t* state = pcnf_state_load( getuid( ) );
+	zcnf_state_t* state = zcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
@@ -140,13 +140,13 @@ bool application_start( char* exec, char* dir, list_t* args ) {
 
 	bool retval = true;
 
-	pcnf_state_app_t* app;
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
 		if ( strcmp( app->dir, dir ) == 0 && strcmp( app->exec, exec ) == 0 ) {
-			pcnf_state_free( state );
+			zcnf_state_free( state );
 			puts( "application is already running" );
 			retval = false;
 			goto quit;
@@ -155,24 +155,24 @@ bool application_start( char* exec, char* dir, list_t* args ) {
 
 	pid_t pid = application_exec( state->uid, exec, dir, args );
 	if ( pid == -1 ) {
-		pcnf_state_free( state );
+		zcnf_state_free( state );
 		retval = false;
 		printf( "failed\n" );
 		goto quit;
 	}
 
 	printf( "success.\n" );
-	pcnf_state_set_app( state, exec, dir, pid, args );
-	pcnf_state_save( state );
+	zcnf_state_set_app( state, exec, dir, pid, args );
+	zcnf_state_save( state );
 
 quit:
-	pcnf_state_free( state );
+	zcnf_state_free( state );
 	return retval;
 }
 
 bool application_stop( char* exec, char* dir ) {
 	printf( " * stopping %s@%s...", exec, dir ); fflush( stdout );
-	pcnf_state_t* state = pcnf_state_load( getuid( ) );
+	zcnf_state_t* state = zcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
@@ -180,7 +180,7 @@ bool application_stop( char* exec, char* dir ) {
 
 	bool retval = true;
 
-	pcnf_state_app_t* app = NULL;
+	zcnf_state_app_t* app = NULL;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -199,19 +199,19 @@ bool application_stop( char* exec, char* dir ) {
 		if ( application_kill( app->pid ) ) {
 			printf( "success.\n" );
 			list_delete_at( &state->apps, i );
-			pcnf_state_app_free( app );
-			pcnf_state_save( state );
+			zcnf_state_app_free( app );
+			zcnf_state_save( state );
 		} else retval = false;
 	}
 
 quit:
-	pcnf_state_free( state );
+	zcnf_state_free( state );
 	return retval;
 }
 
 bool application_restart( uid_t uid, char* exec, char* dir ) {
 	printf( " * restarting %s@%s...", exec, dir ); fflush( stdout );
-	pcnf_state_t* state = pcnf_state_load( uid );
+	zcnf_state_t* state = zcnf_state_load( uid );
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
@@ -219,7 +219,7 @@ bool application_restart( uid_t uid, char* exec, char* dir ) {
 
 	bool retval = true;
 
-	pcnf_state_app_t* app = NULL;
+	zcnf_state_app_t* app = NULL;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -240,19 +240,19 @@ bool application_restart( uid_t uid, char* exec, char* dir ) {
 				retval = false;
 				goto quit;
 			}
-			pcnf_state_set_app( state, app->exec, app->dir, pid, NULL );
-			pcnf_state_save( state );
+			zcnf_state_set_app( state, app->exec, app->dir, pid, NULL );
+			zcnf_state_save( state );
 			printf( "success.\n" );
 		} else retval = false;
 	}
 
 quit:
-	pcnf_state_free( state );
+	zcnf_state_free( state );
 	return retval;
 }
 
 bool application_status( char* exec, char* dir ) {
-	pcnf_state_t* state = pcnf_state_load( getuid( ) );
+	zcnf_state_t* state = zcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
@@ -260,7 +260,7 @@ bool application_status( char* exec, char* dir ) {
 
 	bool retval = true;
 
-	pcnf_state_app_t* app;
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -284,12 +284,12 @@ bool application_status( char* exec, char* dir ) {
 		retval = false;
 	}
 
-	pcnf_state_free( state );
+	zcnf_state_free( state );
 	return retval;
 }
 
 void application_start_cmd( int optc, char* optv[ ] ) {
-	char* exec = "pacoda-application";
+	char* exec = "zimr-application";
 	char dir[ PATH_MAX ] = "";
 	list_t args;
 
@@ -323,7 +323,7 @@ void application_start_cmd( int optc, char* optv[ ] ) {
 }
 
 void application_stop_cmd( int optc, char* optv[ ] ) {
-	char* exec = "pacoda-application";
+	char* exec = "zimr-application";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
@@ -345,7 +345,7 @@ void application_stop_cmd( int optc, char* optv[ ] ) {
 }
 
 void application_restart_cmd( int optc, char* optv[ ] ) {
-	char* exec = "pacoda-application";
+	char* exec = "zimr-application";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
@@ -367,7 +367,7 @@ void application_restart_cmd( int optc, char* optv[ ] ) {
 }
 
 void application_status_cmd( int optc, char* optv[ ] ) {
-	char* exec = "pacoda-application";
+	char* exec = "zimr-application";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
@@ -394,7 +394,7 @@ void application_status_cmd( int optc, char* optv[ ] ) {
 // State Functions ////////////////////////////
 
 bool state_unload( uid_t uid ) {
-	pcnf_state_t* state = pcnf_state_load( uid );
+	zcnf_state_t* state = zcnf_state_load( uid );
 
 	if ( !state ) {
 		puts( "failed to load state" );
@@ -403,7 +403,7 @@ bool state_unload( uid_t uid ) {
 
 	bool retval = true;
 
-	pcnf_state_app_t* app;
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -417,12 +417,12 @@ bool state_unload( uid_t uid ) {
 
 	printf( "success.\n" );
 quit:
-	pcnf_state_free( state );
+	zcnf_state_free( state );
 	return retval;
 }
 
 bool state_clear( ) {
-	pcnf_state_t* state = pcnf_state_load( getuid( ) );
+	zcnf_state_t* state = zcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
@@ -430,7 +430,7 @@ bool state_clear( ) {
 
 	bool retval = true;
 
-	pcnf_state_app_t* app;
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -442,12 +442,12 @@ bool state_clear( ) {
 	}
 
 quit:
-	pcnf_state_free( state );
+	zcnf_state_free( state );
 	return retval;
 }
 
 bool state_reload( uid_t uid ) {
-	pcnf_state_t* state = pcnf_state_load( uid );
+	zcnf_state_t* state = zcnf_state_load( uid );
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
@@ -455,7 +455,7 @@ bool state_reload( uid_t uid ) {
 
 	bool retval = true;
 
-	pcnf_state_app_t* app;
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -467,12 +467,12 @@ bool state_reload( uid_t uid ) {
 	}
 
 quit:
-	pcnf_state_free( state );
+	zcnf_state_free( state );
 	return retval;
 }
 
 bool state_status( ) {
-	pcnf_state_t* state = pcnf_state_load( getuid( ) );
+	zcnf_state_t* state = zcnf_state_load( getuid( ) );
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
@@ -480,7 +480,7 @@ bool state_status( ) {
 
 	bool retval = true;
 
-	pcnf_state_app_t* app;
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -492,7 +492,7 @@ bool state_status( ) {
 	}
 
 quit:
-	pcnf_state_free( state );
+	zcnf_state_free( state );
 	return retval;
 }
 
@@ -508,7 +508,7 @@ void state_reload_cmd( int optc, char* optv[ ] ) {
 				uid_t uid = atoi( line );
 
 				char filepath[ 128 ];
-				if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
+				if ( !expand_tilde( ZM_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
 					continue;
 
 				int fd;
@@ -539,7 +539,7 @@ void state_unload_cmd( int optc, char* optv[ ] ) {
 				uid_t uid = atoi( line );
 
 				char filepath[ 128 ];
-				if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
+				if ( !expand_tilde( ZM_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
 					continue;
 
 				int fd;
@@ -572,26 +572,26 @@ void state_status_cmd( int optc, char* optv[ ] ) {
 // Proxy Functions ////////////////////////////
 
 void proxy_status( ) {
-	int command = PD_CMD_STATUS;
-	psocket_t* proxy = psocket_connect( inet_addr( PD_PROXY_ADDR ), PD_PROXY_PORT );
+	int command = ZM_CMD_STATUS;
+	zsocket_t* proxy = zsocket_connect( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT );
 
 	if ( !proxy ) {
 		printf( "could not connect to proxy.\n" );
 		return;
 	}
 
-	ptransport_t* transport;
+	ztransport_t* transport;
 
-	transport = ptransport_open( proxy->sockfd, PT_WO, command );
-	ptransport_close( transport );
+	transport = ztransport_open( proxy->sockfd, ZT_WO, command );
+	ztransport_close( transport );
 
-	transport  = ptransport_open( proxy->sockfd, PT_RO, 0 );
-	ptransport_read( transport );
-	ptransport_close( transport );
+	transport  = ztransport_open( proxy->sockfd, ZT_RO, 0 );
+	ztransport_read( transport );
+	ztransport_close( transport );
 
 	puts( transport->message );
 
-	psocket_close( proxy );
+	zsocket_close( proxy );
 }
 
 void proxy_status_cmd( int optc, char* optv[ ] ) {
@@ -624,16 +624,16 @@ int main( int argc, char* argv[ ] ) {
 		{ NULL }
 	};
 
-	command_t pacoda_commands[ ] = {
+	command_t zimr_commands[ ] = {
 		{ "application", "", &app_commands, NULL },
 		{ "state", "", &state_commands, NULL },
 		{ "proxy", "", &proxy_commands, NULL },
 		{ NULL }
 	};
 
-	root_command.name = "pacoda";
+	root_command.name = "zimr";
 	root_command.description = "";
-	root_command.sub_commands = pacoda_commands;
+	root_command.sub_commands = zimr_commands;
 	root_command.func = NULL;
 
 	char* last_slash = strrchr( argv[ 0 ], '/' );

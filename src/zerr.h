@@ -20,27 +20,24 @@
  *
  */
 
-#ifndef _ZM_WEBSITE_H
-#define _ZM_WEBSITE_H
+#ifndef _ZM_ZMERR_H
+#define _ZM_ZMERR_H
 
-#include "general.h"
+#include <stdlib.h>
 
-#define WS_STATUS_ENABLED   0x01
-#define WS_STATUS_DISABLED  0x02
-#define WS_STATUS_ENABLING  0x03
+#define ZM_OK       0
+#define ZMERR_FAILED -1
+#define ZMERR_EXISTS -2
+#define ZMERR_ZSOCK_CREAT -3
+#define ZMERR_ZSOCK_BIND  -4
+#define ZMERR_ZSOCK_LISTN -5
+#define ZMERR_ZSOCK_CONN  -6
+#define ZMERR_SOCK_CLOSED -7
+#define ZMERR_LAST -8
 
-typedef struct website {
-	char* url;
-	int sockfd;
-	struct website* next;
-	struct website* prev;
-	void* udata;
-} website_t;
+int zerrno;
 
-website_t* website_add ( int, char* );
-void website_remove( website_t* );
-website_t* website_get_by_url( char* url );
-website_t* website_get_by_sockfd( int );
-website_t* website_get_root( );
+const char* pdstrerror( int zerrno );
+void zerr( int zerrno );
 
 #endif

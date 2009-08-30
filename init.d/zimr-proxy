@@ -1,7 +1,7 @@
 #! /bin/sh
 
 ### BEGIN INIT INFO
-# Provides:          pacoda-proxy
+# Provides:          zimr-proxy
 # Required-Start:    $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Should-Start:      $networking $named $time
@@ -9,29 +9,29 @@
 # Default-Start:     2 3 4 5
 # Default-Stop:      1
 # Short-Description: virtual http host proxy
-# Description:       pacoda-proxy is a specialized http proxy to route
+# Description:       zimr-proxy is a specialized http proxy to route
 #                    http(s) requests to internally or externally connected applications.
 ### END INIT INFO
 
-# /etc/init.d/pacoda-proxy: start and stop the pacoda proxy
+# /etc/init.d/zimr-proxy: start and stop the zimr proxy
 
 exitval=0
 
 case "$1" in
 	start)
-		pacoda-proxy start
+		zimr-proxy start
 		exitval=$?
 	;;
 	stop)
-		pacoda-proxy stop
+		zimr-proxy stop
 		exitval=$?
 	;;
 	restart)
-		pacoda-proxy restart
+		zimr-proxy restart
 		exitval=$?
 	;;
 	*)
-		echo "Usage: /etc/init.d/pacoda-proxy {start|stop}"
+		echo "Usage: /etc/init.d/zimr-proxy {start|stop}"
 		exit 1
 	;;
 esac

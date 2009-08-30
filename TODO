@@ -1,8 +1,8 @@
 x*setup autostart/stop/etc. (init.d)
 x*make install build routine
 x*setup autostart
-*folder view
-*redirect if folders don't have trailing /
+x*folder view
+x*redirect if folders don't have trailing /
 *website redirects
 *thorough testing (use socat for request testing, check for memleaks)
 *error files/website handling

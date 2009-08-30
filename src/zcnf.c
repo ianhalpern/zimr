@@ -1,28 +1,28 @@
-/*   Pacoda - Next Generation Web Server
+/*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Pacoda.org
+ *@  http://Zimr.org
  *
- *   This file is part of Pacoda.
+ *   This file is part of Zimr.
  *
- *   Pacoda is free software: you can redistribute it and/or modify
+ *   Zimr is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Pacoda is distributed in the hope that it will be useful,
+ *   Zimr is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
-#include "pcnf.h"
+#include "zcnf.h"
 
-int pcnf_walk( yaml_document_t* document, int index, int depth ) {
+int zcnf_walk( yaml_document_t* document, int index, int depth ) {
 	int i;
 	yaml_node_t *node = yaml_document_get_node( document, index );
 
@@ -36,14 +36,14 @@ int pcnf_walk( yaml_document_t* document, int index, int depth ) {
 		case YAML_SEQUENCE_NODE:
 			depth++;
 			for ( i = 0; i < node->data.sequence.items.top - node->data.sequence.items.start; i++ ) {
-				pcnf_walk( document, node->data.sequence.items.start[ i ], depth );
+				zcnf_walk( document, node->data.sequence.items.start[ i ], depth );
 			}
 			break;
 		case YAML_MAPPING_NODE:
 			depth++;
 			for ( i = 0; i < node->data.mapping.pairs.top - node->data.mapping.pairs.start; i++ ) {
-				pcnf_walk( document, node->data.mapping.pairs.start[ i ].key, depth );
-				pcnf_walk( document, node->data.mapping.pairs.start[ i ].value, depth );
+				zcnf_walk( document, node->data.mapping.pairs.start[ i ].key, depth );
+				zcnf_walk( document, node->data.mapping.pairs.start[ i ].value, depth );
 			}
 			break;
 		default:
@@ -53,7 +53,7 @@ int pcnf_walk( yaml_document_t* document, int index, int depth ) {
 	return 1;
 }
 
-bool pcnf_load( yaml_document_t* document, const char* filepath ) {
+bool zcnf_load( yaml_document_t* document, const char* filepath ) {
 
 	FILE* cnf_file = fopen( filepath, "rb" );
 	if ( ! cnf_file )
@@ -80,7 +80,7 @@ bool pcnf_load( yaml_document_t* document, const char* filepath ) {
 	return true;
 }
 
-bool pcnf_load_websites( pcnf_app_t* cnf, yaml_document_t* document, int index ) {
+bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index ) {
 	yaml_node_t* root = yaml_document_get_node( document, index );
 	int i, j;
 
@@ -93,7 +93,7 @@ bool pcnf_load_websites( pcnf_app_t* cnf, yaml_document_t* document, int index )
 		if ( !website_node || website_node->type != YAML_MAPPING_NODE )
 			return 0;
 
-		pcnf_website_t* website = (pcnf_website_t*) malloc( sizeof( pcnf_website_t ) );
+		zcnf_website_t* website = (zcnf_website_t*) malloc( sizeof( zcnf_website_t ) );
 		website->url = NULL;
 		website->pubdir = NULL;
 
@@ -130,7 +130,7 @@ bool pcnf_load_websites( pcnf_app_t* cnf, yaml_document_t* document, int index )
 	return 1;
 }
 
-bool pcnf_state_load_apps( pcnf_state_t* state, yaml_document_t* document, int index ) {
+bool zcnf_state_load_apps( zcnf_state_t* state, yaml_document_t* document, int index ) {
 	yaml_node_t* root = yaml_document_get_node( document, index );
 	int i, j;
 
@@ -143,7 +143,7 @@ bool pcnf_state_load_apps( pcnf_state_t* state, yaml_document_t* document, int i
 		if ( !app_node || app_node->type != YAML_MAPPING_NODE )
 			return 0;
 
-		pcnf_state_app_t* app = (pcnf_state_app_t*) malloc( sizeof( pcnf_state_app_t ) );
+		zcnf_state_app_t* app = (zcnf_state_app_t*) malloc( sizeof( zcnf_state_app_t ) );
 		list_append( &state->apps, app );
 		app->exec = NULL;
 		app->dir = NULL;
@@ -202,13 +202,13 @@ bool pcnf_state_load_apps( pcnf_state_t* state, yaml_document_t* document, int i
 	return 1;
 }
 
-pcnf_state_t* pcnf_state_load( uid_t uid ) {
+zcnf_state_t* zcnf_state_load( uid_t uid ) {
 	char filepath[ 128 ];
-	pcnf_state_t* state = NULL;
+	zcnf_state_t* state = NULL;
 	yaml_document_t document;
 	int i;
 
-	if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
+	if ( !expand_tilde( ZM_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
 		return NULL;
 
 	// create the file if it doesn't exist.
@@ -219,11 +219,11 @@ pcnf_state_t* pcnf_state_load( uid_t uid ) {
 	}
 	fclose( state_file );
 
-	if ( !pcnf_load( &document, filepath ) ) {
+	if ( !zcnf_load( &document, filepath ) ) {
 		return NULL;
 	}
 
-	state = (pcnf_state_t*) malloc( sizeof( pcnf_state_t ) );
+	state = (zcnf_state_t*) malloc( sizeof( zcnf_state_t ) );
 	list_init( &state->apps );
 	state->uid = uid;
 
@@ -245,7 +245,7 @@ pcnf_state_t* pcnf_state_load( uid_t uid ) {
 		}
 
 		if ( strcmp( "applications", (char*) node->data.scalar.value ) == 0 ) {
-			if ( ! pcnf_state_load_apps( state, &document, root->data.mapping.pairs.start[ i ].value ) ) {
+			if ( ! zcnf_state_load_apps( state, &document, root->data.mapping.pairs.start[ i ].value ) ) {
 				break;
 			}
 		}
@@ -256,18 +256,18 @@ quit:
 	return state;
 }
 
-pcnf_app_t* pcnf_app_load( char* cnf_path ) {
+zcnf_app_t* zcnf_app_load( char* cnf_path ) {
 	char filepath[ 128 ];
-	pcnf_app_t* cnf = NULL;
+	zcnf_app_t* cnf = NULL;
 	yaml_document_t document;
 	int i;
 
-	if ( !cnf_path ) cnf_path = PD_APP_CNF_FILE;
+	if ( !cnf_path ) cnf_path = ZM_APP_CNF_FILE;
 
 	if ( !expand_tilde( cnf_path, filepath, sizeof( filepath ), getuid( ) ) )
 		return NULL;
 
-	if ( !pcnf_load( &document, filepath ) )
+	if ( !zcnf_load( &document, filepath ) )
 		return NULL;
 
 	// start parsing config settings
@@ -277,20 +277,20 @@ pcnf_app_t* pcnf_app_load( char* cnf_path ) {
 		goto quit;
 	}
 
-	cnf = (pcnf_app_t*) malloc( sizeof( pcnf_app_t ) );
-	memset( cnf, 0, sizeof( pcnf_app_t ) );
+	cnf = (zcnf_app_t*) malloc( sizeof( zcnf_app_t ) );
+	memset( cnf, 0, sizeof( zcnf_app_t ) );
 	for ( i = 0; i < root->data.mapping.pairs.top - root->data.mapping.pairs.start; i++ ) {
 		yaml_node_t* node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].key );
 
 		if ( ! node || node->type != YAML_SCALAR_NODE ) {
-			pcnf_app_free( cnf );
+			zcnf_app_free( cnf );
 			cnf = NULL;
 			break;
 		}
 
 		if ( strcmp( "websites", (char*) node->data.scalar.value ) == 0 ) {
-			if ( ! pcnf_load_websites( cnf, &document, root->data.mapping.pairs.start[ i ].value ) ) {
-				pcnf_app_free( cnf );
+			if ( ! zcnf_load_websites( cnf, &document, root->data.mapping.pairs.start[ i ].value ) ) {
+				zcnf_app_free( cnf );
 				cnf = NULL;
 				break;
 			}
@@ -302,8 +302,8 @@ quit:
 	return cnf;
 }
 
-void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* dir, pid_t pid, list_t* args ) {
-	pcnf_state_app_t* app;
+void zcnf_state_set_app( zcnf_state_t* state, const char* exec, const char* dir, pid_t pid, list_t* args ) {
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -314,7 +314,7 @@ void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* dir,
 	}
 
 	if ( i == list_size( &state->apps ) ) {
-		app = (pcnf_state_app_t*) malloc( sizeof( pcnf_state_app_t ) );
+		app = (zcnf_state_app_t*) malloc( sizeof( zcnf_state_app_t ) );
 		app->exec = strdup( exec );
 		app->dir  = strdup( dir );
 		list_init( &app->args );
@@ -331,8 +331,8 @@ void pcnf_state_set_app( pcnf_state_t* state, const char* exec, const char* dir,
 
 }
 
-bool pcnf_state_app_is_running( pcnf_state_t* state, const char* exec, const char* dir ) {
-	pcnf_state_app_t* app;
+bool zcnf_state_app_is_running( zcnf_state_t* state, const char* exec, const char* dir ) {
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
@@ -346,13 +346,13 @@ bool pcnf_state_app_is_running( pcnf_state_t* state, const char* exec, const cha
 	return false;
 }
 
-void pcnf_state_save( pcnf_state_t* state ) {
+void zcnf_state_save( zcnf_state_t* state ) {
 	char filepath[ 128 ];
 	yaml_document_t document;
 	int root, apps, name;
 	char number[64];
 
-	if ( !expand_tilde( PD_USR_STATE_FILE, filepath, sizeof( filepath ), state->uid ) )
+	if ( !expand_tilde( ZM_USR_STATE_FILE, filepath, sizeof( filepath ), state->uid ) )
 		return;
 
 	memset( &document, 0, sizeof( yaml_document_t ) );
@@ -366,7 +366,7 @@ void pcnf_state_save( pcnf_state_t* state ) {
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		pcnf_state_app_t* app = list_get_at( &state->apps, i );
+		zcnf_state_app_t* app = list_get_at( &state->apps, i );
 		int app_map, exec_name, exec_value, dir_name, dir_value, pid_name, pid_value, args_name, args_value;
 
 		assert( ( app_map = yaml_document_add_mapping( &document, NULL, YAML_BLOCK_SEQUENCE_STYLE ) ) );
@@ -426,22 +426,22 @@ void pcnf_state_save( pcnf_state_t* state ) {
 	fclose( state_file );
 }
 
-void pcnf_app_free( pcnf_app_t* cnf ) {
+void zcnf_app_free( zcnf_app_t* cnf ) {
 	free( cnf );
 }
 
-void pcnf_state_app_free( pcnf_state_app_t* app ) {
+void zcnf_state_app_free( zcnf_state_app_t* app ) {
 	list_destroy( &app->args );
 	free( app->exec );
 	free( app->dir );
 	free( app );
 }
 
-void pcnf_state_free( pcnf_state_t* state ) {
+void zcnf_state_free( zcnf_state_t* state ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		pcnf_state_app_t* app = list_get_at( &state->apps, i );
-		pcnf_state_app_free( app );
+		zcnf_state_app_t* app = list_get_at( &state->apps, i );
+		zcnf_state_app_free( app );
 	}
 	list_destroy( &state->apps );
 	free( state );

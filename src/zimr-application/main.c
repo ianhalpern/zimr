@@ -1,22 +1,22 @@
-/*   Pacoda - Next Generation Web Server
+/*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Pacoda.org
+ *@  http://Zimr.org
  *
- *   This file is part of Pacoda.
+ *   This file is part of Zimr.
  *
- *   Pacoda is free software: you can redistribute it and/or modify
+ *   Zimr is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Pacoda is distributed in the hope that it will be useful,
+ *   Zimr is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
@@ -25,12 +25,12 @@
 #include <string.h>
 #include <signal.h>
 
-#include "pacoda.h"
+#include "zimr.h"
 
 void empty_sighandler(){}
 
 int main( int argc, char *argv[ ] ) {
-	pacoda_init( );
+	zimr_init( );
 
 	signal( SIGTERM, empty_sighandler );
 	signal( SIGINT,  empty_sighandler );
@@ -39,11 +39,11 @@ int main( int argc, char *argv[ ] ) {
 	if ( argc > 1 )
 		cnf_path = argv[ 1 ];
 
-	assert( pacoda_cnf_load( cnf_path ) );
+	assert( zimr_cnf_load( cnf_path ) );
 
-	pacoda_start( );
+	zimr_start( );
 
-	pacoda_shutdown( );
+	zimr_shutdown( );
 	return 0;
 }
 

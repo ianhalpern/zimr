@@ -1,3 +1,4 @@
+
 /*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
@@ -20,33 +21,44 @@
  *
  */
 
-#ifndef _ZM_GENERAL_H
-#define _ZM_GENERAL_H
+#ifndef _ZM_ZSOCKET_H
+#define _ZM_ZSOCKET_H
 
 #include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
-#include <signal.h>
-#include <time.h>
-#include <unistd.h>
-#include <ctype.h>
-#include <stdbool.h>
-#include <errno.h>
-#include <pwd.h>
-#include <linux/limits.h>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <openssl/ssl.h>
 
 #include "config.h"
+#include "zerr.h"
 
-int randkey( );
-int url2int( const char* );
-void wait_for_kill( );
-int startswith( const char*, const char* );
-char* normalize( char* normpath, const char* path );
-int xtoi( const char* xs, unsigned int* result );
-char* expand_tilde( char* path, char* buffer, int size, uid_t uid );
-bool stopproc( pid_t pid );
-char *strnstr( const char *s, const char *find, size_t slen);
-char* strtolower( char* s );
+#define ZSOCK_LISTEN  0x01
+#define ZSOCK_CONNECT 0x02
+
+typedef struct zsocket {
+	int sockfd;
+	in_addr_t addr;
+	int portno;
+	int n_open;
+	SSL_CTX* ssl; // TODO
+	struct zsocket* next;
+	struct zsocket* prev;
+	void* udata;
+} zsocket_t;
+
+zsocket_t* zsocket_open( in_addr_t addr, int portno );
+zsocket_t* zsocket_connect( in_addr_t addr, int portno );
+int zsocket_init( in_addr_t addr, int portno, int type );
+zsocket_t* zsocket_create( int sockfd, in_addr_t addr, int portno );
+void zsocket_close( zsocket_t* p );
+zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno );
+zsocket_t* zsocket_get_by_sockfd( int sockfd );
+zsocket_t* zsocket_get_root( );
 
 #endif
-

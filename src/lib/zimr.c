@@ -1,26 +1,26 @@
-/*   Pacoda - Next Generation Web Server
+/*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Pacoda.org
+ *@  http://Zimr.org
  *
- *   This file is part of Pacoda.
+ *   This file is part of Zimr.
  *
- *   Pacoda is free software: you can redistribute it and/or modify
+ *   Zimr is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Pacoda is distributed in the hope that it will be useful,
+ *   Zimr is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
-#include "pacoda.h"
+#include "zimr.h"
 
 static int reqlogfd = -1;
 
@@ -40,15 +40,15 @@ typedef struct {
 static int page_handler_count = 0;
 static page_handler_t page_handlers[ 100 ];
 
-const char* pacoda_version( ) {
-	return PACODA_VERSION;
+const char* zimr_version( ) {
+	return ZIMR_VERSION;
 }
 
-const char* pacoda_build_date( ) {
+const char* zimr_build_date( ) {
 	return BUILD_DATE;
 }
 
-bool pacoda_init( ) {
+bool zimr_init( ) {
 
 	// Setup syslog logging - see SETLOGMASK(3)
 #if defined(DEBUG)
@@ -59,33 +59,33 @@ bool pacoda_init( ) {
 	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
 #endif
 
-	if ( !pacoda_open_request_log( ) )
+	if ( !zimr_open_request_log( ) )
 		return false;
 
 	// Register file descriptor type handlers
-	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR pacoda_connection_handler );
-	pfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR pacoda_file_handler );
+	zfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR zimr_connection_handler );
+	zfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR zimr_file_handler );
 
 	syslog( LOG_INFO, "initialized." );
 	return true;
 }
 
-void pacoda_shutdown( ) {
+void zimr_shutdown( ) {
 	while ( website_get_root( ) ) {
-		pacoda_website_destroy( website_get_root( ) );
+		zimr_website_destroy( website_get_root( ) );
 	}
 	syslog( LOG_INFO, "shutdown." );
-	pacoda_close_request_log( );
+	zimr_close_request_log( );
 }
 
-void pacoda_start( ) {
+void zimr_start( ) {
 	int timeout = 0;
 	website_t* website;
 	website_data_t* website_data;
 
 	// TODO: also check to see if there are any enabled websites.
 	if ( !website_get_root( ) )
-		syslog( LOG_WARNING, "pacoda_start() failed: No websites created" );
+		syslog( LOG_WARNING, "zimr_start() failed: No websites created" );
 
 	do {
 		timeout = 0; // reset timeout value
@@ -98,29 +98,29 @@ void pacoda_start( ) {
 
 			if ( !website_data->socket && website_data->status == WS_STATUS_ENABLING ) {
 
-				/* connect to the Pacoda Daemon Proxy for routing external
+				/* connect to the Zimr Daemon Proxy for routing external
 				   requests or commands to this process. */
-				if ( !pacoda_website_enable( website ) ) {
-					if ( pderrno == PDERR_FAILED )
-						website_data->conn_tries = PD_NUM_PROXY_DEATH_RETRIES - 1; // we do not want to retry
+				if ( !zimr_website_enable( website ) ) {
+					if ( zerrno == ZMERR_FAILED )
+						website_data->conn_tries = ZM_NUM_PROXY_DEATH_RETRIES - 1; // we do not want to retry
 
 					if ( website_data->conn_tries == 0 )
 						syslog( LOG_WARNING, "%s could not connect to proxy...will retry.", website->url );
 
-					if ( ( !PD_NUM_PROXY_DEATH_RETRIES && website_data->conn_tries != -1 )
-					  || PD_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries )
-						timeout = PD_PROXY_DEATH_RETRY_DELAY;
+					if ( ( !ZM_NUM_PROXY_DEATH_RETRIES && website_data->conn_tries != -1 )
+					  || ZM_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries )
+						timeout = ZM_PROXY_DEATH_RETRY_DELAY;
 
 					/* giving up ... */
 					else {
-						syslog( LOG_ERR, "\"%s\" is destroying: %s", website->url, pdstrerror( pderrno ) );
-						//pacoda_website_disable( website );
-						pacoda_website_destroy( website );
+						syslog( LOG_ERR, "\"%s\" is destroying: %s", website->url, pdstrerror( zerrno ) );
+						//zimr_website_disable( website );
+						zimr_website_destroy( website );
 					}
 
 				}
 
-				/* successfully connected to Pacoda Daemon Proxy, reset number of retries */
+				/* successfully connected to Zimr Daemon Proxy, reset number of retries */
 				/*else {
 					syslog( LOG_INFO, "%s is enabled!", website->url );
 					website_data->conn_tries = 0;
@@ -130,66 +130,66 @@ void pacoda_start( ) {
 			website = website->next;
 		}
 
-	} while ( website_get_root( ) && pfd_select( timeout ) );
+	} while ( website_get_root( ) && zfd_select( timeout ) );
 
 }
 
-bool pacoda_send_cmd( psocket_t* socket, int cmd, void* message, int size ) {
+bool zimr_send_cmd( zsocket_t* socket, int cmd, void* message, int size ) {
 
 	int ret = true;
-	ptransport_t* transport;
+	ztransport_t* transport;
 
-	transport = ptransport_open( socket->sockfd, PT_WO, cmd );
+	transport = ztransport_open( socket->sockfd, ZT_WO, cmd );
 
-	if ( ptransport_write( transport, message, size ) <= 0 ) {
-		pderr( PDERR_SOCK_CLOSED );
+	if ( ztransport_write( transport, message, size ) <= 0 ) {
+		zerr( ZMERR_SOCK_CLOSED );
 		ret = false;
 		goto quit;
 	}
 
-	ptransport_close( transport );
+	ztransport_close( transport );
 
-	transport = ptransport_open( socket->sockfd, PT_RO, 0 );
+	transport = ztransport_open( socket->sockfd, ZT_RO, 0 );
 
-	if ( ptransport_read( transport ) <= 0 ) {
-		pderr( PDERR_SOCK_CLOSED );
+	if ( ztransport_read( transport ) <= 0 ) {
+		zerr( ZMERR_SOCK_CLOSED );
 		ret = false;
 		goto quit;
 	}
 
 	if ( strcmp( "OK", transport->message ) != 0 ) {
-		pderr( PDERR_FAILED );
+		zerr( ZMERR_FAILED );
 		ret = false;
 	}
 
 quit:
-	ptransport_close( transport );
+	ztransport_close( transport );
 	return ret;
 }
 
-int pacoda_cnf_load( char* cnf_path ) {
-	pcnf_app_t* cnf = pcnf_app_load( );
+int zimr_cnf_load( char* cnf_path ) {
+	zcnf_app_t* cnf = zcnf_app_load( cnf_path );
 	if ( !cnf ) return 0;
 
-	pcnf_website_t* website_cnf = cnf->website_node;
+	zcnf_website_t* website_cnf = cnf->website_node;
 
 	while ( website_cnf ) {
 		if ( website_cnf->url ) {
-			website_t* website = pacoda_website_create( website_cnf->url );
+			website_t* website = zimr_website_create( website_cnf->url );
 
 			if ( website_cnf->pubdir )
-				pacoda_website_set_pubdir( website, website_cnf->pubdir );
+				zimr_website_set_pubdir( website, website_cnf->pubdir );
 
-			pacoda_website_enable( website );
+			zimr_website_enable( website );
 		}
 		website_cnf = website_cnf->next;
 	}
 
-	pcnf_app_free( cnf );
+	zcnf_app_free( cnf );
 	return 1;
 }
 
-website_t* pacoda_website_create( char* url ) {
+website_t* zimr_website_create( char* url ) {
 	website_t* website;
 	website_data_t* website_data;
 
@@ -203,16 +203,16 @@ website_t* pacoda_website_create( char* url ) {
 	website_data->pubdir = strdup( "./" );
 	website_data->status = WS_STATUS_DISABLED;
 	website_data->connection_handler = NULL;
-	website_data->conn_tries = 0; //PD_NUM_PROXY_DEATH_RETRIES - 1;
+	website_data->conn_tries = 0; //ZM_NUM_PROXY_DEATH_RETRIES - 1;
 	website_data->default_pages_count = 0;
-	pacoda_website_insert_default_page( website, "default.html", 0 );
+	zimr_website_insert_default_page( website, "default.html", 0 );
 	return website;
 }
 
-void pacoda_website_destroy( website_t* website ) {
+void zimr_website_destroy( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
-	pacoda_website_disable( website );
+	zimr_website_disable( website );
 
 	if ( website_data->pubdir )
 		free( website_data->pubdir );
@@ -221,26 +221,26 @@ void pacoda_website_destroy( website_t* website ) {
 	website_remove( website );
 }
 
-bool pacoda_website_enable( website_t* website ) {
+bool zimr_website_enable( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	if ( website_data->status == WS_STATUS_ENABLED ) {
-		pderr( PDERR_EXISTS );
+		zerr( ZMERR_EXISTS );
 		return false;
 	}
 
 	website_data->status = WS_STATUS_ENABLING;
-	website_data->socket = psocket_connect( inet_addr( PD_PROXY_ADDR ), PD_PROXY_PORT );
+	website_data->socket = zsocket_connect( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT );
 
 	if ( !website_data->socket ) {
-		pderr( PDERR_PSOCK_CONN );
+		zerr( ZMERR_ZSOCK_CONN );
 		return false;
 	}
 
 	// send website enable command
-	if ( !pacoda_send_cmd( website_data->socket, PD_CMD_WS_START, website->url, strlen( website->url ) ) ) {
+	if ( !zimr_send_cmd( website_data->socket, ZM_CMD_WS_START, website->url, strlen( website->url ) ) ) {
 		// WS_START_CMD failed...close socket
-		psocket_close( website_data->socket );
+		zsocket_close( website_data->socket );
 		website_data->socket = NULL;
 		return false;
 	}
@@ -249,24 +249,24 @@ bool pacoda_website_enable( website_t* website ) {
 	/* set website sockfd */
 	website->sockfd = website_data->socket->sockfd;
 	website_data->status = WS_STATUS_ENABLED;
-	pfd_set( website_data->socket->sockfd, PFD_TYPE_INT_CONNECTED, website );
+	zfd_set( website_data->socket->sockfd, PFD_TYPE_INT_CONNECTED, website );
 
 	syslog( LOG_INFO, "%s is enabled!", website->url );
 	website_data->conn_tries = 0;
 	return true;
 }
 
-void pacoda_website_disable( website_t* website ) {
+void zimr_website_disable( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	/* we only need to send command if the socket is connected. */
 	if ( website_data->socket ) {
 
 		if ( website_data->status == WS_STATUS_ENABLED )
-			pacoda_send_cmd( website_data->socket, PD_CMD_WS_STOP, NULL, 0 );
+			zimr_send_cmd( website_data->socket, ZM_CMD_WS_STOP, NULL, 0 );
 
-		pfd_clr( website_data->socket->sockfd );
-		psocket_close( website_data->socket );
+		zfd_clr( website_data->socket->sockfd );
+		zsocket_close( website_data->socket );
 		website_data->socket = NULL;
 
 	}
@@ -274,17 +274,17 @@ void pacoda_website_disable( website_t* website ) {
 	website_data->status = WS_STATUS_DISABLED;
 }
 
-void pacoda_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
+void zimr_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	website_data->connection_handler = connection_handler;
 }
 
-void pacoda_website_unset_connection_handler( website_t* website ) {
+void zimr_website_unset_connection_handler( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	website_data->connection_handler = NULL;
 }
 
-void pacoda_website_set_pubdir( website_t* website, const char* pubdir ) {
+void zimr_website_set_pubdir( website_t* website, const char* pubdir ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	if ( website_data->pubdir ) free( website_data->pubdir );
@@ -296,12 +296,12 @@ void pacoda_website_set_pubdir( website_t* website, const char* pubdir ) {
 		strcat( website_data->pubdir, "/" );
 }
 
-char* pacoda_website_get_pubdir( website_t* website ) {
+char* zimr_website_get_pubdir( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	return website_data->pubdir;
 }
 
-void pacoda_website_insert_default_page( website_t* website, const char* default_page, int pos ) {
+void zimr_website_insert_default_page( website_t* website, const char* default_page, int pos ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	if ( pos < 0 )
@@ -321,29 +321,29 @@ void pacoda_website_insert_default_page( website_t* website, const char* default
 	website_data->default_pages_count++;
 }
 
-static void pacoda_website_default_connection_handler( connection_t* connection ) {
-	pacoda_connection_send_file( connection, connection->request.url, true );
+static void zimr_website_default_connection_handler( connection_t* connection ) {
+	zimr_connection_send_file( connection, connection->request.url, true );
 	connection_free( connection );
 }
 
-void pacoda_connection_handler( int sockfd, website_t* website ) {
+void zimr_connection_handler( int sockfd, website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
-	ptransport_t* transport = ptransport_open( sockfd, PT_RO, 0 );
+	ztransport_t* transport = ztransport_open( sockfd, ZT_RO, 0 );
 
-	if ( !ptransport_read( transport ) ) {
+	if ( !ztransport_read( transport ) ) {
 		// bad socket.
-		pderr( PDERR_SOCK_CLOSED );
+		zerr( ZMERR_SOCK_CLOSED );
 		website_data->status = WS_STATUS_ENABLING;
-		pfd_clr( website_data->socket->sockfd );
-		psocket_close( website_data->socket );
+		zfd_clr( website_data->socket->sockfd );
+		zsocket_close( website_data->socket );
 		website_data->socket = NULL;
-		pfd_unblock( );
+		zfd_unblock( );
 		return;
 	}
 
 	int msgid = transport->header->msgid;
-	if ( PT_MSG_IS_FIRST( transport ) ) {
+	if ( ZT_MSG_IS_FIRST( transport ) ) {
 		requests[ msgid ].data = strdup( "" );
 		requests[ msgid ].size = 0;
 	}
@@ -357,7 +357,7 @@ void pacoda_connection_handler( int sockfd, website_t* website ) {
 	requests[ msgid ].size =  transport->header->size + requests[ msgid ].size;
 	free( tmp );
 
-	if ( PT_MSG_IS_LAST( transport ) ) {
+	if ( ZT_MSG_IS_LAST( transport ) ) {
 		connection_t* connection;
 		connection = connection_create( website, msgid, requests[ msgid ].data, requests[ msgid ].size );
 
@@ -370,39 +370,39 @@ void pacoda_connection_handler( int sockfd, website_t* website ) {
 		if ( website_data->connection_handler )
 			website_data->connection_handler( connection );
 		else
-			pacoda_website_default_connection_handler( connection );
+			zimr_website_default_connection_handler( connection );
 	}
 
-	ptransport_close( transport );
+	ztransport_close( transport );
 }
 
-void pacoda_file_handler( int fd, ptransport_t* transport ) {
+void zimr_file_handler( int fd, ztransport_t* transport ) {
 	int n;
 	char buffer[ 2048 ];
 
 	if ( ( n = read( fd, buffer, sizeof( buffer ) ) ) > 0 ) {
-		if ( !ptransport_write( transport, buffer, n ) ) {
-			ptransport_close( transport );
-			pfd_clr( fd );
+		if ( !ztransport_write( transport, buffer, n ) ) {
+			ztransport_close( transport );
+			zfd_clr( fd );
 			close( fd );
 
 			syslog( LOG_ERR, "file_handler: pcom_write() failed" );
 		}
 	} else {
-		ptransport_close( transport );
-		pfd_clr( fd );
+		ztransport_close( transport );
+		zfd_clr( fd );
 		close( fd );
 	}
 }
 
-void pacoda_connection_send_status( ptransport_t* transport, connection_t* connection ) {
+void zimr_connection_send_status( ztransport_t* transport, connection_t* connection ) {
 	char status_line[ 100 ];
 	sprintf( status_line, "HTTP/%s %s" HTTP_HDR_ENDL, connection->http_version, response_status( connection->response.http_status ) );
 
-	ptransport_write( transport, status_line, strlen( status_line ) );
+	ztransport_write( transport, status_line, strlen( status_line ) );
 }
 
-void pacoda_connection_send_headers( ptransport_t* transport, connection_t* connection ) {
+void zimr_connection_send_headers( ztransport_t* transport, connection_t* connection ) {
 	time_t now;
 	char now_str[ 80 ];
 
@@ -410,7 +410,7 @@ void pacoda_connection_send_headers( ptransport_t* transport, connection_t* conn
 	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
 
 	headers_set_header( &connection->response.headers, "Date", now_str );
-	headers_set_header( &connection->response.headers, "Server", "Pacoda/" PACODA_VERSION );
+	headers_set_header( &connection->response.headers, "Server", "Zimr/" ZIMR_VERSION );
 
 	char* cookies = cookies_to_string( &connection->cookies, (char*) malloc( 1024 ), 1024 );
 
@@ -419,16 +419,16 @@ void pacoda_connection_send_headers( ptransport_t* transport, connection_t* conn
 
 	char* headers = headers_to_string( &connection->response.headers, (char*) malloc( 1024 ) );
 
-	ptransport_write( transport, (void*) headers, strlen( headers ) );
+	ztransport_write( transport, (void*) headers, strlen( headers ) );
 	free( cookies );
 	free( headers );
 
-	pacoda_log_request( connection );
+	zimr_log_request( connection );
 }
 
-void pacoda_connection_send( connection_t* connection, void* message, int size ) {
+void zimr_connection_send( connection_t* connection, void* message, int size ) {
 	char sizebuf[ 32 ];
-	ptransport_t* transport = ptransport_open( connection->website->sockfd, PT_WO, connection->sockfd );
+	ztransport_t* transport = ztransport_open( connection->website->sockfd, ZT_WO, connection->sockfd );
 
 	if ( !headers_get_header( &connection->response.headers, "Content-Type" ) ) {
 		headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
@@ -437,14 +437,14 @@ void pacoda_connection_send( connection_t* connection, void* message, int size )
 	sprintf( sizebuf, "%d", size );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
-	pacoda_connection_send_status( transport, connection );
-	pacoda_connection_send_headers( transport, connection );
+	zimr_connection_send_status( transport, connection );
+	zimr_connection_send_headers( transport, connection );
 
-	ptransport_write( transport, (void*) message, size );
-	ptransport_close( transport );
+	ztransport_write( transport, (void*) message, size );
+	ztransport_close( transport );
 }
 
-void pacoda_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir ) {
+void zimr_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir ) {
 	struct stat file_stat;
 	char full_filepath[ 256 ] = "";
 	char* ptr;
@@ -460,14 +460,18 @@ void pacoda_connection_send_file( connection_t* connection, char* filepath, bool
 
 	if ( stat( full_filepath, &file_stat ) ) {
 		// Does not exist.
-		pacoda_connection_send_error( connection );
+		zimr_connection_send_error( connection, 404 );
 		return;
 	}
 
 	if ( S_ISDIR( file_stat.st_mode ) ) {
 
-		if ( full_filepath[ strlen( full_filepath ) - 1 ] != '/' )
-			strcat( full_filepath, "/" );
+		if ( full_filepath[ strlen( full_filepath ) - 1 ] != '/' ) {
+			char buf[ strlen( connection->website->url ) + strlen( full_filepath ) + 8 ];
+			sprintf( buf, "http://%s%s/", connection->website->url, full_filepath + 1 );
+			zimr_connection_send_redirect( connection, buf );
+			return;
+		}
 
 		// search for the directory default page
 		ptr = full_filepath + strlen( full_filepath );
@@ -501,32 +505,44 @@ void pacoda_connection_send_file( connection_t* connection, char* filepath, bool
 
 	// check if a page handler was found, if not use the default.
 	if ( i == page_handler_count )
-		pacoda_connection_default_page_handler( connection, full_filepath );
+		zimr_connection_default_page_handler( connection, full_filepath );
 
 }
 
-void pacoda_connection_send_error( connection_t* connection ) {
+void zimr_connection_send_error( connection_t* connection, short code ) {
 	char sizebuf[ 10 ];
-	ptransport_t* transport = ptransport_open( connection->website->sockfd, PT_WO, connection->sockfd );
+	ztransport_t* transport = ztransport_open( connection->website->sockfd, ZT_WO, connection->sockfd );
 
-	response_set_status( &connection->response, 404 );
+	response_set_status( &connection->response, code );
 	headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
 	sprintf( sizebuf, "%d", 48 );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
-	pacoda_connection_send_status( transport, connection );
-	pacoda_connection_send_headers( transport, connection );
+	zimr_connection_send_status( transport, connection );
+	zimr_connection_send_headers( transport, connection );
 
-	ptransport_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
-	ptransport_close( transport );
+	ztransport_write( transport, (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
+	ztransport_close( transport );
 }
 
-void pacoda_connection_send_dir( connection_t* connection, char* filepath ) {
+void zimr_connection_send_redirect( connection_t* connection, char* url ) {
+	ztransport_t* transport = ztransport_open( connection->website->sockfd, ZT_WO, connection->sockfd );
+
+	headers_set_header( &connection->response.headers, "Location", url );
+
+	response_set_status( &connection->response, 302 );
+	zimr_connection_send_status( transport, connection );
+	zimr_connection_send_headers( transport, connection );
+
+	ztransport_close( transport );
+}
+
+void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 	int i;
 	DIR* dir;
 	struct dirent* dp;
 	if ( ( dir = opendir( filepath ) ) == NULL) {
-		pacoda_connection_send_error( connection );
+		zimr_connection_send_error( connection, 404 );
 		return;
 	}
 
@@ -535,10 +551,10 @@ void pacoda_connection_send_dir( connection_t* connection, char* filepath ) {
 
 	char html_header_fmt[ ] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>%s</h1>\n";
 	char html_file_fmt[ ]   = "<a href=\"%s\">%s</a><br/>\n";
-	char html_dir_fmt[ ]   = "<a href=\"%s/\">%s/</a><br/>\n";
+	char html_dir_fmt[ ]    = "<a href=\"%s/\">%s/</a><br/>\n";
 	char html_header[ strlen( html_header_fmt ) + strlen( filepath ) - 1 ];
 	sprintf( html_header, html_header_fmt, filepath + 1 );
-	char html_footer[ ] = "<br/>"  "Pacoda/" PACODA_VERSION "\n</body></html>";
+	char html_footer[ ] = "<br/>"  "Zimr/" ZIMR_VERSION "\n</body></html>";
 
 	int size = strlen( html_header ) + strlen( html_footer );
 	while ( ( dp = readdir( dir ) ) != NULL && num < sizeof( files ) / sizeof( char* ) ) {
@@ -571,56 +587,56 @@ void pacoda_connection_send_dir( connection_t* connection, char* filepath ) {
 	closedir( dir );
 
 	char sizebuf[ 10 ];
-	ptransport_t* transport = ptransport_open( connection->website->sockfd, PT_WO, connection->sockfd );
+	ztransport_t* transport = ztransport_open( connection->website->sockfd, ZT_WO, connection->sockfd );
 	response_set_status( &connection->response, 200 );
 	headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
 	sprintf( sizebuf, "%d", size );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
-	pacoda_connection_send_status( transport, connection );
-	pacoda_connection_send_headers( transport, connection );
+	zimr_connection_send_status( transport, connection );
+	zimr_connection_send_headers( transport, connection );
 
-	ptransport_write( transport, html_header, strlen( html_header ) );
+	ztransport_write( transport, html_header, strlen( html_header ) );
 
 	for ( i = 0; i < num; i++ ) {
-		ptransport_write( transport, files[ i ], strlen( files[ i ] ) );
+		ztransport_write( transport, files[ i ], strlen( files[ i ] ) );
 		free( files[ i ] );
 	}
 
-	ptransport_write( transport, html_footer, strlen( html_footer ) );
+	ztransport_write( transport, html_footer, strlen( html_footer ) );
 
-	ptransport_close( transport );
+	ztransport_close( transport );
 }
 
-void pacoda_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata ) {
+void zimr_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata ) {
 	strcpy( page_handlers[ page_handler_count ].page_type, page_type );
 	page_handlers[ page_handler_count ].page_handler = page_handler;
 	page_handlers[ page_handler_count ].udata = udata;
 	page_handler_count++;
 }
 
-void pacoda_connection_default_page_handler( connection_t* connection, char* filepath ) {
+void zimr_connection_default_page_handler( connection_t* connection, char* filepath ) {
 	int fd;
 	struct stat file_stat;
 	char sizebuf[ 32 ];
-	ptransport_t* transport;
+	ztransport_t* transport;
 
 	if ( stat( filepath, &file_stat ) ) {
-		pacoda_connection_send_error( connection );
+		zimr_connection_send_error( connection, 404 );
 		return;
 	}
 
 	if ( S_ISDIR( file_stat.st_mode ) ) {
-		pacoda_connection_send_dir( connection, filepath );
+		zimr_connection_send_dir( connection, filepath );
 		return;
 	}
 
 	if ( ( fd = open( filepath, O_RDONLY ) ) < 0 ) {
-		pacoda_connection_send_error( connection );
+		zimr_connection_send_error( connection, 404 );
 		return;
 	}
 
-	transport = ptransport_open( connection->website->sockfd, PT_WO, connection->sockfd );
+	transport = ztransport_open( connection->website->sockfd, ZT_WO, connection->sockfd );
 
 	if ( !headers_get_header( &connection->response.headers, "Content-Type" ) )
 		headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( filepath ) );
@@ -628,16 +644,16 @@ void pacoda_connection_default_page_handler( connection_t* connection, char* fil
 	sprintf( sizebuf, "%d", (int) file_stat.st_size );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
-	pacoda_connection_send_status( transport, connection );
-	pacoda_connection_send_headers( transport, connection );
+	zimr_connection_send_status( transport, connection );
+	zimr_connection_send_headers( transport, connection );
 
-	pfd_set( fd, PFD_TYPE_FILE, transport );
+	zfd_set( fd, PFD_TYPE_FILE, transport );
 }
 
-bool pacoda_open_request_log( ) {
-	if ( ( reqlogfd = open( PD_REQ_LOGFILE, O_WRONLY | O_APPEND ) ) == -1 ) {
+bool zimr_open_request_log( ) {
+	if ( ( reqlogfd = open( ZM_REQ_LOGFILE, O_WRONLY | O_APPEND ) ) == -1 ) {
 		if ( errno != ENOENT
-		 || ( reqlogfd = creat( PD_REQ_LOGFILE, S_IRUSR | S_IWUSR ) ) == -1 ) {
+		 || ( reqlogfd = creat( ZM_REQ_LOGFILE, S_IRUSR | S_IWUSR ) ) == -1 ) {
 			syslog( LOG_ERR, "error opening request logfile: %s", strerror( errno ) );
 			return false;
 		}
@@ -645,21 +661,24 @@ bool pacoda_open_request_log( ) {
 	return true;
 }
 
-void pacoda_log_request( connection_t* connection ) {
+void zimr_log_request( connection_t* connection ) {
 	time_t now;
 	char now_str[ 80 ], buffer[ 1024 ];
 
 	time( &now );
 	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
 
-	sprintf( buffer, "%s, %s, %s, %s, http://%s/%s, %d\n",
+	header_t* header = headers_get_header( &connection->request.headers, "User-Agent" );
+
+	sprintf( buffer, "%s, %s, %s, %s, http://%s/%s, %d, %s\n",
 		now_str,
 		inet_ntoa( connection->ip ),
 		connection->hostname,
 		HTTP_TYPE( connection->request.type ),
 		connection->website->url,
 		connection->request.url,
-		connection->response.http_status
+		connection->response.http_status,
+		header ? header->value : ""
 	);
 
 	if ( write( reqlogfd, buffer, strlen( buffer ) ) == -1 ) {
@@ -667,6 +686,6 @@ void pacoda_log_request( connection_t* connection ) {
 	}
 }
 
-void pacoda_close_request_log( ) {
+void zimr_close_request_log( ) {
 	close( reqlogfd );
 }

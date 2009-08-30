@@ -1,60 +1,60 @@
 
-/*   Pacoda - Next Generation Web Server
+/*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Pacoda.org
+ *@  http://Zimr.org
  *
- *   This file is part of Pacoda.
+ *   This file is part of Zimr.
  *
- *   Pacoda is free software: you can redistribute it and/or modify
+ *   Zimr is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Pacoda is distributed in the hope that it will be useful,
+ *   Zimr is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
-#include "psocket.h"
+#include "zsocket.h"
 
-static psocket_t* root_psocket_node = NULL;
+static zsocket_t* root_zsocket_node = NULL;
 
-psocket_t* psocket_open( in_addr_t addr, int portno ) {
-	psocket_t* p = psocket_get_by_info( addr, portno );
+zsocket_t* zsocket_open( in_addr_t addr, int portno ) {
+	zsocket_t* p = zsocket_get_by_info( addr, portno );
 
 	if ( !p ) {
-		int sockfd = psocket_init( addr, portno, PSOCK_LISTEN );
+		int sockfd = zsocket_init( addr, portno, ZSOCK_LISTEN );
 		if ( sockfd == -1 )
 			return NULL;
-		p = psocket_create( sockfd, addr, portno );
+		p = zsocket_create( sockfd, addr, portno );
 	}
 
 	p->n_open++;
 	return p;
 }
 
-psocket_t* psocket_connect( in_addr_t addr, int portno ) {
+zsocket_t* zsocket_connect( in_addr_t addr, int portno ) {
 
-	int sockfd = psocket_init( addr, portno, PSOCK_CONNECT );
+	int sockfd = zsocket_init( addr, portno, ZSOCK_CONNECT );
 	if ( sockfd == -1 )
 		return NULL;
 
-	return psocket_create( sockfd, addr, portno );
+	return zsocket_create( sockfd, addr, portno );
 }
 
-int psocket_init( in_addr_t addr, int portno, int type ) {
+int zsocket_init( in_addr_t addr, int portno, int type ) {
 	int sockfd = socket( AF_INET, SOCK_STREAM, 0 );
 	struct sockaddr_in serv_addr;
 	int on = 1; // used by setsockopt
 
 	if ( sockfd < 0 ) {
-		pderr( PDERR_PSOCK_CREAT );
+		zerr( ZMERR_ZSOCK_CREAT );
 		return -1;
 	}
 
@@ -64,22 +64,22 @@ int psocket_init( in_addr_t addr, int portno, int type ) {
 	serv_addr.sin_addr.s_addr = addr;
 	serv_addr.sin_port = htons( portno );
 
-	if ( type == PSOCK_LISTEN ) {
+	if ( type == ZSOCK_LISTEN ) {
 		setsockopt( sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof( on ) );
 
 		if ( bind( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
-			pderr( PDERR_PSOCK_BIND );
+			zerr( ZMERR_ZSOCK_BIND );
 			close( sockfd );
 			return -1;
 		}
 
-		if ( listen( sockfd, PSOCK_N_PENDING ) < 0 ) {
-			pderr( PDERR_PSOCK_LISTN );
+		if ( listen( sockfd, ZSOCK_N_PENDING ) < 0 ) {
+			zerr( ZMERR_ZSOCK_LISTN );
 			return -1;
 		}
-	} else if ( type == PSOCK_CONNECT ) {
+	} else if ( type == ZSOCK_CONNECT ) {
 		if ( connect( sockfd, (struct sockaddr*) &serv_addr, sizeof( serv_addr ) ) < 0 ) {
-			pderr( PDERR_PSOCK_CONN );
+			zerr( ZMERR_ZSOCK_CONN );
 			return -1;
 		}
 	} else {
@@ -90,8 +90,8 @@ int psocket_init( in_addr_t addr, int portno, int type ) {
 	return sockfd;
 }
 
-psocket_t* psocket_create( int sockfd, in_addr_t addr, int portno ) {
-	psocket_t* p = (psocket_t* ) malloc( sizeof( psocket_t ) );
+zsocket_t* zsocket_create( int sockfd, in_addr_t addr, int portno ) {
+	zsocket_t* p = (zsocket_t* ) malloc( sizeof( zsocket_t ) );
 
 	p->sockfd = sockfd;
 	p->addr = addr;
@@ -99,26 +99,26 @@ psocket_t* psocket_create( int sockfd, in_addr_t addr, int portno ) {
 	p->n_open = 0;
 	p->ssl = NULL;
 
-	p->next = root_psocket_node;
+	p->next = root_zsocket_node;
 	p->prev = NULL;
 
-	if ( root_psocket_node != NULL )
-		root_psocket_node->prev = p;
+	if ( root_zsocket_node != NULL )
+		root_zsocket_node->prev = p;
 
-	root_psocket_node = p;
+	root_zsocket_node = p;
 
 	return p;
 }
 
-void psocket_close( psocket_t* p ) {
+void zsocket_close( zsocket_t* p ) {
 
 	p->n_open--;
 
 	if ( p->n_open > 0 )
 		return;
 
-	if ( p == root_psocket_node )
-		root_psocket_node = p->next;
+	if ( p == root_zsocket_node )
+		root_zsocket_node = p->next;
 
 	if ( p->prev != NULL )
 		p->prev->next = p->next;
@@ -129,8 +129,8 @@ void psocket_close( psocket_t* p ) {
 	free( p );
 }
 
-psocket_t* psocket_get_by_info( in_addr_t addr, int portno ) {
-	psocket_t* p = root_psocket_node;
+zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno ) {
+	zsocket_t* p = root_zsocket_node;
 
 	while ( p != NULL ) {
 
@@ -143,8 +143,8 @@ psocket_t* psocket_get_by_info( in_addr_t addr, int portno ) {
 	return NULL;
 }
 
-psocket_t* psocket_get_by_sockfd( int sockfd ) {
-	psocket_t* p = root_psocket_node;
+zsocket_t* zsocket_get_by_sockfd( int sockfd ) {
+	zsocket_t* p = root_zsocket_node;
 
 	while ( p != NULL ) {
 
@@ -158,6 +158,6 @@ psocket_t* psocket_get_by_sockfd( int sockfd ) {
 }
 
 
-psocket_t* psocket_get_root( ) {
-	return root_psocket_node;
+zsocket_t* zsocket_get_root( ) {
+	return root_zsocket_node;
 }

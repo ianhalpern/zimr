@@ -20,27 +20,27 @@
  *
  */
 
-#ifndef _ZM_WEBSITE_H
-#define _ZM_WEBSITE_H
+#include "zerr.h"
 
-#include "general.h"
+static const char* errorstrings[ ] = {
+/* ZM_OK */				"OK",
+/* ZMERR_FAILED  */		"Failed",
+/* ZMERR_EXISTS  */		"Already Exists",
+/* ZMERR_PSOCK_CREAT */	"Could not create socket",
+/* ZMERR_PSOCK_BIND  */	"Could not bind to socket",
+/* ZMERR_PSOCK_LISTN */	"Could not listen on socket",
+/* ZMERR_PSOCK_CONN  */	"Could not connect to socket",
+/* ZMERR_SOCK_CLOSED */	"Connection Closed"
+};
 
-#define WS_STATUS_ENABLED   0x01
-#define WS_STATUS_DISABLED  0x02
-#define WS_STATUS_ENABLING  0x03
+const char* pdstrerror( int my_zerrno ) {
+	if ( my_zerrno > 0 || my_zerrno <= ZMERR_LAST )
+		return "";
+	return errorstrings[ abs( my_zerrno ) ];
+}
 
-typedef struct website {
-	char* url;
-	int sockfd;
-	struct website* next;
-	struct website* prev;
-	void* udata;
-} website_t;
-
-website_t* website_add ( int, char* );
-void website_remove( website_t* );
-website_t* website_get_by_url( char* url );
-website_t* website_get_by_sockfd( int );
-website_t* website_get_root( );
-
-#endif
+void zerr( int my_zerrno ) {
+	if ( my_zerrno > 0 || my_zerrno <= ZMERR_LAST )
+		return;
+	zerrno = my_zerrno;
+}

@@ -1,22 +1,22 @@
-/*   Pacoda - Next Generation Web Server
+/*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Pacoda.org
+ *@  http://Zimr.org
  *
- *   This file is part of Pacoda.
+ *   This file is part of Zimr.
  *
- *   Pacoda is free software: you can redistribute it and/or modify
+ *   Zimr is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Pacoda is distributed in the hope that it will be useful,
+ *   Zimr is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
@@ -29,18 +29,18 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include "ptransport.h"
-#include "pfildes.h"
+#include "ztransport.h"
+#include "zfildes.h"
 #include "website.h"
-#include "psocket.h"
+#include "zsocket.h"
 #include "daemon.h"
-#include "pderr.h"
-#include "pcnf.h"
+#include "zerr.h"
+#include "zcnf.h"
 
-#define DAEMON_NAME "pacoda-proxy"
+#define DAEMON_NAME "zimr-proxy"
 
 typedef struct {
-	psocket_t* socket;
+	zsocket_t* socket;
 } website_data_t;
 
 typedef struct {
@@ -51,7 +51,7 @@ typedef struct {
 
 typedef struct {
 	int website_sockfd;
-	ptransport_t* transport;
+	ztransport_t* transport;
 	int request_type;
 	int postlen;
 } req_info_t;
@@ -61,7 +61,7 @@ void external_connection_listener( int sockfd, void* udata );
 void internal_connection_handler( int sockfd, conn_info_t* conn_info );
 void external_connection_handler( int sockfd, conn_info_t* conn_info );
 
-void command_handler( int sockfd, ptransport_t* transport );
+void command_handler( int sockfd, ztransport_t* transport );
 
 void signal_handler( int sig ) {
 	switch( sig ) {
@@ -81,9 +81,9 @@ void signal_handler( int sig ) {
 }
 
 void print_usage( ) {
-	printf( "Pacoda Proxy " PACODA_VERSION " (" BUILD_DATE ") - "  PACODA_WEBSITE "\n" );
+	printf( "Zimr Proxy " ZIMR_VERSION " (" BUILD_DATE ") - "  ZIMR_WEBSITE "\n" );
 	printf(
-"\nUsage: pacoda-proxy [OPTIONS] {start|stop|restart}\n\
+"\nUsage: zimr-proxy [OPTIONS] {start|stop|restart}\n\
 	-h --help\n\
 	--no-daemon\n\
 	--no-lockfile\n\
@@ -171,19 +171,19 @@ int main( int argc, char* argv[ ] ) {
 	}
 
 	// set the fle handlers for the different types of file desriptors
-	// used in pfd_select()
-	pfd_register_type( PFD_TYPE_INT_LISTEN,    PFD_TYPE_HDLR internal_connection_listener );
-	pfd_register_type( PFD_TYPE_EXT_LISTEN,    PFD_TYPE_HDLR external_connection_listener );
-	pfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR internal_connection_handler );
-	pfd_register_type( PFD_TYPE_EXT_CONNECTED, PFD_TYPE_HDLR external_connection_handler );
+	// used in zfd_select()
+	zfd_register_type( PFD_TYPE_INT_LISTEN,    PFD_TYPE_HDLR internal_connection_listener );
+	zfd_register_type( PFD_TYPE_EXT_LISTEN,    PFD_TYPE_HDLR external_connection_listener );
+	zfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR internal_connection_handler );
+	zfd_register_type( PFD_TYPE_EXT_CONNECTED, PFD_TYPE_HDLR external_connection_handler );
 
-	psocket_t* socket = psocket_open( inet_addr( PD_PROXY_ADDR ), PD_PROXY_PORT );
+	zsocket_t* socket = zsocket_open( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT );
 	if ( !socket ) {
 		ret = EXIT_FAILURE;
 		goto quit;
 	}
 
-	pfd_set( socket->sockfd, PFD_TYPE_INT_LISTEN, NULL );
+	zfd_set( socket->sockfd, PFD_TYPE_INT_LISTEN, NULL );
 
 #ifndef DEBUG
 	daemon_redirect_stdio( );
@@ -192,7 +192,7 @@ int main( int argc, char* argv[ ] ) {
 	// starts a select() loop and calls
 	// the associated file descriptor handlers
 	// when they are ready to read
-	while ( pfd_select( 0 ) ); // The loop is only broken by interrupt
+	while ( zfd_select( 0 ) ); // The loop is only broken by interrupt
 
 quit:
 	// cleanup
@@ -213,7 +213,7 @@ char* get_status_message( char* buffer, int size ) {
 	memset( buffer, 0, size );
 
 	strcat( buffer, "\nSockets:\n" );
-	psocket_t* socket = psocket_get_root( );
+	zsocket_t* socket = zsocket_get_root( );
 
 	while ( socket ) {
 		strcat( buffer, "  " );
@@ -290,9 +290,9 @@ int remove_website( int sockfd ) {
 
 	if ( website_data->socket ) {
 		if ( website_data->socket->n_open == 1 ) {
-			pfd_clr( website_data->socket->sockfd );
+			zfd_clr( website_data->socket->sockfd );
 		}
-		psocket_close( website_data->socket );
+		zsocket_close( website_data->socket );
 	}
 
 	free( website_data );
@@ -320,15 +320,15 @@ int start_website( char* url, int sockfd ) {
 	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
 	website->udata = website_data;
 
-	website_data->socket = psocket_open( INADDR_ANY, get_port_from_url( website->url ) );
+	website_data->socket = zsocket_open( INADDR_ANY, get_port_from_url( website->url ) );
 
 	if ( !website_data->socket ) {
-		syslog( LOG_ERR, "start_website: psocket_open(): %s: %s", pdstrerror( pderrno ), strerror( errno ) );
+		syslog( LOG_ERR, "start_website: zsocket_open(): %s: %s", pdstrerror( zerrno ), strerror( errno ) );
 		remove_website( sockfd );
 		return 0;
 	}
 
-	pfd_set( website_data->socket->sockfd, PFD_TYPE_EXT_LISTEN, NULL );
+	zfd_set( website_data->socket->sockfd, PFD_TYPE_EXT_LISTEN, NULL );
 	return 1;
 }
 
@@ -352,12 +352,12 @@ void general_connection_listener( int sockfd, void* udata, int type ) {
 	conn_info->addr = cli_addr;
 	conn_info->udata = NULL;
 
-	pfd_set( newsockfd, type, conn_info );
+	zfd_set( newsockfd, type, conn_info );
 }
 
 void general_connection_close( int sockfd ) {
-	free( pfd_udata( sockfd ) ); // free the conn_info_t object
-	pfd_clr( sockfd );
+	free( zfd_udata( sockfd ) ); // free the conn_info_t object
+	zfd_clr( sockfd );
 	close( sockfd );
 }
 
@@ -370,7 +370,7 @@ void internal_connection_listener( int sockfd, void* udata ) {
 }
 
 void external_connection_handler( int sockfd, conn_info_t* conn_info ) {
-	char buffer[ PT_BUF_SIZE ],* ptr;
+	char buffer[ ZT_BUF_SIZE ],* ptr;
 	memset( &buffer, 0, sizeof( buffer ) );
 	int len;
 
@@ -385,11 +385,11 @@ cleanup:
 		// cleanup
 		if ( req_info ) {
 			if ( req_info->transport ) {
-				if ( PT_MSG_IS_FIRST( req_info->transport )
+				if ( ZT_MSG_IS_FIRST( req_info->transport )
 				  || !website_get_by_sockfd( req_info->website_sockfd ) ) {
-					ptransport_free( req_info->transport );
+					ztransport_free( req_info->transport );
 				} else {
-					ptransport_close( req_info->transport );
+					ztransport_close( req_info->transport );
 				}
 			}
 
@@ -423,7 +423,7 @@ cleanup:
 
 		/* Find website for request from HTTP header */
 		website_t* website;
-		char urlbuf[ PT_BUF_SIZE ];
+		char urlbuf[ ZT_BUF_SIZE ];
 		if ( !get_url_from_http_header( buffer, urlbuf, sizeof( urlbuf ) ) ) {
 			syslog( LOG_WARNING, "external_connection_handler: no url found in http request headers: %s %s",
 			  inet_ntoa( conn_info->addr.sin_addr ), hp ? hp->h_name : "" );
@@ -453,12 +453,12 @@ cleanup:
 		   website. The website's id is the internal file descriptor to
 		   send the request over and the msgid should be set to the
 		   external file descriptor to send the response back to. */
-		req_info->transport = ptransport_open( website->sockfd, PT_WO, sockfd );
+		req_info->transport = ztransport_open( website->sockfd, ZT_WO, sockfd );
 
 		// Write the ip address and hostname of the request
-		ptransport_write( req_info->transport, (void*) &conn_info->addr.sin_addr, sizeof( conn_info->addr.sin_addr ) );
-		if ( hp ) ptransport_write( req_info->transport, (void*) hp->h_name, strlen( hp->h_name ) );
-		ptransport_write( req_info->transport, (void*) "\0", 1 );
+		ztransport_write( req_info->transport, (void*) &conn_info->addr.sin_addr, sizeof( conn_info->addr.sin_addr ) );
+		if ( hp ) ztransport_write( req_info->transport, (void*) hp->h_name, strlen( hp->h_name ) );
+		ztransport_write( req_info->transport, (void*) "\0", 1 );
 
 		// If request_type is POST check if there is content after the HTTP header
 		char postlenbuf[ 32 ];
@@ -470,7 +470,7 @@ cleanup:
 		// Send the whole header to the website
 		if ( ( ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
 			ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-			ptransport_write( req_info->transport, (void*) buffer, ( ptr - buffer ) );
+			ztransport_write( req_info->transport, (void*) buffer, ( ptr - buffer ) );
 		}
 
 		/* If the end of the headers was not found the request was either
@@ -487,14 +487,14 @@ cleanup:
 		if ( left > req_info->postlen )
 			req_info->postlen = left;
 
-		ptransport_write( req_info->transport, (void*) ptr, left );
+		ztransport_write( req_info->transport, (void*) ptr, left );
 
 		req_info->postlen -= left;
 
 	}
 
 	if ( !req_info->postlen ) { /* If there isn't still data coming, */
-		ptransport_close( req_info->transport );
+		ztransport_close( req_info->transport );
 		free( req_info );
 		conn_info->udata = NULL;
 	}
@@ -502,9 +502,9 @@ cleanup:
 }
 
 void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
-	ptransport_t* transport = ptransport_open( sockfd, PT_RO, 0 );
+	ztransport_t* transport = ztransport_open( sockfd, ZT_RO, 0 );
 
-	if ( !ptransport_read( transport ) ) {
+	if ( !ztransport_read( transport ) ) {
 
 		// if sockfd is a website, we need to remove it
 		if ( website_get_by_sockfd( sockfd ) ) {
@@ -521,7 +521,7 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 		   the message should not be routed to a file descriptor. */
 
 		// the entire command must fit inside one transport
-		if ( PT_MSG_IS_FIRST( transport ) && PT_MSG_IS_LAST( transport ) )
+		if ( ZT_MSG_IS_FIRST( transport ) && ZT_MSG_IS_LAST( transport ) )
 			command_handler( sockfd, transport );
 		else
 			syslog( LOG_WARNING, "received a command that is to long...ignoring." );
@@ -535,9 +535,9 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 		   descriptor that the message should be routed to. */
 		int n;
 		if ( ( n = write( transport->header->msgid, transport->message, transport->header->size ) ) != transport->header->size
-		 || PT_MSG_IS_LAST( transport ) ) {
+		 || ZT_MSG_IS_LAST( transport ) ) {
 			// clean up external connection
-			pfd_clr( transport->header->msgid );
+			zfd_clr( transport->header->msgid );
 			close( transport->header->msgid );
 
 			if ( n == -1 )
@@ -550,47 +550,47 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 	}
 
 quit:
-	ptransport_close( transport );
+	ztransport_close( transport );
 }
 
 
-void command_handler( int sockfd, ptransport_t* transport ) {
-	ptransport_t* response = ptransport_open( sockfd, PT_WO, transport->header->msgid );
+void command_handler( int sockfd, ztransport_t* transport ) {
+	ztransport_t* response = ztransport_open( sockfd, ZT_WO, transport->header->msgid );
 	char* message = "";
 	char buffer[ 1024 ] = "";
 
 	switch ( transport->header->msgid ) {
 
-		case PD_CMD_WS_START:
+		case ZM_CMD_WS_START:
 			if ( start_website( transport->message, sockfd ) )
 				message = "OK";
 			else
 				message = "FAIL";
 
-			ptransport_write( response, message, strlen( message ) );
+			ztransport_write( response, message, strlen( message ) );
 			break;
 
-		case PD_CMD_WS_STOP:
+		case ZM_CMD_WS_STOP:
 			if ( remove_website( sockfd ) )
 				message = "OK";
 			else
 				message = "FAIL";
 
-			ptransport_write( response, message, strlen( message ) );
+			ztransport_write( response, message, strlen( message ) );
 			break;
 
-		case PD_CMD_STATUS:
+		case ZM_CMD_STATUS:
 			message = get_status_message( buffer, sizeof( buffer ) );
-			ptransport_write( response, message, strlen( message ) );
+			ztransport_write( response, message, strlen( message ) );
 			break;
 
 		default:
 			message = "FAIL";
-			ptransport_write( response, message, strlen( message ) );
+			ztransport_write( response, message, strlen( message ) );
 			break;
 	}
 
-	ptransport_close( response );
+	ztransport_close( response );
 }
 
 ////////////////////////////////////////////////////////////////

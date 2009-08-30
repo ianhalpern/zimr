@@ -1,65 +1,65 @@
-/*   Pacoda - Next Generation Web Server
+/*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
- *@  http://Pacoda.org
+ *@  http://Zimr.org
  *
- *   This file is part of Pacoda.
+ *   This file is part of Zimr.
  *
- *   Pacoda is free software: you can redistribute it and/or modify
+ *   Zimr is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   Pacoda is distributed in the hope that it will be useful,
+ *   Zimr is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with Pacoda.  If not, see <http://www.gnu.org/licenses/>
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
 
-#ifndef _PD_CONFIG_H
-#define _PD_CONFIG_H
+#ifndef _ZM_CONFIG_H
+#define _ZM_CONFIG_H
 
 #define BUILD_DATE __DATE__ " " __TIME__
 
-#define PACODA_WEBSITE "http://Pacoda.org"
+#define ZIMR_WEBSITE "http://Zimr.org"
 
 #define FLAG_ISSET( flag, flags ) ( (flag) & (flags) )
 
-#define D_LOCKFILE_PATH "/tmp/pacoda-proxy.pid" // used by daemon.c
-#define PD_APP_CNF_FILE "pacoda.cnf"
-#define PD_USR_STATE_FILE "~/.pacoda.state"
-#define PD_REQ_LOGFILE "pacoda.log"
+#define D_LOCKFILE_PATH "/tmp/zimr-proxy.pid" // used by daemon.c
+#define ZM_APP_CNF_FILE "zimr.cnf"
+#define ZM_USR_STATE_FILE "~/.zimr.state"
+#define ZM_REQ_LOGFILE "zimr.log"
 
-#define PD_PROXY_ADDR "127.0.0.1"
-#define PD_PROXY_PORT 8888
+#define ZM_PROXY_ADDR "127.0.0.1"
+#define ZM_PROXY_PORT 8888
 
-#define PD_NUM_PROXY_DEATH_RETRIES 1000 // set to 0(ZERO) for infinite retries
-#define PD_PROXY_DEATH_RETRY_DELAY 2
+#define ZM_NUM_PROXY_DEATH_RETRIES 1000 // set to 0(ZERO) for infinite retries
+#define ZM_PROXY_DEATH_RETRY_DELAY 2
 
-/******* PD_CMD's *********/
+/******* ZM_CMD's *********/
 
 // Commands MUST be NEGATIVE
-#define PD_CMD_WS_START  -1
-#define PD_CMD_WS_STOP   -2
-#define PD_CMD_STATUS    -3
+#define ZM_CMD_WS_START  -1
+#define ZM_CMD_WS_STOP   -2
+#define ZM_CMD_STATUS    -3
 
 /**************************/
 
-/****** ptransmission config *******/
+/****** ztransport config *******/
 
-#define PT_MSG_SIZE ( PT_BUF_SIZE - PT_HDR_SIZE )
-#define PT_HDR_SIZE ( sizeof( ptransport_header_t ) )
-#define PT_BUF_SIZE 4096
+#define ZT_MSG_SIZE ( ZT_BUF_SIZE - ZT_HDR_SIZE )
+#define ZT_HDR_SIZE ( sizeof( ztransport_header_t ) )
+#define ZT_BUF_SIZE 4096
 
 /**************************/
 
-/****** psocket config ********/
+/****** zsocket config ********/
 
-#define PSOCK_N_PENDING 25
+#define ZSOCK_N_PENDING 25
 
 /*************************/
 
