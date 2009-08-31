@@ -411,11 +411,12 @@ bool state_unload( uid_t uid ) {
 		printf( " * stopping %s@%s...", app->exec, app->dir ); fflush( stdout );
 		if ( !application_kill( app->pid ) ) {
 			retval = false;
+			printf( "failed.\n" );
 			goto quit;
 		}
+		printf( "success.\n" );
 	}
 
-	printf( "success.\n" );
 quit:
 	zcnf_state_free( state );
 	return retval;

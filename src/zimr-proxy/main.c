@@ -189,6 +189,8 @@ int main( int argc, char* argv[ ] ) {
 	daemon_redirect_stdio( );
 #endif
 
+	website_init( );
+
 	// starts a select() loop and calls
 	// the associated file descriptor handlers
 	// when they are ready to read
@@ -223,12 +225,12 @@ char* get_status_message( char* buffer, int size ) {
 	}
 
 	strcat( buffer, "\nWebsites:\n" );
-	website_t* website = website_get_root( );
 
-	while ( website ) {
+	int i;
+	for ( i = 0; i < list_size( &websites ); i++ ) {
+		website_t* website = list_get_at( &websites, i );
 		strcat( buffer, "  " );
 		sprintf( buffer + strlen( buffer ), "%s\n", website->url );
-		website = website->next;
 	}
 
 	return buffer;
@@ -429,7 +431,7 @@ cleanup:
 			  inet_ntoa( conn_info->addr.sin_addr ), hp ? hp->h_name : "" );
 			goto cleanup;
 		}
-		if ( !( website = website_get_by_url( urlbuf ) ) ) {
+		if ( !( website = website_find_by_url( urlbuf ) ) ) {
 			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
 			  inet_ntoa( conn_info->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
 			goto cleanup;

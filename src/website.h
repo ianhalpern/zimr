@@ -23,6 +23,9 @@
 #ifndef _ZM_WEBSITE_H
 #define _ZM_WEBSITE_H
 
+#include <assert.h>
+
+#include "simclist.h"
 #include "general.h"
 
 #define WS_STATUS_ENABLED   0x01
@@ -32,15 +35,16 @@
 typedef struct website {
 	char* url;
 	int sockfd;
-	struct website* next;
-	struct website* prev;
 	void* udata;
 } website_t;
 
+list_t websites;
+
+void website_init( );
 website_t* website_add ( int, char* );
 void website_remove( website_t* );
 website_t* website_get_by_url( char* url );
 website_t* website_get_by_sockfd( int );
-website_t* website_get_root( );
+website_t* website_find_by_url( char* url );
 
 #endif

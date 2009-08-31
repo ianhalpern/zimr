@@ -66,34 +66,38 @@ bool zimr_init( ) {
 	zfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR zimr_connection_handler );
 	zfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR zimr_file_handler );
 
+	website_init( );
+
 	syslog( LOG_INFO, "initialized." );
 	return true;
 }
 
 void zimr_shutdown( ) {
-	while ( website_get_root( ) ) {
-		zimr_website_destroy( website_get_root( ) );
+	int i;
+	for ( i = 0; i < list_size( &websites ); i++ ) {
+		zimr_website_destroy( list_get_at( &websites, i ) );
 	}
+
+	list_clear( &websites );
 	syslog( LOG_INFO, "shutdown." );
 	zimr_close_request_log( );
 }
 
 void zimr_start( ) {
-	int timeout = 0;
+	int timeout = 0, i = 0;
 	website_t* website;
 	website_data_t* website_data;
 
 	// TODO: also check to see if there are any enabled websites.
-	if ( !website_get_root( ) )
+	if ( !list_size( &websites ) )
 		syslog( LOG_WARNING, "zimr_start() failed: No websites created" );
 
 	do {
 		timeout = 0; // reset timeout value
 
-		website = website_get_root( );
-
 		// Test and Start website proxies
-		while ( website ) {
+		while ( i < list_size( &websites ) ) {
+			website = list_get_at( &websites, i );
 			website_data = (website_data_t*) website->udata;
 
 			if ( !website_data->socket && website_data->status == WS_STATUS_ENABLING ) {
@@ -127,10 +131,10 @@ void zimr_start( ) {
 				}*/
 			}
 
-			website = website->next;
+			i++;
 		}
 
-	} while ( website_get_root( ) && zfd_select( timeout ) );
+	} while ( list_size( &websites ) && zfd_select( timeout ) );
 
 }
 
@@ -549,11 +553,11 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 	int num = 0;
 	char* files[ 512 ];
 
-	char html_header_fmt[ ] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>%s</h1>\n";
+	char html_header_fmt[ ] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>/%s</h1>\n";
 	char html_file_fmt[ ]   = "<a href=\"%s\">%s</a><br/>\n";
 	char html_dir_fmt[ ]    = "<a href=\"%s/\">%s/</a><br/>\n";
-	char html_header[ strlen( html_header_fmt ) + strlen( filepath ) - 1 ];
-	sprintf( html_header, html_header_fmt, filepath + 1 );
+	char html_header[ strlen( html_header_fmt ) + strlen( filepath ) - strlen( zimr_website_get_pubdir( connection->website ) ) ];
+	sprintf( html_header, html_header_fmt, filepath + strlen( zimr_website_get_pubdir( connection->website ) ) );
 	char html_footer[ ] = "<br/>"  "Zimr/" ZIMR_VERSION "\n</body></html>";
 
 	int size = strlen( html_header ) + strlen( html_footer );

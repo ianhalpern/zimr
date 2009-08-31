@@ -22,67 +22,78 @@
 
 #include "website.h"
 
-static website_t* root_website_node = NULL;
+static bool initialized = false;
+
+void website_init( ) {
+	assert( !initialized );
+	initialized = true;
+	list_init( &websites );
+}
 
 website_t* website_add( int sockfd, char* url ) {
-	website_t* w = (website_t* ) malloc( sizeof( website_t ) );
+	assert( initialized );
+
+	website_t* w = (website_t*) malloc( sizeof( website_t ) );
 
 	w->sockfd = sockfd;
 	w->url = strdup( url );
 
-	w->next = root_website_node;
-	w->prev = NULL;
-
-	if ( root_website_node != NULL )
-		root_website_node->prev = w;
-
-	root_website_node = w;
+	list_append( &websites, w );
 
 	return w;
 }
 
 void website_remove( website_t* w ) {
+	assert( initialized );
 
-	if ( w == root_website_node )
-		root_website_node = w->next;
-
-	if ( w->prev != NULL )
-		w->prev->next = w->next;
-	if ( w->next != NULL )
-		w->next->prev = w->prev;
+	int i = list_locate( &websites, w );
+	if ( i >=0 )
+		list_delete_at( &websites, i );
 
 	free( w->url );
 	free( w );
 }
 
 website_t* website_get_by_url( char* url ) {
-	website_t* w = root_website_node;
+	assert( initialized );
 
-	while ( w != NULL ) {
-
-		if ( startswith( url, w->url ) )
-			return w;
-
-		w = w->next;
+	int i;
+	for ( i = 0; i < list_size( &websites ); i++ ) {
+		website_t* w = list_get_at( &websites, i );
+		if ( strcmp( url, w->url ) == 0 ) return w;
 	}
+
+	return NULL;
+}
+
+website_t* website_find_by_url( char* url ) {
+	assert( initialized );
+
+	int len = 0;
+	int found = -1;
+
+	int i;
+	for ( i = 0; i < list_size( &websites ); i++ ) {
+		website_t* w = list_get_at( &websites, i );
+		if ( startswith( url, w->url ) && strlen( w->url ) > len ) {
+			len = strlen( w->url );
+			found = i;
+		}
+	}
+
+	if ( found != -1 ) return list_get_at( &websites, found );
 
 	return NULL;
 }
 
 website_t* website_get_by_sockfd( int sockfd ) {
-	website_t* w = root_website_node;
+	assert( initialized );
 
-	while ( w != NULL ) {
-
-		if ( sockfd == w->sockfd )
-			return w;
-
-		w = w->next;
+	int i;
+	for ( i = 0; i < list_size( &websites ); i++ ) {
+		website_t* w = list_get_at( &websites, i );
+		if ( sockfd == w->sockfd ) return w;
 	}
 
 	return NULL;
-}
-
-website_t* website_get_root( ) {
-	return root_website_node;
 }

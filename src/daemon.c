@@ -78,10 +78,14 @@ int daemon_start( int flags ) {
 	}
 
 	if ( !FLAG_ISSET( D_NOLOCKFILE, flags ) ) {
-
-		if ( !FLAG_ISSET( D_NOLOCKCHECK, flags ) && open( D_LOCKFILE_PATH, O_RDONLY ) != -1 ) {// lockfile previously set
-			printf( "failed: daemon already running.\n" );
-			return 0;
+		pid_t pid;
+		if ( !FLAG_ISSET( D_NOLOCKCHECK, flags ) && ( pid = readlockfile( ) ) ) {// lockfile previously set
+			if ( kill( pid, SIGTERM ) == 0 ) { // process running
+				printf( "failed: daemon already running.\n" );
+				return 0;
+			} else {
+				printf( "warning: previous daemon did not clean up lockfile on exit.\n" );
+			}
 		}
 	}
 
@@ -151,8 +155,13 @@ int daemon_stop( ) {
 	}
 
 	if ( !stopproc( pid ) ) {
-		printf( "failed: %s\n", strerror( errno ) );
-		return false;
+		if ( errno == 3 ) {
+			printf( "warning: %s\n", strerror( errno ) );
+			return true;
+		} else {
+			printf( "failed: %s\n", strerror( errno ) );
+			return false;
+		}
 	}
 
 	printf( "stopped.\n" );

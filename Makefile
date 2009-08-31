@@ -81,7 +81,7 @@ install:
 zimr: $(EXEC_DEPENDS) zsocket.o ztransport.o zfildes.o zerr.o zcnf.o general.o simclist.o
 	$(EXEC_COMPILE) -lyaml
 
-zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o ztransport.o zerr.o
+zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o ztransport.o zerr.o simclist.o
 	$(EXEC_COMPILE)
 
 zimr-application: $(EXEC_DEPENDS) libzimr.so

@@ -3,6 +3,7 @@ x*make install build routine
 x*setup autostart
 x*folder view
 x*redirect if folders don't have trailing /
+*in python-zimr in function zimr.start( ) add param usecnffile and cnffilepath
 *website redirects
 *thorough testing (use socat for request testing, check for memleaks)
 *error files/website handling
