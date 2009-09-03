@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -35,11 +36,14 @@
 
 #include <openssl/ssl.h>
 
-#include "config.h"
+#include "general.h"
 #include "zerr.h"
+#include "simclist.h"
 
 #define ZSOCK_LISTEN  0x01
 #define ZSOCK_CONNECT 0x02
+
+list_t zsockets;
 
 typedef struct zsocket {
 	int sockfd;
@@ -47,18 +51,16 @@ typedef struct zsocket {
 	int portno;
 	int n_open;
 	SSL_CTX* ssl; // TODO
-	struct zsocket* next;
-	struct zsocket* prev;
 	void* udata;
 } zsocket_t;
 
+void zsocket_init( );
 zsocket_t* zsocket_open( in_addr_t addr, int portno );
 zsocket_t* zsocket_connect( in_addr_t addr, int portno );
-int zsocket_init( in_addr_t addr, int portno, int type );
+int zsocket_new( in_addr_t addr, int portno, int type );
 zsocket_t* zsocket_create( int sockfd, in_addr_t addr, int portno );
 void zsocket_close( zsocket_t* p );
 zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno );
 zsocket_t* zsocket_get_by_sockfd( int sockfd );
-zsocket_t* zsocket_get_root( );
 
 #endif

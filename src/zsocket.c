@@ -1,4 +1,3 @@
-
 /*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
@@ -23,13 +22,20 @@
 
 #include "zsocket.h"
 
-static zsocket_t* root_zsocket_node = NULL;
+static bool initialized = false;
+
+void zsocket_init( ) {
+	assert( !initialized );
+	initialized = true;
+	list_init( &zsockets );
+}
 
 zsocket_t* zsocket_open( in_addr_t addr, int portno ) {
+	assert( initialized );
 	zsocket_t* p = zsocket_get_by_info( addr, portno );
 
 	if ( !p ) {
-		int sockfd = zsocket_init( addr, portno, ZSOCK_LISTEN );
+		int sockfd = zsocket_new( addr, portno, ZSOCK_LISTEN );
 		if ( sockfd == -1 )
 			return NULL;
 		p = zsocket_create( sockfd, addr, portno );
@@ -40,15 +46,17 @@ zsocket_t* zsocket_open( in_addr_t addr, int portno ) {
 }
 
 zsocket_t* zsocket_connect( in_addr_t addr, int portno ) {
+	assert( initialized );
 
-	int sockfd = zsocket_init( addr, portno, ZSOCK_CONNECT );
+	int sockfd = zsocket_new( addr, portno, ZSOCK_CONNECT );
 	if ( sockfd == -1 )
 		return NULL;
 
 	return zsocket_create( sockfd, addr, portno );
 }
 
-int zsocket_init( in_addr_t addr, int portno, int type ) {
+int zsocket_new( in_addr_t addr, int portno, int type ) {
+	assert( initialized );
 	int sockfd = socket( AF_INET, SOCK_STREAM, 0 );
 	struct sockaddr_in serv_addr;
 	int on = 1; // used by setsockopt
@@ -91,6 +99,7 @@ int zsocket_init( in_addr_t addr, int portno, int type ) {
 }
 
 zsocket_t* zsocket_create( int sockfd, in_addr_t addr, int portno ) {
+	assert( initialized );
 	zsocket_t* p = (zsocket_t* ) malloc( sizeof( zsocket_t ) );
 
 	p->sockfd = sockfd;
@@ -99,65 +108,50 @@ zsocket_t* zsocket_create( int sockfd, in_addr_t addr, int portno ) {
 	p->n_open = 0;
 	p->ssl = NULL;
 
-	p->next = root_zsocket_node;
-	p->prev = NULL;
-
-	if ( root_zsocket_node != NULL )
-		root_zsocket_node->prev = p;
-
-	root_zsocket_node = p;
+	list_append( &zsockets, p );
 
 	return p;
 }
 
 void zsocket_close( zsocket_t* p ) {
+	assert( initialized );
 
 	p->n_open--;
 
 	if ( p->n_open > 0 )
 		return;
 
-	if ( p == root_zsocket_node )
-		root_zsocket_node = p->next;
-
-	if ( p->prev != NULL )
-		p->prev->next = p->next;
-	if ( p->next != NULL )
-		p->next->prev = p->prev;
+	int i = list_locate( &zsockets, p );
+	if ( i >=0 )
+		list_delete_at( &zsockets, i );
 
 	close( p->sockfd );
 	free( p );
 }
 
 zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno ) {
-	zsocket_t* p = root_zsocket_node;
-
-	while ( p != NULL ) {
+	assert( initialized );
+	int i;
+	for ( i = 0; i < list_size( &zsockets ); i++ ) {
+		zsocket_t* p = list_get_at( &zsockets, i );
 
 		if ( p->portno == portno && p->addr == addr )
 			return p;
-
-		p = p->next;
 	}
 
 	return NULL;
 }
 
 zsocket_t* zsocket_get_by_sockfd( int sockfd ) {
-	zsocket_t* p = root_zsocket_node;
-
-	while ( p != NULL ) {
+	assert( initialized );
+	int i;
+	for ( i = 0; i < list_size( &zsockets ); i++ ) {
+		zsocket_t* p = list_get_at( &zsockets, i );
 
 		if ( p->sockfd == sockfd )
 			return p;
 
-		p = p->next;
 	}
 
 	return NULL;
-}
-
-
-zsocket_t* zsocket_get_root( ) {
-	return root_zsocket_node;
 }

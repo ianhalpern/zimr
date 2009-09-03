@@ -87,6 +87,7 @@ void headers_set_header( headers_t* headers, char* name, char* value ) {
 	if ( !header ) {
 		header = &headers->list[ headers->num++ ];
 		strcpy( header->name, name );
+		header_formatname( strtolower( header->name ) );
 	}
 
 	strcpy( header->value, value );

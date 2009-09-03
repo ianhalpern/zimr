@@ -127,12 +127,29 @@ static PyObject* pyzimr_request_get_param( pyzimr_request_t* self, PyObject* arg
 		return NULL;
 	}
 
-	param = params_get_param( ( (pyzimr_request_t*) self )->_request->params, param_name );
+	param = params_get_param( &( (pyzimr_request_t*) self )->_request->params, param_name );
 
 	if ( !param )
 		Py_RETURN_NONE;
 
 	return PyString_FromString( param->value );
+}
+
+static PyObject* pyzimr_request_get_header( pyzimr_request_t* self, PyObject* args ) {
+	const char* header_name;
+	header_t* header;
+
+	if ( !PyArg_ParseTuple( args, "s", &header_name ) ) {
+		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+		return NULL;
+	}
+
+	header = headers_get_header( &( (pyzimr_request_t*) self )->_request->headers, (char*) header_name );
+
+	if ( !header )
+		Py_RETURN_NONE;
+
+	return PyString_FromString( header->value );
 }
 
 static PyObject* pyzimr_request_get_url( pyzimr_request_t* self, void* closure ) {
@@ -151,6 +168,7 @@ static PyMemberDef pyzimr_request_members[ ] = {
 
 static PyMethodDef pyzimr_request_methods[ ] = {
 	{ "getParam", (PyCFunction) pyzimr_request_get_param, METH_VARARGS, "Start the website." },
+	{ "getHeader", (PyCFunction) pyzimr_request_get_header, METH_VARARGS, "Start the website." },
 	{ NULL }  /* Sentinel */
 };
 
@@ -261,6 +279,19 @@ static PyObject* pyzimr_connection_send_file( pyzimr_connection_t* self, PyObjec
 	Py_RETURN_NONE;
 }
 
+static PyObject* pyzimr_connection_redirect( pyzimr_connection_t* self, PyObject* args ) {
+	const char* redir_url = NULL;
+
+	if ( PyArg_ParseTuple( args, "s", &redir_url ) ) {
+		zimr_connection_send_redirect( self->_connection, (char*) redir_url );
+	} else {
+		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+		return NULL;
+	}
+
+	Py_RETURN_NONE;
+}
+
 static PyObject* pyzimr_connection_get_cookie( pyzimr_connection_t* self, PyObject* args ) {
 	const char* cookie_name;
 	cookie_t* cookie;
@@ -314,6 +345,7 @@ static PyMethodDef pyzimr_connection_methods[ ] = {
 	{ "getCookie", (PyCFunction) pyzimr_connection_get_cookie, METH_VARARGS, "Start the website." },
 	{ "send", (PyCFunction) pyzimr_connection_send, METH_VARARGS, "Start the website." },
 	{ "sendFile", (PyCFunction) pyzimr_connection_send_file, METH_VARARGS, "Start the website." },
+	{ "redirect", (PyCFunction) pyzimr_connection_redirect, METH_VARARGS, "Start the website." },
 	{ NULL }  /* Sentinel */
 };
 

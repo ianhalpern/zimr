@@ -26,22 +26,18 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "simclist.h"
 #include "config.h"
 #include "urldecoder.h"
 
 typedef struct {
-	char name[ PARAM_NAME_MAX_LEN ];
+	char* name;
 	char* value;
 } param_t;
 
-typedef struct {
-	int num;
-	param_t list[ PARAMS_MAX_NUM ];
-} params_t;
-
-params_t* params_create( );
-void params_parse_qs( params_t* params, char* raw, int size );
-param_t* params_get_param( params_t* params, const char* name );
-void params_free( params_t* params );
+list_t params_create( );
+void params_parse_qs( list_t* params, char* raw, int size );
+param_t* params_get_param( list_t* params, const char* name );
+void params_free( list_t* params );
 
 #endif

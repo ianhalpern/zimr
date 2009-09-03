@@ -117,7 +117,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	if ( tmp[ 0 ] == '?' ) {
 		raw = tmp + 1;
 		tmp = strstr( tmp, " " );
-		params_parse_qs( connection->request.params, raw, tmp - raw );
+		params_parse_qs( &connection->request.params, raw, tmp - raw );
 		raw = tmp + 1;
 	} else
 		raw = strstr( tmp, " " ) + 1;
@@ -148,7 +148,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 			strncpy( connection->request.post_body, tmp, size - (long) ( tmp - start ) );
 			header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
 			if ( header && startswith( header->value, "application/x-www-form-urlencoded" ) ) {
-				params_parse_qs( connection->request.params, connection->request.post_body, size - (long) ( tmp - start ) );
+				params_parse_qs( &connection->request.params, connection->request.post_body, size - (long) ( tmp - start ) );
 			}
 		}
 	}
@@ -159,7 +159,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 }
 
 void connection_free( connection_t* connection ) {
-	params_free( connection->request.params );
+	params_free( &connection->request.params );
 	if ( connection->request.post_body )
 		free( connection->request.post_body );
 	free( connection );

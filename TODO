@@ -8,24 +8,28 @@ x*redirect if folders don't have trailing /
 *thorough testing (use socat for request testing, check for memleaks)
 *error files/website handling
 *ignore files/ext's
+*make page handler regular and python folder
 *make ubuntu package
 *setup launchpad
 *update lists to use simclist data structure
-*update python-pacoda bindings error checking and methods/member/etc. descriptions
+*update python-zimr bindings error checking and methods/member/etc. descriptions
 *look through and update logging
 *update website
-*finish all pacoda command line options
+*revamp and finish all zimr command line options
+*choose unused port for local default proxy port
 ^ Milestone v0.1.0 ^
-*make pacoda info commands return yaml
-*ability to change cwd of pacoda proc
-*add logging by website and configurable via pacoda.cnf file
+*make zimr info commands return yaml
+*ability to change cwd of zimr proc
+*add logging by website and configurable via zimr.cnf file
 *SSL
 *multipart/form-data support and attachments http://community.roxen.com/developers/idocs/rfc/rfc1867.html
 *make proxy config file
 *comb through rfc specs and add missing features, or features that need to be updated to conform to it to the TODO list
 *write man page/documentation
 *remove asserts
-*credentials
+*permissions/credentials
 *default configuration for applications/websites in state
 *wikipedia page
 *make proxy kill website connections when website dies
+*make a GTK gui
+*support for OS X (and maybe Windows)

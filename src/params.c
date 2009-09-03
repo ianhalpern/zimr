@@ -22,20 +22,20 @@
 
 #include "params.h"
 
-params_t* params_create( ) {
-	params_t* params = (params_t*) malloc( sizeof( params_t ) );
-	params->num = 0;
-
+list_t params_create( ) {
+	list_t params;
+	list_init( &params );
 	return params;
 }
 
-void params_parse_qs( params_t* params, char* raw, int size ) {
+void params_parse_qs( list_t* params, char* raw, int size ) {
 	param_t* param;
 	int len;
 
 	char* tmp;
 	while ( size > 0 ) {
-		param = &params->list[ params->num ];
+		char* name;
+		char* value;
 
 		// name
 		tmp = strstr( raw, "=" );
@@ -44,15 +44,14 @@ void params_parse_qs( params_t* params, char* raw, int size ) {
 			break;
 		}
 
-		len = tmp - raw;
-		if ( len > sizeof( param->name ) )
-			len = sizeof( param->name );
-
-		url_decode( raw, param->name, len );
 		size -= ( tmp + 1 ) - raw;
-		raw = tmp + 1;
 		if ( size <= 0 )
 			break;
+
+		len = tmp - raw;
+		name = (char*) malloc( tmp - raw );
+		url_decode( raw, param->name, len );
+		raw = tmp + 1;
 
 		// value
 		tmp = strstr( raw, "&" );
@@ -60,8 +59,8 @@ void params_parse_qs( params_t* params, char* raw, int size ) {
 
 		len = tmp - raw;
 
-		param->value = (char*) malloc( len + 1 );
-		url_decode( raw, param->value, len );
+		value = (char*) malloc( len + 1 );
+		url_decode( raw, value, len );
 
 		size -= tmp - raw;
 		raw = tmp;
@@ -70,29 +69,34 @@ void params_parse_qs( params_t* params, char* raw, int size ) {
 			raw++;
 		}
 
-		params->num++;
+		param = (param_t*) malloc( sizeof( param_t ) );
+		param->name = name;
+		param->value = value;
+		list_append( params, param );
 	}
 }
 
-param_t* params_get_param( params_t* params, const char* name ) {
+param_t* params_get_param( list_t* params, const char* name ) {
 	int i;
-
-	for( i = 0; i < params->num; i++ ) {
-		if ( strcmp( params->list[ i ].name, name ) == 0 )
-			return &params->list[ i ];
+	for( i = 0; i < list_size( params ); i++ ) {
+		param_t* param = list_get_at( params, i );
+		if ( strcmp( param->name, name ) == 0 )
+			return param;
 	}
 
 	return NULL;
 }
 
-void params_free( params_t* params ) {
-	int i;
+void params_free( list_t* params ) {
 	param_t* param;
 
-	for ( i = 0; i < params->num; i++ ) {
-		param = &params->list[ i ];
+	int i;
+	for ( i = 0; i < list_size( params ); i++ ) {
+		param = list_get_at( params, i );
+		free( param->name );
 		free( param->value );
+		free( param );
 	}
 
-	free( params );
+	list_destroy( params );
 }

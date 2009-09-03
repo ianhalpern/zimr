@@ -9,7 +9,7 @@ DSYMBOLS    = -DZIMR_VERSION="\"$(VERSION)\""
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions -I/usr/include/python$(PYVERSION)
-LDZIMR    = -lzimr -L. -Wl,-rpath,`pwd`
+LDZIMR      = -lzimr -L. #-Wl,-rpath,`pwd`
 
 PYVERSION = 2.6
 
@@ -59,10 +59,10 @@ install:
 	#fi
 	@#echo --- Success ---;
 	@echo \\n--- Copying zimr execs, libs, and config files ---;
-	cp -f $(EXECS) $(INSTALL_EXECDIR)
-	cp -f $(SHARED_OBJS) $(INSTALL_LIBDIR)
-	cp -f $(PYMOD_OBJS) $(INSTALL_PYDIR)
-	cp -f init.d/zimr init.d/zimr-proxy /etc/init.d/
+	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
+	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
+	cp --remove-destination $(PYMOD_OBJS) $(INSTALL_PYDIR)
+	cp init.d/zimr init.d/zimr-proxy /etc/init.d/
 	@echo --- Success ---;
 	@echo \\n--- Setting up system to autostart zimr ---;
 	chmod 755 /etc/init.d/zimr

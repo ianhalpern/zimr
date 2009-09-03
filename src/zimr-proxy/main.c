@@ -177,6 +177,10 @@ int main( int argc, char* argv[ ] ) {
 	zfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR internal_connection_handler );
 	zfd_register_type( PFD_TYPE_EXT_CONNECTED, PFD_TYPE_HDLR external_connection_handler );
 
+	// call any needed library init functions
+	website_init( );
+	zsocket_init( );
+
 	zsocket_t* socket = zsocket_open( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT );
 	if ( !socket ) {
 		ret = EXIT_FAILURE;
@@ -188,8 +192,6 @@ int main( int argc, char* argv[ ] ) {
 #ifndef DEBUG
 	daemon_redirect_stdio( );
 #endif
-
-	website_init( );
 
 	// starts a select() loop and calls
 	// the associated file descriptor handlers
@@ -215,18 +217,17 @@ char* get_status_message( char* buffer, int size ) {
 	memset( buffer, 0, size );
 
 	strcat( buffer, "\nSockets:\n" );
-	zsocket_t* socket = zsocket_get_root( );
 
-	while ( socket ) {
+	int i;
+	for ( i = 0; i < list_size( &zsockets ); i++ ) {
+		zsocket_t* socket = list_get_at( &zsockets, i );
 		strcat( buffer, "  " );
 		inet_ntop( AF_INET, &socket->addr, buffer + strlen( buffer ), INET_ADDRSTRLEN );
 		sprintf( buffer + strlen( buffer ), ":%d (%d website(s) connected)\n", socket->portno, socket->n_open );
-		socket = socket->next;
 	}
 
 	strcat( buffer, "\nWebsites:\n" );
 
-	int i;
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		website_t* website = list_get_at( &websites, i );
 		strcat( buffer, "  " );

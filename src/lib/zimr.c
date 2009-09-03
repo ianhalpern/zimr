@@ -59,14 +59,16 @@ bool zimr_init( ) {
 	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
 #endif
 
+	// call any needed library init functions
+	website_init( );
+	zsocket_init( );
+
 	if ( !zimr_open_request_log( ) )
 		return false;
 
 	// Register file descriptor type handlers
 	zfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR zimr_connection_handler );
 	zfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR zimr_file_handler );
-
-	website_init( );
 
 	syslog( LOG_INFO, "initialized." );
 	return true;
@@ -471,8 +473,8 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 	if ( S_ISDIR( file_stat.st_mode ) ) {
 
 		if ( full_filepath[ strlen( full_filepath ) - 1 ] != '/' ) {
-			char buf[ strlen( connection->website->url ) + strlen( full_filepath ) + 8 ];
-			sprintf( buf, "http://%s%s/", connection->website->url, full_filepath + 1 );
+			char buf[ strlen( filepath ) + 1 ];
+			sprintf( buf, "%s/", filepath );
 			zimr_connection_send_redirect( connection, buf );
 			return;
 		}

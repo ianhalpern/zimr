@@ -18,6 +18,13 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
+
+TODO:
+zimr start [all [states]]
+zimr stop [all [states]]
+zimr restart [all [states]]
+zimr status [all [states], proxy]
+zimr help
  */
 
 #include <stdio.h>
@@ -574,6 +581,7 @@ void state_status_cmd( int optc, char* optv[ ] ) {
 
 void proxy_status( ) {
 	int command = ZM_CMD_STATUS;
+	zsocket_init( );
 	zsocket_t* proxy = zsocket_connect( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT );
 
 	if ( !proxy ) {
