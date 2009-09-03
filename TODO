@@ -3,8 +3,9 @@ x*make install build routine
 x*setup autostart
 x*folder view
 x*redirect if folders don't have trailing /
+x*website redirects
+*website parking
 *in python-zimr in function zimr.start( ) add param usecnffile and cnffilepath
-*website redirects
 *thorough testing (use socat for request testing, check for memleaks)
 *error files/website handling
 *ignore files/ext's
@@ -21,7 +22,7 @@ x*redirect if folders don't have trailing /
 *make zimr info commands return yaml
 *ability to change cwd of zimr proc
 *add logging by website and configurable via zimr.cnf file
-*SSL
+*SSL for external encryption, SSH for internal encryption
 *multipart/form-data support and attachments http://community.roxen.com/developers/idocs/rfc/rfc1867.html
 *make proxy config file
 *comb through rfc specs and add missing features, or features that need to be updated to conform to it to the TODO list

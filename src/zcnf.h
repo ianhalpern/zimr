@@ -62,6 +62,7 @@ websites:
 typedef struct zcnf_website {
 	char* url;
 	char* pubdir;
+	char* redirect_url;
 	struct zcnf_website* next;
 } zcnf_website_t;
 

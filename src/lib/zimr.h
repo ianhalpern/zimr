@@ -44,13 +44,14 @@
 
 typedef struct website_data {
 	zsocket_t* socket;
-	char status;
+	char  status;
 	char* pubdir;
-	void (*connection_handler)( connection_t* connection );
+	void  (*connection_handler)( connection_t* connection );
+	int   conn_tries;
+	int   default_pages_count;
+	char  default_pages[ 100 ][ 100 ];
+	char* redirect_url;
 	void* udata;
-	int conn_tries;
-	int default_pages_count;
-	char default_pages[ 100 ][ 100 ];
 } website_data_t;
 
 const char* zimr_version( );
@@ -70,6 +71,7 @@ website_t* zimr_website_create( char* url );
 void  zimr_website_destroy( website_t* website );
 bool  zimr_website_enable( website_t* website );
 void  zimr_website_disable( website_t* website );
+void  zimr_website_set_redirect( website_t* website, char* redirect_url );
 void  zimr_website_set_pubdir( website_t* website, const char* pubdir );
 char* zimr_website_get_pubdir( website_t* website );
 void  zimr_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t* ) );

@@ -186,6 +186,9 @@ int zimr_cnf_load( char* cnf_path ) {
 			if ( website_cnf->pubdir )
 				zimr_website_set_pubdir( website, website_cnf->pubdir );
 
+			if ( website_cnf->redirect_url )
+				zimr_website_set_redirect( website, website_cnf->redirect_url );
+
 			zimr_website_enable( website );
 		}
 		website_cnf = website_cnf->next;
@@ -211,6 +214,7 @@ website_t* zimr_website_create( char* url ) {
 	website_data->connection_handler = NULL;
 	website_data->conn_tries = 0; //ZM_NUM_PROXY_DEATH_RETRIES - 1;
 	website_data->default_pages_count = 0;
+	website_data->redirect_url = NULL;
 	zimr_website_insert_default_page( website, "default.html", 0 );
 	return website;
 }
@@ -278,6 +282,12 @@ void zimr_website_disable( website_t* website ) {
 	}
 
 	website_data->status = WS_STATUS_DISABLED;
+}
+
+void zimr_website_set_redirect( website_t* website, char* redirect_url ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
+	if ( website_data->redirect_url ) free( website_data->redirect_url );
+	website_data->redirect_url = strdup( redirect_url );
 }
 
 void zimr_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
@@ -373,7 +383,12 @@ void zimr_connection_handler( int sockfd, website_t* website ) {
 		headers_set_header( &connection->response.headers, "Date", "" );
 		headers_set_header( &connection->response.headers, "Server", "" );
 
-		if ( website_data->connection_handler )
+		if ( website_data->redirect_url ) {
+			char buf[ strlen( website_data->redirect_url ) + strlen( connection->request.url ) + 8 ];
+			sprintf( buf, "http://%s%s", website_data->redirect_url, connection->request.url );
+			zimr_connection_send_redirect( connection, buf );
+		}
+		else if ( website_data->connection_handler )
 			website_data->connection_handler( connection );
 		else
 			zimr_website_default_connection_handler( connection );
@@ -403,7 +418,12 @@ void zimr_file_handler( int fd, ztransport_t* transport ) {
 
 void zimr_connection_send_status( ztransport_t* transport, connection_t* connection ) {
 	char status_line[ 100 ];
-	sprintf( status_line, "HTTP/%s %s" HTTP_HDR_ENDL, connection->http_version, response_status( connection->response.http_status ) );
+	sprintf(
+		status_line,
+		"HTTP/%s %s" HTTP_HDR_ENDL,
+		connection->http_version,
+		response_status( connection->response.http_status )
+	);
 
 	ztransport_write( transport, status_line, strlen( status_line ) );
 }
