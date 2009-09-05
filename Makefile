@@ -19,7 +19,7 @@ OBJS        = general.o ztransport.o website.o zfildes.o zsocket.o connection.o\
 EXEC_OBJS   = zimr.o zimr-website.o pcom-test-client.o pcom-test-server.o
 
 EXECS       = zimr-proxy zimr-application zimr
-TEST_EXECS  =
+TEST_EXECS  = test-strnstr
 SHARED_OBJS = libzimr.so
 PYMOD_OBJS  = zimr.so
 
@@ -97,6 +97,11 @@ libzimr.so: $(SHARED_OBJ_DEPENDS) general.o ztransport.o zfildes.o website.o mim
 
 zimr.so: $(PYMOD_DEPENDS) libzimr.so
 	$(EXEC_COMPILE) $(PYMOD) $(LDZIMR)
+
+##### TESTS #####
+
+test-strnstr: $(EXEC_DEPENDS) general.o
+	$(EXEC_COMPILE)
 
 ##### OBJS ######
 #################
