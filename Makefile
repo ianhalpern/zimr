@@ -90,7 +90,7 @@ zimr-application: $(EXEC_DEPENDS) libzimr.so
 ##### SHARED OBJS #####
 
 libzimr.so: $(SHARED_OBJ_DEPENDS) general.o ztransport.o zfildes.o website.o mime.o connection.o\
-			 					    headers.o params.o cookies.o urldecoder.o zcnf.o zsocket.o zerr.o simclist.o
+			 					  headers.o params.o cookies.o urldecoder.o zcnf.o zsocket.o zerr.o simclist.o
 	$(EXEC_COMPILE) $(SHARED) -lyaml
 
 ##### PYTHON MODS #####

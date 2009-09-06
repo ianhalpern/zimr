@@ -27,13 +27,15 @@
 
 #include "zimr.h"
 
-void empty_sighandler(){}
+void sigquit( ) {
+	exit( 0 );
+}
 
 int main( int argc, char *argv[ ] ) {
 	zimr_init( );
 
-	signal( SIGTERM, empty_sighandler );
-	signal( SIGINT,  empty_sighandler );
+	signal( SIGTERM, sigquit );
+	signal( SIGINT,  sigquit );
 
 	char* cnf_path = NULL;
 	if ( argc > 1 )
@@ -41,9 +43,10 @@ int main( int argc, char *argv[ ] ) {
 
 	assert( zimr_cnf_load( cnf_path ) );
 
+	atexit( zimr_shutdown );
+
 	zimr_start( );
 
-	zimr_shutdown( );
 	return 0;
 }
 

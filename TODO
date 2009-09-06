@@ -19,7 +19,11 @@ x*website redirects
 *revamp and finish all zimr command line options
 *choose unused port for local default proxy port
 *add multiple architecure compilation to makefile (x86,x86-64)
+*fix bug: "sudo /etc/init.d/zimr-proxy start" kills already running daemon
+*fix bug: applications do not reattach to proxy when proxy restarts
+
 ^ Milestone v0.1.0 ^
+
 *make zimr info commands return yaml
 *ability to change cwd of zimr proc
 *add logging by website and configurable via zimr.cnf file
@@ -33,6 +37,6 @@ x*website redirects
 *default configuration for applications/websites in state
 *wikipedia page
 *make proxy kill website connections when website dies
-*make a GTK gui
+*make a HTTP/GTK gui
 *support for OS X (and maybe Windows)
 *wildcard url's

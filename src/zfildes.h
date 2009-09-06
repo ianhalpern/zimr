@@ -49,6 +49,7 @@ typedef struct {
 
 void zfd_set( int fd, int type, void* udata );
 void zfd_clr( int fd );
+bool zfd_isset( int fd );
 void zfd_register_type( int type, void (*handler)( int, void* ) );
 void* zfd_udata( int fd );
 int zfd_select( );

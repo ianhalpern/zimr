@@ -41,6 +41,7 @@
 
 typedef struct {
 	zsocket_t* socket;
+	int fds[ FD_SETSIZE ];
 } website_data_t;
 
 typedef struct {
@@ -62,6 +63,8 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info );
 void external_connection_handler( int sockfd, conn_info_t* conn_info );
 
 void command_handler( int sockfd, ztransport_t* transport );
+
+void general_connection_close( int sockfd );
 
 void signal_handler( int sig ) {
 	switch( sig ) {
@@ -298,6 +301,11 @@ int remove_website( int sockfd ) {
 		zsocket_close( website_data->socket );
 	}
 
+	int i;
+	for ( i = 0; i < sizeof( website_data->fds ) / sizeof( int ); i++ )
+		if ( website_data->fds[ i ] >= 0 )
+			general_connection_close( website_data->fds[ i ] );
+
 	free( website_data );
 	website_remove( website );
 
@@ -330,6 +338,10 @@ int start_website( char* url, int sockfd ) {
 		remove_website( sockfd );
 		return 0;
 	}
+
+	int i;
+	for ( i = 0; i < sizeof( website_data->fds ) / sizeof( int ); ++i )
+		website_data->fds[ i ] = -1;
 
 	zfd_set( website_data->socket->sockfd, PFD_TYPE_EXT_LISTEN, NULL );
 	return 1;
@@ -393,6 +405,17 @@ cleanup:
 					ztransport_free( req_info->transport );
 				} else {
 					ztransport_close( req_info->transport );
+					// clear from website_data->fds
+					website_t* website = website_get_by_sockfd( req_info->website_sockfd );
+					if ( website ) {
+						website_data_t* website_data = website->udata;
+						int i;
+						for ( i = 0; i < sizeof( website_data->fds ) / sizeof( int ) ; i++ )
+							if ( website_data->fds[ i ] == sockfd ) {
+								website_data->fds[ i ] = -1;
+								break;
+							}
+					}
 				}
 			}
 
@@ -452,11 +475,24 @@ cleanup:
 			goto cleanup;
 		}
 
+		/* Add sockfd to website_data->fds and use the i value as the msgid */
+		int i;
+		for ( i = 0; i < sizeof( website_data->fds ) / sizeof( int ); i++ ) {
+			if ( website_data->fds[ i ] == -1 ) {
+				website_data->fds[ i ] = sockfd;
+				break;
+			}
+		}
+		/* Check if no open spots were available and cleanup if so */
+		if ( i == sizeof( website_data->fds ) / sizeof( int ) ) {
+			goto cleanup;
+		}
+
 		/* Open up a transport to send the request to the corresponding
 		   website. The website's id is the internal file descriptor to
 		   send the request over and the msgid should be set to the
 		   external file descriptor to send the response back to. */
-		req_info->transport = ztransport_open( website->sockfd, ZT_WO, sockfd );
+		req_info->transport = ztransport_open( website->sockfd, ZT_WO, i );
 
 		// Write the ip address and hostname of the request
 		ztransport_write( req_info->transport, (void*) &conn_info->addr.sin_addr, sizeof( conn_info->addr.sin_addr ) );
@@ -470,8 +506,8 @@ cleanup:
 			req_info->postlen = atoi( postlenbuf );
 		}
 
-		// Send the whole header to the website
 		if ( ( ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
+			// Send the whole header to the website
 			ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
 			ztransport_write( req_info->transport, (void*) buffer, ( ptr - buffer ) );
 		}
@@ -493,7 +529,6 @@ cleanup:
 		ztransport_write( req_info->transport, (void*) ptr, left );
 
 		req_info->postlen -= left;
-
 	}
 
 	if ( !req_info->postlen ) { /* If there isn't still data coming, */
@@ -531,17 +566,34 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 
 	} else {
 
-		/* TODO: make sure file descriptor (msgid) is actually
-		   associated with the website it came from */
+		website_t* website = website_get_by_sockfd( sockfd );
+		website_data_t* website_data = website->udata;
+		int ext_sockfd = website_data->fds[ transport->header->msgid ];
+
+		if ( ZT_MSG_IS_LAST( transport ) )
+			website_data->fds[ transport->header->msgid ] = -1;
+
+		if ( ext_sockfd < 0 ) goto quit;
 
 		/* if msgid is zero or greater it refers to a socket file
 		   descriptor that the message should be routed to. */
+
+		if ( !zfd_isset( ext_sockfd ) ) {
+			if ( !ZT_MSG_IS_LAST( transport ) )
+				website_data->fds[ transport->header->msgid ] = -2;
+			goto quit;
+		}
+
 		int n;
-		if ( ( n = write( transport->header->msgid, transport->message, transport->header->size ) ) != transport->header->size
+		if ( ( n = write( ext_sockfd, transport->message, transport->header->size ) ) != transport->header->size
 		 || ZT_MSG_IS_LAST( transport ) ) {
+
+			if ( !ZT_MSG_IS_LAST( transport ) )
+				website_data->fds[ transport->header->msgid ] = -2;
+
 			// clean up external connection
-			zfd_clr( transport->header->msgid );
-			close( transport->header->msgid );
+			zfd_clr( ext_sockfd );
+			close( ext_sockfd );
 
 			if ( n == -1 )
 			/* TODO: sent transmission to stop sending data for this

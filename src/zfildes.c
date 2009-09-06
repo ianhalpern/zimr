@@ -43,6 +43,10 @@ void zfd_clr( int fd ) {
 	FD_CLR( fd, &active_fd_set );
 }
 
+bool zfd_isset( int fd ) {
+	return FD_ISSET( fd, &active_fd_set );
+}
+
 void* zfd_udata( int fd ) {
 	return fd_data[ fd ].udata;
 }
