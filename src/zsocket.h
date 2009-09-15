@@ -38,14 +38,13 @@
 
 #include "general.h"
 #include "zerr.h"
-#include "simclist.h"
 
-#define ZSOCK_LISTEN  0x01
-#define ZSOCK_CONNECT 0x02
+#define ZSOCK_LISTEN   0x01
+#define ZSOCK_CONNECT  0x02
+#define ZSOCK_ZLISTEN  0x03
+#define ZSOCK_ZCONNECT 0x04
 
-list_t zsockets;
-
-typedef struct zsocket {
+typedef struct {
 	int sockfd;
 	in_addr_t addr;
 	int portno;
@@ -54,12 +53,11 @@ typedef struct zsocket {
 	void* udata;
 } zsocket_t;
 
+zsocket_t* zsockets[ FD_SETSIZE ];
+
 void zsocket_init( );
-zsocket_t* zsocket_open( in_addr_t addr, int portno );
-zsocket_t* zsocket_connect( in_addr_t addr, int portno );
-int zsocket_new( in_addr_t addr, int portno, int type );
-zsocket_t* zsocket_create( int sockfd, in_addr_t addr, int portno );
-void zsocket_close( zsocket_t* p );
+int zsocket( in_addr_t addr, int portno, int type );
+void zsocket_close( int zsockfd );
 zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno );
 zsocket_t* zsocket_get_by_sockfd( int sockfd );
 

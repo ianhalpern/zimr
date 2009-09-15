@@ -67,8 +67,8 @@ bool zimr_init( ) {
 		return false;
 
 	// Register file descriptor type handlers
-	zfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR zimr_connection_handler );
-	zfd_register_type( PFD_TYPE_FILE, PFD_TYPE_HDLR zimr_file_handler );
+	zfd_register_type( PFD_TYPE_INT_CONNECTED, ZFD_R, PFD_TYPE_HDLR zimr_connection_handler );
+	zfd_register_type( PFD_TYPE_FILE, ZFD_R, PFD_TYPE_HDLR zimr_file_handler );
 
 	syslog( LOG_INFO, "initialized." );
 	return true;
@@ -388,8 +388,10 @@ void zimr_connection_handler( int sockfd, website_t* website ) {
 			sprintf( buf, "http://%s%s", website_data->redirect_url, connection->request.url );
 			zimr_connection_send_redirect( connection, buf );
 		}
+
 		else if ( website_data->connection_handler )
 			website_data->connection_handler( connection );
+
 		else
 			zimr_website_default_connection_handler( connection );
 	}

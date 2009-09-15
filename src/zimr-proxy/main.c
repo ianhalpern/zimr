@@ -35,13 +35,20 @@
 #include "zsocket.h"
 #include "daemon.h"
 #include "zerr.h"
-#include "zcnf.h"
 
 #define DAEMON_NAME "zimr-proxy"
 
+#define ZFDT_INLISTEN 0x01
+#define ZFDT_EXLISTEN 0x02
+#define ZFDT_INREAD   0x03
+#define ZFDT_EXREAD   0x04
+#define ZFDT_INWRITE  0x05
+#define ZFDT_EXWRITE  0x06
+
 typedef struct {
-	zsocket_t* socket;
-	int fds[ FD_SETSIZE ];
+	int sockfd;
+	int msgid_to_fd[ FD_SETSIZE ];
+	list_t ztlists;
 } website_data_t;
 
 typedef struct {
@@ -52,15 +59,17 @@ typedef struct {
 
 typedef struct {
 	int website_sockfd;
-	ztransport_t* transport;
+	list_t* ztlist;
 	int request_type;
 	int postlen;
 } req_info_t;
 
 void internal_connection_listener( int sockfd, void* udata );
 void external_connection_listener( int sockfd, void* udata );
-void internal_connection_handler( int sockfd, conn_info_t* conn_info );
-void external_connection_handler( int sockfd, conn_info_t* conn_info );
+void internal_read_handler( int sockfd, conn_info_t* conn_info );
+void internal_write_handler( int sockfd, void* udata );
+void external_read_handler( int sockfd, conn_info_t* conn_info );
+void external_write_handler( int sockfd, ztransport_t* transport );
 
 void command_handler( int sockfd, ztransport_t* transport );
 
@@ -163,8 +172,6 @@ int main( int argc, char* argv[ ] ) {
 	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
 #endif
 
-	syslog( LOG_INFO, "starting up" );
-
 	// daemonize
 	if ( make_daemon ) {
 		if ( !daemon_start( daemon_flags ) ) {
@@ -173,24 +180,28 @@ int main( int argc, char* argv[ ] ) {
 		}
 	}
 
+	syslog( LOG_INFO, "starting up" );
+
 	// set the fle handlers for the different types of file desriptors
 	// used in zfd_select()
-	zfd_register_type( PFD_TYPE_INT_LISTEN,    PFD_TYPE_HDLR internal_connection_listener );
-	zfd_register_type( PFD_TYPE_EXT_LISTEN,    PFD_TYPE_HDLR external_connection_listener );
-	zfd_register_type( PFD_TYPE_INT_CONNECTED, PFD_TYPE_HDLR internal_connection_handler );
-	zfd_register_type( PFD_TYPE_EXT_CONNECTED, PFD_TYPE_HDLR external_connection_handler );
+	zfd_register_type( ZFDT_INLISTEN, ZFD_R, PFD_TYPE_HDLR internal_connection_listener );
+	zfd_register_type( ZFDT_EXLISTEN, ZFD_R, PFD_TYPE_HDLR external_connection_listener );
+	zfd_register_type( ZFDT_INREAD,   ZFD_R, PFD_TYPE_HDLR internal_read_handler );
+	zfd_register_type( ZFDT_EXREAD,   ZFD_R, PFD_TYPE_HDLR external_read_handler );
+	zfd_register_type( ZFDT_INWRITE,  ZFD_W, PFD_TYPE_HDLR internal_write_handler );
+	zfd_register_type( ZFDT_EXWRITE,  ZFD_W, PFD_TYPE_HDLR external_write_handler );
 
 	// call any needed library init functions
 	website_init( );
 	zsocket_init( );
 
-	zsocket_t* socket = zsocket_open( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT );
+	int sockfd = zsocket( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT, ZSOCK_LISTEN );
 	if ( !socket ) {
 		ret = EXIT_FAILURE;
 		goto quit;
 	}
 
-	zfd_set( socket->sockfd, PFD_TYPE_INT_LISTEN, NULL );
+	zfd_set( socket->sockfd, ZFDT_INLISTEN, NULL );
 
 #ifndef DEBUG
 	daemon_redirect_stdio( );
@@ -198,7 +209,7 @@ int main( int argc, char* argv[ ] ) {
 
 	// starts a select() loop and calls
 	// the associated file descriptor handlers
-	// when they are ready to read
+	// when they are ready to read/write
 	while ( zfd_select( 0 ) ); // The loop is only broken by interrupt
 
 quit:
@@ -294,11 +305,11 @@ int remove_website( int sockfd ) {
 	syslog( LOG_INFO, "website: stopping \"http://%s\"", website->url );
 	website_data_t* website_data = (website_data_t*) website->udata;
 
-	if ( website_data->socket ) {
+	if ( website_data->sockfd != -1 ) {
 		if ( website_data->socket->n_open == 1 ) {
-			zfd_clr( website_data->socket->sockfd );
+			zfd_clr( website_data->sockfd );
 		}
-		zsocket_close( website_data->socket );
+		zsocket_close( website_data->sockfd );
 	}
 
 	int i;
@@ -331,9 +342,9 @@ int start_website( char* url, int sockfd ) {
 	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
 	website->udata = website_data;
 
-	website_data->socket = zsocket_open( INADDR_ANY, get_port_from_url( website->url ) );
+	website_data->sockfd = zsocket( INADDR_ANY, get_port_from_url( website->url ), ZSOCK_LISTEN );
 
-	if ( !website_data->socket ) {
+	if ( website_data->sockfd == -1 ) {
 		syslog( LOG_ERR, "start_website: zsocket_open(): %s: %s", pdstrerror( zerrno ), strerror( errno ) );
 		remove_website( sockfd );
 		return 0;
@@ -343,7 +354,7 @@ int start_website( char* url, int sockfd ) {
 	for ( i = 0; i < sizeof( website_data->fds ) / sizeof( int ); ++i )
 		website_data->fds[ i ] = -1;
 
-	zfd_set( website_data->socket->sockfd, PFD_TYPE_EXT_LISTEN, NULL );
+	zfd_set( website_data->sockfd, ZFDT_EXLISTEN, NULL );
 	return 1;
 }
 
@@ -352,7 +363,7 @@ int start_website( char* url, int sockfd ) {
 void general_connection_listener( int sockfd, void* udata, int type ) {
 	conn_info_t* conn_info;
 	struct sockaddr_in cli_addr;
-	unsigned int cli_len = sizeof ( cli_addr );
+	unsigned int cli_len = sizeof( cli_addr );
 	int newsockfd;
 
 	// Connection request on original socket.
@@ -360,6 +371,8 @@ void general_connection_listener( int sockfd, void* udata, int type ) {
 		syslog( LOG_ERR, "general_connection_listener: accept() failed: %s", strerror( errno ) );
 		return;
 	}
+
+	//fcntl( newsockfd, F_SETFL, O_NONBLOCK );
 
 	// pass the connection information along...
 	conn_info = (conn_info_t*) malloc( sizeof( conn_info_t ) );
@@ -377,14 +390,14 @@ void general_connection_close( int sockfd ) {
 }
 
 void external_connection_listener( int sockfd, void* udata ) {
-	general_connection_listener( sockfd, udata, PFD_TYPE_EXT_CONNECTED );
+	general_connection_listener( sockfd, udata, ZFDT_EXTREAD );
 }
 
 void internal_connection_listener( int sockfd, void* udata ) {
-	general_connection_listener( sockfd, udata, PFD_TYPE_INT_CONNECTED );
+	general_connection_listener( sockfd, udata, ZFDT_INREAD );
 }
 
-void external_connection_handler( int sockfd, conn_info_t* conn_info ) {
+void external_read_handler( int sockfd, conn_info_t* conn_info ) {
 	char buffer[ ZT_BUF_SIZE ],* ptr;
 	memset( &buffer, 0, sizeof( buffer ) );
 	int len;
@@ -399,14 +412,14 @@ void external_connection_handler( int sockfd, conn_info_t* conn_info ) {
 cleanup:
 		// cleanup
 		if ( req_info ) {
-			if ( req_info->transport ) {
-				if ( ZT_MSG_IS_FIRST( req_info->transport )
-				  || !website_get_by_sockfd( req_info->website_sockfd ) ) {
-					ztransport_free( req_info->transport );
+			if ( req_info->ztlist ) {
+				website_t* website = website_get_by_sockfd( req_info->website_sockfd );
+				if ( ZT_IS_FIRST( list_get_at( req_info->ztlist, 0 ) )
+				  || !website ) {
+					ztfree( req_info->ztlist );
 				} else {
-					ztransport_close( req_info->transport );
+					ztclose( req_info->ztlist );
 					// clear from website_data->fds
-					website_t* website = website_get_by_sockfd( req_info->website_sockfd );
 					if ( website ) {
 						website_data_t* website_data = website->udata;
 						int i;
@@ -426,6 +439,7 @@ cleanup:
 		return;
 	}
 
+	zfd_clr( sockfd, ZFDT_EXTREAD );
 	ptr = buffer;
 
 	if ( !req_info ) {
@@ -433,8 +447,8 @@ cleanup:
 		   HTTP request headers need to be parsed. */
 		req_info = (req_info_t*) malloc( sizeof( req_info_t ) );
 		conn_info->udata = req_info;
-		req_info->transport = NULL;
 		req_info->website_sockfd = -1;
+		req_info->ztlist = NULL;
 		req_info->postlen = 0;
 
 		struct hostent* hp;
@@ -469,9 +483,16 @@ cleanup:
 		   the right socket. */
 		website_data_t* website_data = website->udata;
 
-		if ( website_data->socket->sockfd != conn_info->fd ) {
+		if ( website_data->sockfd != conn_info->fd ) {
 			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
 			  inet_ntoa( conn_info->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
+			goto cleanup;
+		}
+
+		if ( !strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) {
+			/* If the end of the headers was not found the request was either
+			   malformatted or too long, DO NOT send to website. */
+			syslog( LOG_WARNING, "external_connection_handler: headers to long" );
 			goto cleanup;
 		}
 
@@ -483,7 +504,7 @@ cleanup:
 				break;
 			}
 		}
-		/* Check if no open spots were available and cleanup if so */
+		/* Check if no open spots were available and if so cleanup */
 		if ( i == sizeof( website_data->fds ) / sizeof( int ) ) {
 			goto cleanup;
 		}
@@ -492,12 +513,14 @@ cleanup:
 		   website. The website's id is the internal file descriptor to
 		   send the request over and the msgid should be set to the
 		   external file descriptor to send the response back to. */
-		req_info->transport = ztransport_open( website->sockfd, ZT_WO, i );
+		req_info->ztlist = ztopen( i );
+		list_append( &website_data->ztlists, req_info->ztlist );
+		zfd_set( website->sockfd, ZFDT_INWRITE, website );
 
 		// Write the ip address and hostname of the request
-		ztransport_write( req_info->transport, (void*) &conn_info->addr.sin_addr, sizeof( conn_info->addr.sin_addr ) );
-		if ( hp ) ztransport_write( req_info->transport, (void*) hp->h_name, strlen( hp->h_name ) );
-		ztransport_write( req_info->transport, (void*) "\0", 1 );
+		ztpush( req_info->ztlist, (void*) &conn_info->addr.sin_addr, sizeof( conn_info->addr.sin_addr ) );
+		if ( hp ) ztpush( req_info->ztlist, (void*) hp->h_name, strlen( hp->h_name ) );
+		ztpush( req_info->ztlist, (void*) "\0", 1 );
 
 		// If request_type is POST check if there is content after the HTTP header
 		char postlenbuf[ 32 ];
@@ -506,19 +529,12 @@ cleanup:
 			req_info->postlen = atoi( postlenbuf );
 		}
 
-		if ( ( ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
-			// Send the whole header to the website
-			ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-			ztransport_write( req_info->transport, (void*) buffer, ( ptr - buffer ) );
-		}
-
-		/* If the end of the headers was not found the request was either
-		   malformatted or too long, DO NOT send to website. */
-		else {
-			syslog( LOG_WARNING, "external_connection_handler: headers to long" );
-			goto cleanup;
-		}
+		// Send the whole header to the website
+		ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) + strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
+		ztpush( req_info->ztlist, (void*) buffer, ( ptr - buffer ) );
 	}
+
+	zfd_reset( website->sockfd, ZFDT_INWRITE );
 
 	if ( req_info->request_type == HTTP_POST_TYPE && req_info->postlen ) {
 		int left = len - ( ptr - buffer );
@@ -526,23 +542,42 @@ cleanup:
 		if ( left > req_info->postlen )
 			req_info->postlen = left;
 
-		ztransport_write( req_info->transport, (void*) ptr, left );
+		ztpush( req_info->ztlist, (void*) ptr, left );
 
 		req_info->postlen -= left;
 	}
 
 	if ( !req_info->postlen ) { /* If there isn't still data coming, */
-		ztransport_close( req_info->transport );
+		ztclose( req_info->ztlist );
+
 		free( req_info );
 		conn_info->udata = NULL;
 	}
 
 }
 
-void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
-	ztransport_t* transport = ztransport_open( sockfd, ZT_RO, 0 );
+void internal_write_handler( int sockfd, website_t* website ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
+	list_t* ztlist = list_extract_at( &website_data->zts, 0 );
+	zt_t* zt = list_get_at( ztlist, 0 );
 
-	if ( !ztransport_read( transport ) ) {
+	if ( ZT_IS_LAST( zt ) || list_size( ztlist ) > 1 ) {
+		write( sockfd, zt, sizeof( zt ) );
+		list_remove_at( ztlist, 0 );
+	}
+
+	if ( list_size( ztlist ) == 1 ) {
+		zfd_reset( zt->msgid, ZFDT_EXTREAD );
+	} else {
+		list_append( &website_data, ztlist );
+	}
+
+}
+
+void internal_read_handler( int sockfd, conn_info_t* conn_info ) {
+	ztransport_t* transport = ztopen( sockfd, ZT_RO, 0 );
+
+	if ( !ztread( transport ) ) {
 
 		// if sockfd is a website, we need to remove it
 		if ( website_get_by_sockfd( sockfd ) ) {
@@ -584,30 +619,42 @@ void internal_connection_handler( int sockfd, conn_info_t* conn_info ) {
 			goto quit;
 		}
 
-		int n;
-		if ( ( n = write( ext_sockfd, transport->message, transport->header->size ) ) != transport->header->size
-		 || ZT_MSG_IS_LAST( transport ) ) {
+		zfd_set( ext_sockfd, ZFDT_EXWRITE, transport );
+		// TODO: stop reading
 
-			if ( !ZT_MSG_IS_LAST( transport ) )
-				website_data->fds[ transport->header->msgid ] = -2;
-
-			// clean up external connection
-			zfd_clr( ext_sockfd );
-			close( ext_sockfd );
-
-			if ( n == -1 )
-			/* TODO: sent transmission to stop sending data for this
-			   external connection, it does not exist anymore. */
-				syslog( LOG_ERR, "internal_connection_handler: write failed: %s", strerror( errno ) );
-			//goto quit;
-		}
-
+		return; // we don't want to close the transport yet
 	}
 
 quit:
-	ztransport_close( transport );
+	ztclose( transport );
 }
 
+void external_write_handler( int sockfd, ztransport_t* transport ) {
+
+	int n = write( ext_sockfd, transport->message, transport->header->size );
+
+	if ( n <= 0 ) {
+		if ( n == -1 )
+			syslog( LOG_ERR, "internal_connection_handler: write failed: %s", strerror( errno ) );
+		ztransport_kill( transport );
+	}
+
+	else {
+
+		transport->message += n;
+		transport->header->size -= n;
+
+		if ( !transport->header->size ) {
+
+			if ( ZT_MSG_IS_LAST( transport ) )
+				// clean up external connection
+				general_connection_close( sockfd );
+
+			ztransport_close( transport );
+		}
+	}
+
+}
 
 void command_handler( int sockfd, ztransport_t* transport ) {
 	ztransport_t* response = ztransport_open( sockfd, ZT_WO, transport->header->msgid );

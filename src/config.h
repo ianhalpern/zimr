@@ -51,9 +51,7 @@
 
 /****** ztransport config *******/
 
-#define ZT_MSG_SIZE ( ZT_BUF_SIZE - ZT_HDR_SIZE )
-#define ZT_HDR_SIZE ( sizeof( ztransport_header_t ) )
-#define ZT_BUF_SIZE 4096
+#define ZT_MSG_SIZE 4084
 
 /**************************/
 

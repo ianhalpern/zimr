@@ -23,7 +23,7 @@
 #ifndef _ZM_PFILDES_H
 #define _ZM_PFILDES_H
 
-#define PFD_TYPE_HDLR (void (*)( int, void* ))
+#define ZFD_TYPE_HDLR (void (*)( int, void* ))
 
 #include <string.h>
 #include <stdlib.h>
@@ -32,11 +32,8 @@
 #include <errno.h>
 #include <stdbool.h>
 
-#define PFD_TYPE_INT_LISTEN    0x01
-#define PFD_TYPE_EXT_LISTEN    0x02
-#define PFD_TYPE_INT_CONNECTED 0x03
-#define PFD_TYPE_EXT_CONNECTED 0x04
-#define PFD_TYPE_FILE          0x05
+#define ZFD_R 0x01
+#define ZFD_W 0x02
 
 typedef struct {
 	int type;
@@ -44,14 +41,16 @@ typedef struct {
 } fd_info_t;
 
 typedef struct {
+	unsigned char io_type;
 	void (*handler)( int fd, void* udata );
 } fd_type_t;
 
 void zfd_set( int fd, int type, void* udata );
-void zfd_clr( int fd );
-bool zfd_isset( int fd );
-void zfd_register_type( int type, void (*handler)( int, void* ) );
-void* zfd_udata( int fd );
+void zfd_reset( int fd, int type );
+void zfd_clr( int fd, int type );
+bool zfd_isset( int fd, int type );
+void zfd_register_type( int type, unsigned char io_type, void (*handler)( int, void* ) );
+void* zfd_udata( int fd, int type );
 int zfd_select( );
 void zfd_unblock( );
 

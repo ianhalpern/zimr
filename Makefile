@@ -8,18 +8,18 @@ PTHREAD     = -pthread
 DSYMBOLS    = -DZIMR_VERSION="\"$(VERSION)\""
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
-PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions -I/usr/include/python$(PYVERSION)
+PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions\
+			  -I/usr/include/python$(PYVERSION)
 LDZIMR      = -lzimr -L. #-Wl,-rpath,`pwd`
 
 PYVERSION = 2.6
 
-OBJS        = general.o ztransport.o website.o zfildes.o zsocket.o connection.o\
+OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o zerr.o\
-			  simclist.o
-EXEC_OBJS   = zimr.o zimr-website.o pcom-test-client.o pcom-test-server.o
+			  simclist.o msg_switch.o
 
 EXECS       = zimr-proxy zimr-application zimr
-TEST_EXECS  = test-strnstr
+TEST_EXECS  = test-strnstr test-client test-server
 SHARED_OBJS = libzimr.so
 PYMOD_OBJS  = zimr.so
 
@@ -35,6 +35,7 @@ VERSION  = `vernum`
 
 OBJ_DEPENDS         = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
 EXEC_DEPENDS        = %: $(SRCDIR)/%/main.c $(SRCDIR)/config.h
+TEST_DEPENDS        = test-%: $(SRCDIR)/test/%.c $(SRCDIR)/config.h
 SHARED_OBJ_DEPENDS  = lib%.so: $(LIB_SRCDIR)/%.c $(LIB_SRCDIR)/%.h $(SRCDIR)/config.h
 PYMOD_DEPENDS       = %.so: $(PY_SRCDIR)/%module.c $(SRCDIR)/config.h
 
@@ -53,27 +54,19 @@ clean:
 	rm -f $(EXECS) $(TEST_EXECS) *.o *.so gmon.out
 
 install:
-	@#if [ -f /etc/init.d/zimr ]; then \
-	#	echo \\n--- Shutting down running zimr ---; \
-	#	/etc/init.d/zimr stop; \
-	#fi
-	@#echo --- Success ---;
-	@echo \\n--- Copying zimr execs, libs, and config files ---;
+	@echo "--- Copying zimr execs, libs, and modules ---";
 	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
 	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
 	cp --remove-destination $(PYMOD_OBJS) $(INSTALL_PYDIR)
-	cp init.d/zimr init.d/zimr-proxy /etc/init.d/
-	@echo --- Success ---;
-	@echo \\n--- Setting up system to autostart zimr ---;
-	chmod 755 /etc/init.d/zimr
-	chmod 755 /etc/init.d/zimr-proxy
-	update-rc.d zimr defaults > /dev/null
-	update-rc.d zimr-proxy defaults > /dev/null
-	@echo --- Success ---;
-	@#echo \\n--- Starting zimr ---;
-	@#/etc/init.d/zimr start
-	@#echo --- Success ---;
-	@echo \\nFinished. Installation succeeded!;
+	cp init.d/* /etc/init.d/
+	@echo "--- Success ---";
+	@echo;
+	@echo "--- Setting up system to autostart zimr ---";
+	@ls init.d | awk '{ x = "chmod 755 /etc/init.d/" $0; print x; system( x ); }'
+	@ls init.d | awk '{ x = "update-rc.d " $0 " defaults > /dev/null"; print x; system( x ); }'
+	@echo "--- Success ---";
+	@echo;
+	@echo "Finished. Installation succeeded!";
 
 ##### EXECS #####
 #################
@@ -81,7 +74,7 @@ install:
 zimr: $(EXEC_DEPENDS) zsocket.o ztransport.o zfildes.o zerr.o zcnf.o general.o simclist.o
 	$(EXEC_COMPILE) -lyaml
 
-zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o ztransport.o zerr.o simclist.o
+zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o ztransport.o simclist.o
 	$(EXEC_COMPILE)
 
 zimr-application: $(EXEC_DEPENDS) libzimr.so
@@ -100,7 +93,13 @@ zimr.so: $(PYMOD_DEPENDS) libzimr.so
 
 ##### TESTS #####
 
-test-strnstr: $(EXEC_DEPENDS) general.o
+test-strnstr: $(TEST_DEPENDS) general.o
+	$(EXEC_COMPILE)
+
+test-client: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o simclist.o
+	$(EXEC_COMPILE)
+
+test-server: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o general.o simclist.o
 	$(EXEC_COMPILE)
 
 ##### OBJS ######
@@ -114,7 +113,7 @@ $(OBJS): $(OBJ_DEPENDS)
 ##### COMMAND VARIABLE MODS #####
 #################################
 
-$(TEST_EXECS ) tests profile-debug debug: CC += $(DBFLAGS)
+$(TEST_EXECS) tests profile-debug debug: CC += $(DBFLAGS)
 profile-debug debug: DSYMBOLS += -DDEBUG
 profile-debug debug: VERSION := $(VERSION)-debug
 profile-debug: CC += $(PROFILEFLAGS)

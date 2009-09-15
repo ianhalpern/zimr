@@ -21,6 +21,9 @@ x*website redirects
 *add multiple architecure compilation to makefile (x86,x86-64)
 *fix bug: "sudo /etc/init.d/zimr-proxy start" kills already running daemon
 *fix bug: applications do not reattach to proxy when proxy restarts
+*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
+*fix bug: problems when pid in .zimr.state file equals zero
+*makefile without vernum
 
 ^ Milestone v0.1.0 ^
 

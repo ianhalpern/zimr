@@ -225,3 +225,10 @@ char* strtolower( char* s ) {
 	}
 	return s;
 }
+
+void* memdup( const void* src, size_t len ) {
+	void* dst = malloc( len );
+	if ( dst ) memcpy( dst, src, len );
+	return dst;
+}
+

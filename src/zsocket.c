@@ -23,39 +23,47 @@
 #include "zsocket.h"
 
 static bool initialized = false;
+static int zsocket_new( in_addr_t addr, int portno, int type );
 
 void zsocket_init( ) {
 	assert( !initialized );
 	initialized = true;
-	list_init( &zsockets );
+	memset( zsockets, 0, sizeof( zsockets ) );
 }
 
-zsocket_t* zsocket_open( in_addr_t addr, int portno ) {
+int zsocket( in_addr_t addr, int portno, int type ) {
 	assert( initialized );
-	zsocket_t* p = zsocket_get_by_info( addr, portno );
+	zsocket_t* p;
 
-	if ( !p ) {
-		int sockfd = zsocket_new( addr, portno, ZSOCK_LISTEN );
-		if ( sockfd == -1 )
-			return NULL;
-		p = zsocket_create( sockfd, addr, portno );
+	if ( type == ZSOCK_LISTEN ) {
+		p = zsocket_get_by_info( addr, portno );
+		if ( p ) {
+			p->n_open++;
+			return p->sockfd;
+		}
 	}
 
-	p->n_open++;
-	return p;
-}
-
-zsocket_t* zsocket_connect( in_addr_t addr, int portno ) {
-	assert( initialized );
-
-	int sockfd = zsocket_new( addr, portno, ZSOCK_CONNECT );
+	int sockfd = zsocket_new( addr, portno, type );
 	if ( sockfd == -1 )
-		return NULL;
+		return -1;
 
-	return zsocket_create( sockfd, addr, portno );
+	p = (zsocket_t* ) malloc( sizeof( zsocket_t ) );
+
+	p->sockfd = sockfd;
+	p->addr = addr;
+	p->portno = portno;
+	p->n_open = 0;
+	p->ssl = NULL;
+
+	if ( type == ZSOCK_LISTEN )
+		p->n_open++;
+
+	zsockets[ sockfd ] = p;
+
+	return sockfd;
 }
 
-int zsocket_new( in_addr_t addr, int portno, int type ) {
+static int zsocket_new( in_addr_t addr, int portno, int type ) {
 	assert( initialized );
 	int sockfd = socket( AF_INET, SOCK_STREAM, 0 );
 	struct sockaddr_in serv_addr;
@@ -98,32 +106,17 @@ int zsocket_new( in_addr_t addr, int portno, int type ) {
 	return sockfd;
 }
 
-zsocket_t* zsocket_create( int sockfd, in_addr_t addr, int portno ) {
+void zsocket_close( int zs ) {
 	assert( initialized );
-	zsocket_t* p = (zsocket_t* ) malloc( sizeof( zsocket_t ) );
 
-	p->sockfd = sockfd;
-	p->addr = addr;
-	p->portno = portno;
-	p->n_open = 0;
-	p->ssl = NULL;
-
-	list_append( &zsockets, p );
-
-	return p;
-}
-
-void zsocket_close( zsocket_t* p ) {
-	assert( initialized );
+	zsocket_t* p = zsockets[ zs ];
 
 	p->n_open--;
 
 	if ( p->n_open > 0 )
 		return;
 
-	int i = list_locate( &zsockets, p );
-	if ( i >=0 )
-		list_delete_at( &zsockets, i );
+	zsockets[ zs ] = NULL;
 
 	close( p->sockfd );
 	free( p );
@@ -131,12 +124,14 @@ void zsocket_close( zsocket_t* p ) {
 
 zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno ) {
 	assert( initialized );
-	int i;
-	for ( i = 0; i < list_size( &zsockets ); i++ ) {
-		zsocket_t* p = list_get_at( &zsockets, i );
 
-		if ( p->portno == portno && p->addr == addr )
-			return p;
+	int i;
+	for ( i = 0; i < sizeof( zsockets ) / sizeof( zsockets[ 0 ] ); i++ ) {
+		zsocket_t* p = zsockets[ i ];
+		if ( p ) {
+			if ( p->portno == portno && p->addr == addr )
+				return p;
+		}
 	}
 
 	return NULL;
@@ -144,13 +139,14 @@ zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno ) {
 
 zsocket_t* zsocket_get_by_sockfd( int sockfd ) {
 	assert( initialized );
+
 	int i;
-	for ( i = 0; i < list_size( &zsockets ); i++ ) {
-		zsocket_t* p = list_get_at( &zsockets, i );
-
-		if ( p->sockfd == sockfd )
-			return p;
-
+	for ( i = 0; i < sizeof( zsockets ) / sizeof( zsockets[ 0 ] ); i++ ) {
+		zsocket_t* p = zsockets[ i ];
+		if ( p ) {
+			if ( p->sockfd == sockfd )
+				return p;
+		}
 	}
 
 	return NULL;

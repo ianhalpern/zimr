@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef _ZM_PTRANSPORT_H
-#define _ZM_PTRANSPORT_H
+#ifndef _ZM_ZTRANSPORT_H
+#define _ZM_ZTRANSPORT_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,36 +34,24 @@
 
 #include "config.h"
 #include "zsocket.h"
+#include "simclist.h"
 
-#define ZT_MSG_IS_FIRST(X) ( ((ztransport_t *)(X))->header->flags & ZT_MSG_FIRST )
-#define ZT_MSG_IS_LAST(X)  ( ((ztransport_t *)(X))->header->flags & ZT_MSG_LAST  )
+#define ZT_IS_FIRST(X) ( ((zt_t*)(X))->flags & ZT_FIRST )
+#define ZT_IS_LAST(X)  ( ((zt_t*)(X))->flags & ZT_LAST  )
 
-#define ZT_RO 0x0001
-#define ZT_WO 0x0002
-
-#define ZT_MSG_FIRST 0x0001
-#define ZT_MSG_LAST  0x0002
+#define ZT_FIRST 0x0001
+#define ZT_LAST  0x0002
 
 typedef struct {
-	int size;
 	int msgid;
+	int size;
 	int flags;
-} ztransport_header_t;
+	char message[ ZT_MSG_SIZE ];
+} zt_t;
 
-typedef struct {
-	int pd;
-	int io_type;
-	ztransport_header_t* header;
-	void* message;
-	char buffer[ ZT_BUF_SIZE ];
-} ztransport_t;
-
-ztransport_t* ztransport_open( int pd, int io_type, int msgid );
-void ztransport_reset( ztransport_t* transport, int flags );
-int  ztransport_read( ztransport_t* transport );
-int  ztransport_write( ztransport_t* transport, void* message, int size );
-int  ztransport_flush( ztransport_t* transport );
-int  ztransport_close( ztransport_t* transport );
-void ztransport_free( ztransport_t* transport );
+void ztinit( );
+list_t ztopen( );
+void ztpush( list_t ztset, void* message, int size );
+void ztclose( list_t ztset );
 
 #endif

@@ -22,103 +22,91 @@
 
 #include "ztransport.h"
 
-ztransport_t* ztransport_open( int pd, int io_type, int id ) {
-	ztransport_t* transport = (ztransport_t*) malloc( sizeof( ztransport_t ) );
+static bool initialized = false;
 
-	transport->pd = pd;
-	transport->io_type = io_type;
-	transport->header = (ztransport_header_t*) transport->buffer;
-	transport->header->msgid = id;
-	transport->message = transport->buffer + ZT_HDR_SIZE;
-
-	ztransport_reset( transport, ZT_MSG_FIRST );
-
-	return transport;
+void ztinit( ) {
+	assert( !initialized );
+	memset( zts, 0, sizeof( zts ) );
+	initialized = true;
 }
 
-void ztransport_reset( ztransport_t* transport, int flags ) {
-	transport->header->size = 0;
-	transport->header->flags = flags;
-	memset( transport->message, 0, ZT_MSG_SIZE );
+static zt_t* ztnew( int fd, int msgid, int flags ) {
+	zt_t* zt = (zt_t*) malloc( sizeof( zt_t ) );
+
+	zt->msgid = msgid;
+	zt->size = 0;
+	zt->flags = flags;
+
+	memset( zt->message, 0, ZT_MSG_SIZE );
+	list_append( zts, zt );
+
+	return zt;
 }
 
-int ztransport_read( ztransport_t* transport ) {
+void ztopen( int fd, int msgid ) {
+	assert( initialized );
 
-	int n = read( transport->pd, transport->buffer, ZT_BUF_SIZE );
-
-	if ( n != ZT_BUF_SIZE ) {
-
-		/* if n (bytes read) is not zero, we have a problem other
-		   than a closed connection from the other side, report
-		   the error. */
-
-		if ( n )
-			fprintf( stderr, "[warning] ztransport_read: did not read corrent number of bytes\n" );
-
-		/* A return of zero should alert the function caller should
-		  to close the originating file descriptor. */
-		return 0;
+	if ( !zts[ fd ] ) {
+		zts[ fd ] = (list_t*) malloc( sizeof( list_t* ) * FD_SETSIZE );
+		memset( zts, 0, sizeof( list_t* ) * FD_SETSIZE );
 	}
 
-	return n;
+	if ( !zts[ fd ][ msgid ] ) {
+		zt[ fd ][ msgid ] = (list_t*) malloc( sizeof( list_t ) );
+		list_init( zts[ fd ][ msgid ] );
+	}
+
+	ztnew( fd, msgid, ZT_FIRST );
 }
 
-int ztransport_write( ztransport_t* transport, void* message, int size ) {
+void ztpush( int fd, int msgid, void* message, int size ) {
+	assert( initialized );
+
+	zt_t* zt = NULL;
+
+	int i;
+	for ( i = list_size( zts[ fd ] ) - 1; i >= 0; i-- ) {
+		zt = list_get_at( zts[ fd ], i );
+		if ( zt->msgid == msgid ) break;
+		zt = NULL;
+	}
+
+	if ( !zt )
+		ztnew( fd, msgid, 0 );
+
 	int chunk = 0;
 
 	while ( size ) {
 
-		if ( transport->header->size == ZT_MSG_SIZE )
-			if ( !ztransport_flush( transport ) ) return 0;
+		if ( zt->size == ZT_MSG_SIZE )
+			zt = ztnew( fd, msgid, 0 );
 
-		if ( size / ( ZT_MSG_SIZE - transport->header->size ) )
-			chunk = ZT_MSG_SIZE - transport->header->size;
+		if ( size / ( ZT_MSG_SIZE - zt->size ) )
+			chunk = ZT_MSG_SIZE - zt->size;
 		else
-			chunk = size % ( ZT_MSG_SIZE - transport->header->size );
+			chunk = size % ( ZT_MSG_SIZE - zt->size );
 
-		memcpy( transport->message + transport->header->size, message, chunk );
+		memcpy( zt->message + zt->size, message, chunk );
 
 		size -= chunk;
 		message += chunk;
-		transport->header->size += chunk;
+		zt->size += chunk;
 
 	}
-
-	return 1;
 }
 
-int ztransport_flush( ztransport_t* transport ) {
-	int n;
+void ztclose( int fd, int msgid ) {
+	assert( initialized );
 
-	if ( ( n = write( transport->pd, transport->buffer, ZT_BUF_SIZE ) ) < 0 ) {
-		if ( errno == EPIPE )
-			return 0;
+	int i;
+	for ( i = list_size( zts[ fd ] ) - 1; i >= 0; i-- ) {
+		zt = list_get_at( zts[ fd ], i );
+		if ( zt->msgid == msgid ) break;
+		zt = NULL;
 	}
 
-	if ( n != ZT_BUF_SIZE ) {
-		fprintf( stderr, "[error] ztransport_flush: did not write corrent number of bytes, only wrote %d\n", n );
-		return 0;
-	}
+	if ( !zt )
+		ztnew( fd, msgid, 0 );
 
-	ztransport_reset( transport, 0 );
-
-	errno = 0; // just in case EPIPE errno was set but not from this call
-
-	return n;
-}
-
-int ztransport_close( ztransport_t* transport ) {
-	int ret = 1;
-
-	if ( transport->io_type == ZT_WO ) {
-		transport->header->flags |= ZT_MSG_LAST;
-		ret = ztransport_flush( transport );
-	}
-
-	ztransport_free( transport );
-	return ret;
-}
-
-void ztransport_free( ztransport_t* transport ) {
-	free( transport );
+	zt->flags |= ZT_LAST;
 }
