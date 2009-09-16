@@ -1,3 +1,25 @@
+/*   Zimr - Next Generation Web Server
+ *
+ *+  Copyright (c) 2009 Ian Halpern
+ *@  http://Zimr.org
+ *
+ *   This file is part of Zimr.
+ *
+ *   Zimr is free software: you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation, either version 3 of the License, or
+ *   (at your option) any later version.
+ *
+ *   Zimr is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
+ *
+ */
+
 #include "zfildes.h"
 #include "zsocket.h"
 #include "msg_switch.h"
@@ -7,84 +29,35 @@
 #define EXLISN 0x1
 #define EXREAD 0x2
 #define EXWRIT 0x3
-
 #define INLISN 0x4
 #define INREAD 0x5
 #define INWRIT 0x6
 
-int clientfd;
-ztswitcher_t* switcher;
+msg_switch_t* msg_switch;
+
+void packet_resp_recvd_event( msg_switch_t* msg_switch, msg_packet_resp_t resp ) {
+	zfd_reset( resp.msgid, EXREAD );
+}
+
+void packet_recvd_event( msg_switch_t* msg_switch, msg_packet_t packet ) {
+	zfd_set( packet.msgid, EXWRIT, memdup( &packet, sizeof( packet ) ) );
+}
+
+void msg_is_writing_event( msg_switch_t* msg_switch, int msgid ) {
+	zfd_clr( msgid, EXREAD );
+}
 
 void inlisn( int sockfd, void* udata ) {
 	struct sockaddr_in cli_addr;
 	unsigned int cli_len = sizeof( cli_addr );
+	int clientfd;
 
 	// Connection request on original socket.
 	if ( ( clientfd = accept( sockfd, (struct sockaddr*) &cli_addr, &cli_len ) ) < 0 ) {
 		return;
 	}
 
-	switcher = ztswitcher_new( );
-	zfd_set( clientfd, INREAD, NULL );
-}
-
-void inread( int sockfd, void* udata ) {
-	int type;
-	read( sockfd, &type, sizeof( type ) );
-
-	ztresp_t res;
-	ztpacket_t packet;;
-	int n;
-	switch( type ) {
-		case ZTTYPE_RESP:
-			printf( "got response\n" );
-			n = read( sockfd, &res, sizeof( res ) );
-			ztswitcher_acceptres( switcher, res );
-			zfd_reset( res.msgid, EXREAD );
-			break;
-		case ZTTYPE_PACK:
-			printf( "read packet\n" );
-			read( sockfd, &packet, sizeof( packet ) );
-			zfd_set( packet.msgid, EXWRIT, memdup( &packet, sizeof( packet ) ) );
-			break;
-	}
-	if ( ztswitcher_pending_write( switcher ) ) {
-		zfd_set( sockfd, INWRIT, NULL );
-	}
-}
-
-void inwrit( int sockfd, void* udata ) {
-	int type;
-	int size;
-	void* data;
-	ztresp_t res;
-	ztpacket_t packet;
-
-	// check if waiting to send returns
-	if ( ztswitcher_has_resps( switcher ) ) {
-		printf( "sending read response\n" );
-		type = ZTTYPE_RESP;
-		res = ztswitcher_getresp( switcher );
-		size = sizeof( res );
-		data = &res;
-	}
-
-	// pop from queue and write
-	else {
-		printf( "writing data\n" );
-		type = ZTTYPE_PACK;
-		packet = ztswitcher_pop( switcher );
-		size = sizeof( packet );
-		data = &packet;
-	}
-
-	write( sockfd, &type, sizeof( type ) );
-	write( sockfd, data, size );
-
-	if ( !ztswitcher_pending_write( switcher ) ) {
-		printf( "done writing\n" );
-		zfd_clr( sockfd, INWRIT );
-	}
+	msg_switch = msg_switch_new( clientfd, packet_resp_recvd_event, packet_recvd_event, msg_is_writing_event, NULL );
 }
 
 void exlisn( int sockfd, void* udata ) {
@@ -97,7 +70,7 @@ void exlisn( int sockfd, void* udata ) {
 		return;
 	}
 
-	ztswitcher_msg_new( switcher, newsockfd );
+	msg_new( msg_switch, newsockfd );
 	zfd_set( newsockfd, EXREAD, NULL );
 }
 
@@ -106,33 +79,21 @@ void exread( int sockfd, void* udata ) {
 	int n = read( sockfd, buf, sizeof( buf ) );
 
 	// push onto queue for sockfd
-	ztswitcher_push( switcher, sockfd, buf, n );
-
-	printf( "read %d bytes\n", n );
-
-	// something to be written?
-	if ( ztswitcher_msg_is_ready( switcher, sockfd ) ) {
-		printf( "ready to write\n" );
-		// add write to zfd and remove read
-		zfd_set( clientfd, INWRIT, NULL );
-		zfd_clr( sockfd, EXREAD );
-	}
+	msg_push_data( msg_switch, sockfd, buf, n );
 }
 
-void exwrit( int sockfd, ztpacket_t* packet ) {
+void exwrit( int sockfd, msg_packet_t* packet ) {
 	// pop from queue and write, remove if none to write left
-	write( sockfd, packet->message, packet->size );
-	ztswitcher_sendresp( switcher, sockfd, ZTRES_OK );
+	write( sockfd, packet->data, packet->size );
+	msg_switch_send_resp( msg_switch, sockfd, MSG_PACK_RESP_OK );
 	zfd_clr( sockfd, EXWRIT );
 }
 
 int main( int argc, char* argv[ ] ) {
 	zsocket_init( );
+	msg_switch_init( INREAD, INWRIT );
 
 	zfd_register_type( INLISN, ZFD_R, ZFD_TYPE_HDLR inlisn );
-	zfd_register_type( INREAD, ZFD_R, ZFD_TYPE_HDLR inread );
-	zfd_register_type( INWRIT, ZFD_W, ZFD_TYPE_HDLR inwrit );
-
 	zfd_register_type( EXLISN, ZFD_R, ZFD_TYPE_HDLR exlisn );
 	zfd_register_type( EXREAD, ZFD_R, ZFD_TYPE_HDLR exread );
 	zfd_register_type( EXWRIT, ZFD_W, ZFD_TYPE_HDLR exwrit );

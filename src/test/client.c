@@ -1,3 +1,27 @@
+/*   Zimr - Next Generation Web Server
+ *
+ *+  Copyright (c) 2009 Ian Halpern
+ *@  http://Zimr.org
+ *
+ *   This file is part of Zimr.
+ *
+ *   Zimr is free software: you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation, either version 3 of the License, or
+ *   (at your option) any later version.
+ *
+ *   Zimr is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
+ *
+ */
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "zfildes.h"
 #include "zsocket.h"
 #include "msg_switch.h"
@@ -6,77 +30,34 @@
 #define INREAD 0x5
 #define INWRIT 0x6
 
-ztswitcher_t* switcher;
+msg_switch_t* msg_switch;
 
-void inread( int sockfd, void* udata ) {
-	int type;
-	read( sockfd, &type, sizeof( type ) );
+void packet_recvd_event( msg_switch_t* msg_switch, msg_packet_t packet ) {
+	int fd;
+	char filename[ 10 ];
+	sprintf( filename, "%d", packet.msgid );
 
-	ztresp_t res;
-	ztpacket_t packet;;
-	int n;
-	switch( type ) {
-		case ZTTYPE_RESP:
-			printf( "got response\n" );
-			n = read( sockfd, &res, sizeof( res ) );
-			ztswitcher_acceptres( switcher, res );
-			break;
-		case ZTTYPE_PACK:
-			printf( "read packet\n" );
-			read( sockfd, &packet, sizeof( packet ) );
-			//write( fileno( stdout ), packet.message, packet.size );
-			ztswitcher_sendresp( switcher, packet.msgid, ZTRES_OK );
-			break;
-	}
-	if ( ztswitcher_pending_write( switcher ) ) {
-		zfd_set( sockfd, INWRIT, NULL );
-	}
-}
+	if ( FLAG_ISSET( PACK_FL_FIRST, packet.flags ) )
+		fd = creat( filename, S_IRUSR | S_IWUSR | O_WRONLY );
+	else
+		fd = open( filename, O_WRONLY | O_APPEND );
 
-void inwrit( int sockfd, void* udata ) {
-	int type;
-	int size;
-	void* data;
-	ztresp_t res;
-	ztpacket_t packet;
+	if ( fd >= 0 ) {
+		write( fd, packet.data, packet.size );
+		close( fd );
+	} else
+		perror( "" );
 
-	// check if waiting to send returns
-	if ( ztswitcher_has_resps( switcher ) ) {
-		printf( "sending read response\n" );
-		type = ZTTYPE_RESP;
-		res = ztswitcher_getresp( switcher );
-		size = sizeof( res );
-		data = &res;
-	}
-
-	// pop from queue and write
-	else {
-		printf( "writing data\n" );
-		type = ZTTYPE_PACK;
-		packet = ztswitcher_pop( switcher );
-		size = sizeof( packet );
-		data = &packet;
-	}
-
-	write( sockfd, &type, sizeof( type ) );
-	write( sockfd, data, size );
-
-	if ( !ztswitcher_pending_write( switcher ) ) {
-		printf( "done writing\n" );
-		zfd_clr( sockfd, INWRIT );
-	}
+	msg_switch_send_resp( msg_switch, packet.msgid, MSG_PACK_RESP_OK );
 }
 
 int main( int argc, char* argv[ ] ) {
 	zsocket_init( );
-
-	zfd_register_type( INREAD, ZFD_R, ZFD_TYPE_HDLR inread );
-	zfd_register_type( INWRIT, ZFD_W, ZFD_TYPE_HDLR inwrit );
+	msg_switch_init( INREAD, INWRIT );
 
 	int sockfd = zsocket( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT + 1, ZSOCK_CONNECT );
 
-	switcher = ztswitcher_new( );
-	zfd_set( sockfd, INREAD, NULL );
+	msg_switch = msg_switch_new( sockfd, NULL, packet_recvd_event, NULL, NULL );
 
 	while( zfd_select( 0 ) );
 

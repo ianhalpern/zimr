@@ -45,7 +45,7 @@ char* normalize( char* normpath, const char* path );
 int xtoi( const char* xs, unsigned int* result );
 char* expand_tilde( char* path, char* buffer, int size, uid_t uid );
 bool stopproc( pid_t pid );
-char *strnstr( const char *s, const char *find, size_t slen);
+char* strnstr( const char *s, const char *find, size_t slen);
 char* strtolower( char* s );
 void* memdup( const void* src, size_t len );
 
