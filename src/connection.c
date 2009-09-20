@@ -93,7 +93,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 
 	// url
 	raw++; // skip over space
-	tmp = strstr( raw, "?" );
+	tmp = strnstr( raw, "?", size - ( raw - start ) );
 	if ( !tmp || tmp > strstr( raw, HTTP_HDR_ENDL ) ) tmp = strstr( raw, " " );
 	url_decode( raw, urlbuf, tmp - raw );
 

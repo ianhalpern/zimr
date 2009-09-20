@@ -19,6 +19,7 @@
  *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
  */
+
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -57,7 +58,7 @@ int main( int argc, char* argv[ ] ) {
 
 	int sockfd = zsocket( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT + 1, ZSOCK_CONNECT );
 
-	msg_switch = msg_switch_new( sockfd, NULL, packet_recvd_event, NULL, NULL );
+	msg_switch = msg_switch_new( sockfd, NULL, packet_recvd_event, NULL );
 
 	while( zfd_select( 0 ) );
 

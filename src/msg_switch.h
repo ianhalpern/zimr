@@ -29,20 +29,27 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#include "config.h"
 #include "simclist.h"
 #include "zfildes.h"
 
 #define MSG_STAT_NEW      0x1
 #define MSG_STAT_WRITE    0x2
-#define MSG_STAT_READ     0x3
-#define MSG_STAT_RECVRESP 0x4
+#define MSG_STAT_READ     0x4
+#define MSG_STAT_RECVRESP 0x8
+#define MSG_STAT_FINISHED 0x10
 
 #define PACK_DATA_SIZE 4048
 
 #define PACK_FL_FIRST 0x1
 #define PACK_FL_LAST  0x2
+#define PACK_FL_KILL  0x4
 
-#define MSG_PACK_RESP_OK 0x1
+#define PACK_IS_FIRST(X) ( FL_ISSET( ( (msg_packet_t*)(X) )->flags, PACK_FL_FIRST ) )
+#define PACK_IS_LAST(X)  ( FL_ISSET( ( (msg_packet_t*)(X) )->flags, PACK_FL_LAST ) )
+
+#define MSG_PACK_RESP_OK   0x1
+#define MSG_PACK_RESP_FAIL 0x2
 
 #define MSG_TYPE_RESP 0x1
 #define MSG_TYPE_PACK 0x2
@@ -69,13 +76,12 @@ typedef struct msg_switch {
 	int sockfd;
 	list_t pending_resps;
 	list_t pending_msgs;
-	msg_t* msgs[ FD_SETSIZE ];
+	msg_t* msgs[ FD_SETSIZE * 2 ];
+
 	// events
 	void (*packet_resp_recvd_event)( struct msg_switch* msg_switch, msg_packet_resp_t resp );
 	void (*packet_recvd_event)( struct msg_switch* msg_switch, msg_packet_t packet );
-	void (*msg_is_writing_event)( struct msg_switch* msg_switch, int msgid );
-	void (*error_event)( struct msg_switch*, int error );
-
+	void (*error_event)( struct msg_switch*, char error );
 } msg_switch_t;
 
 void msg_switch_init( int read_type, int writ_type );
@@ -84,21 +90,26 @@ msg_switch_t* msg_switch_new(
 	int sockfd,
 	void (*packet_resp_recvd_event)( msg_switch_t*, msg_packet_resp_t ),
 	void (*packet_recvd_event)( msg_switch_t*, msg_packet_t ),
-	void (*msg_is_writing_event)( msg_switch_t*, int ),
-	void (*error_event)( msg_switch_t*, int )
+	void (*error_event)( msg_switch_t*, char )
 );
-void msg_new( msg_switch_t* msg_switch, int msgid );
-
+void msg_switch_destroy( msg_switch_t* msg_switch );
 bool msg_switch_has_pending_msgs( msg_switch_t* msg_switch );
 bool msg_switch_has_pending_resps( msg_switch_t* msg_switch );
 bool msg_switch_is_pending( msg_switch_t* msg_switch );
-bool msg_is_pending( msg_switch_t* msg_switch, int msgid );
+void msg_switch_send_resp( msg_switch_t* msg_switch, int msgid, char status );
 
 msg_packet_resp_t msg_switch_pop_resp( msg_switch_t* msg_switch );
 msg_packet_t msg_switch_pop_packet( msg_switch_t* msg_switch );
 
+void msg_new( msg_switch_t* msg_switch, int msgid );
+void msg_destroy( msg_switch_t* msg_switch, int msgid );
+void msg_end( msg_switch_t* msg_switch, int msgid );
+void msg_kill( msg_switch_t* msg_switch, int msgid );
+bool msg_is_pending( msg_switch_t* msg_switch, int msgid );
+bool msg_is_finished( msg_switch_t* msg_switch, int msgid );
+bool msg_exists( msg_switch_t* msg_switch, int msgid );
+
 void msg_accept_resp( msg_switch_t* msg_switch, msg_packet_resp_t resp );
-void msg_switch_send_resp( msg_switch_t* msg_switch, int msgid, char status );
 void msg_push_data( msg_switch_t* msg_switch, int msgid, void* data, int size );
 
 #endif

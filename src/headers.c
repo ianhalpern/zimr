@@ -94,15 +94,16 @@ void headers_set_header( headers_t* headers, char* name, char* value ) {
 }
 
 header_t* headers_get_header( headers_t* headers, char* orig_name ) {
-	char* name = strdup( orig_name );
+	char name[ strlen( orig_name ) + 1 ];
+	strcpy( name, orig_name );
 	header_formatname( strtolower( name ) );
 
 	int i;
 	for ( i = 0; i < headers->num; i++ ) {
-		if ( strcmp( headers->list[ i ].name, name ) == 0 )
+		if ( strcmp( headers->list[ i ].name, name ) == 0 ) {
 			return &headers->list[ i ];
+		}
 	}
 
-	free( name );
 	return NULL;
 }

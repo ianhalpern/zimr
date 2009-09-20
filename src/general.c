@@ -67,7 +67,7 @@ int startswith( const char* s1, const char* s2 ) {
 
 	size = strlen( s2 );
 
-	if( size > strlen( s1 ) ) return 0;
+	//if( size > strlen( s1 ) ) return 0;
 
 	for ( i = 0; i < size; i++ )
 		if ( *(s1 + i) != *(s2 + i) )

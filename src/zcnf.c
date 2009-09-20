@@ -436,12 +436,13 @@ void zcnf_state_save( zcnf_state_t* state ) {
 
 void zcnf_app_free( zcnf_app_t* cnf ) {
 	// TODO: free strdup'd website data
-	zcnf_website_t* website = cnf->website_node;
-	while ( website ) {
+	while ( cnf->website_node ) {
+		zcnf_website_t* website = cnf->website_node;
 		free( website->url );
 		free( website->pubdir );
 		free( website->redirect_url );
-		website = website->next;
+		cnf->website_node = website->next;
+		free( website );
 	}
 	free( cnf );
 }

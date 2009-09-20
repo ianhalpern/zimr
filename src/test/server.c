@@ -35,16 +35,12 @@
 
 msg_switch_t* msg_switch;
 
-void packet_resp_recvd_event( msg_switch_t* msg_switch, msg_packet_resp_t resp ) {
+void packet_resp_recvd_event( msg_switch_t* msg_switch, msg_packet_resp_t resp, void* udata ) {
 	zfd_reset( resp.msgid, EXREAD );
 }
 
 void packet_recvd_event( msg_switch_t* msg_switch, msg_packet_t packet ) {
 	zfd_set( packet.msgid, EXWRIT, memdup( &packet, sizeof( packet ) ) );
-}
-
-void msg_is_writing_event( msg_switch_t* msg_switch, int msgid ) {
-	zfd_clr( msgid, EXREAD );
 }
 
 void inlisn( int sockfd, void* udata ) {
@@ -57,7 +53,7 @@ void inlisn( int sockfd, void* udata ) {
 		return;
 	}
 
-	msg_switch = msg_switch_new( clientfd, packet_resp_recvd_event, packet_recvd_event, msg_is_writing_event, NULL );
+	msg_switch = msg_switch_new( clientfd, packet_resp_recvd_event, packet_recvd_event, NULL );
 }
 
 void exlisn( int sockfd, void* udata ) {
@@ -70,7 +66,7 @@ void exlisn( int sockfd, void* udata ) {
 		return;
 	}
 
-	msg_new( msg_switch, newsockfd );
+	msg_new( msg_switch, newsockfd, NULL );
 	zfd_set( newsockfd, EXREAD, NULL );
 }
 
@@ -78,8 +74,14 @@ void exread( int sockfd, void* udata ) {
 	char buf[ 2048 ];
 	int n = read( sockfd, buf, sizeof( buf ) );
 
+	if ( n <= 0 ) {
+		
+	}
 	// push onto queue for sockfd
 	msg_push_data( msg_switch, sockfd, buf, n );
+
+	if ( msg_is_pending( msg_switch, sockfd ) )
+		zfd_clr( sockfd, EXREAD );
 }
 
 void exwrit( int sockfd, msg_packet_t* packet ) {

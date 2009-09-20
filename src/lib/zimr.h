@@ -30,20 +30,33 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <dirent.h>
+#include <fcntl.h>
 
 #include "website.h"
-#include "ztransport.h"
+#include "zsocket.h"
+#include "msg_switch.h"
 #include "zfildes.h"
 #include "connection.h"
 #include "mime.h"
 #include "zcnf.h"
 #include "zerr.h"
 
+#define INREAD 0x01
+#define INWRIT 0x02
+#define FILEREAD 0x03
+
 #define DAEMON_NAME "zimr-application"
 #define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
 
+typedef struct {
+	int size;
+	char* data;
+	connection_t* connection;
+	int filereadfd;
+} conn_data_t;
+
 typedef struct website_data {
-	zsocket_t* socket;
+	msg_switch_t* msg_switch;
 	char  status;
 	char* pubdir;
 	void  (*connection_handler)( connection_t* connection );
@@ -51,6 +64,7 @@ typedef struct website_data {
 	int   default_pages_count;
 	char  default_pages[ 100 ][ 100 ];
 	char* redirect_url;
+	conn_data_t* connections[ FD_SETSIZE ];
 	void* udata;
 } website_data_t;
 
@@ -61,11 +75,9 @@ bool zimr_init( );
 int  zimr_cnf_load( char* cnf_path );
 void zimr_start( );
 void zimr_shutdown( );
-bool zimr_send_hello( );
-bool zimr_send_cmd( zsocket_t* socket, int cmd, void* message, int size );
 
-void zimr_connection_handler( int sockfd, website_t* website );
-void zimr_file_handler( int fd, ztransport_t* transport );
+void zimr_connection_handler( website_t* website, msg_packet_t packet );
+void zimr_file_handler( int fd, connection_t* connection );
 
 website_t* zimr_website_create( char* url );
 void  zimr_website_destroy( website_t* website );
@@ -78,8 +90,8 @@ void  zimr_website_set_connection_handler ( website_t* website, void (*connectio
 void  zimr_website_unset_connection_handler( website_t* website );
 void  zimr_website_insert_default_page( website_t* website, const char* default_page, int pos );
 
-void zimr_connection_send_status( ztransport_t* transport, connection_t* connection );
-void zimr_connection_send_headers( ztransport_t* transport, connection_t* connection );
+void zimr_connection_send_status( connection_t* connection );
+void zimr_connection_send_headers( connection_t* connection );
 void zimr_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir );
 void zimr_connection_send( connection_t* connection, void* message, int size );
 void zimr_connection_send_error( connection_t* connection, short code );
@@ -91,4 +103,5 @@ void zimr_register_page_handler( const char* page_type, void (*page_handler)( co
 bool zimr_open_request_log( );
 void zimr_log_request( connection_t* connection );
 void zimr_close_request_log( );
+
 #endif

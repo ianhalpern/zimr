@@ -10,7 +10,8 @@ OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
 PYMOD       = -shared -fPIC -lpython$(PYVERSION) -Wl,-O1 -Wl,-Bsymbolic-functions\
 			  -I/usr/include/python$(PYVERSION)
-LDZIMR      = -lzimr -L. #-Wl,-rpath,`pwd`
+LDZIMR      = -lzimr -L.
+LDZIMR_LOCAL= -Wl,-rpath,`pwd`
 
 PYVERSION = 2.6
 
@@ -18,10 +19,10 @@ OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o zerr.o\
 			  simclist.o msg_switch.o
 
-EXECS       = zimr-proxy zimr-application zimr
+EXECS       = zimr-proxy zimr-application #zimr
 TEST_EXECS  = test-strnstr test-client test-server
 SHARED_OBJS = libzimr.so
-PYMOD_OBJS  = zimr.so
+PYMOD_OBJS  = #zimr.so
 
 SRCDIR     = src
 LIB_SRCDIR = $(SRCDIR)/lib
@@ -33,11 +34,11 @@ INSTALL_PYDIR   = /usr/lib/python$(PYVERSION)
 
 VERSION  = `vernum`
 
-OBJ_DEPENDS         = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
-EXEC_DEPENDS        = %: $(SRCDIR)/%/main.c $(SRCDIR)/config.h
-TEST_DEPENDS        = test-%: $(SRCDIR)/test/%.c $(SRCDIR)/config.h
-SHARED_OBJ_DEPENDS  = lib%.so: $(LIB_SRCDIR)/%.c $(LIB_SRCDIR)/%.h $(SRCDIR)/config.h
-PYMOD_DEPENDS       = %.so: $(PY_SRCDIR)/%module.c $(SRCDIR)/config.h
+OBJ_DEPENDS        = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
+EXEC_DEPENDS       = %: $(SRCDIR)/%/main.c $(SRCDIR)/config.h
+TEST_DEPENDS       = test-%: $(SRCDIR)/test/%.c $(SRCDIR)/config.h
+SHARED_OBJ_DEPENDS = lib%.so: $(LIB_SRCDIR)/%.c $(LIB_SRCDIR)/%.h $(SRCDIR)/config.h
+PYMOD_DEPENDS      = %.so: $(PY_SRCDIR)/%module.c $(SRCDIR)/config.h
 
 EXEC_COMPILE = $(CC) $(LDFLAGS) $(TARGET_ARCH) $(DSYMBOLS) -I$(SRCDIR) -I$(LIB_SRCDIR) $(OUTPUT) $^
 OBJ_COMPILE  = $(CC) $(CFLAGS) $(TARGET_ARCH) $(OUTPUT) $<
@@ -46,7 +47,7 @@ OBJ_COMPILE  = $(CC) $(CFLAGS) $(TARGET_ARCH) $(OUTPUT) $<
 ###############################
 .PHONY: make debug profile-debug tests clean install
 
-make debug profile-debug: $(SHARED_OBJS) $(EXECS) $(PYMOD_OBJS)
+make debug local-profile-debug profile-debug local-debug: $(SHARED_OBJS) $(EXECS) $(PYMOD_OBJS)
 
 tests: $(TEST_EXECS)
 
@@ -74,7 +75,7 @@ install:
 zimr: $(EXEC_DEPENDS) zsocket.o ztransport.o zfildes.o zerr.o zcnf.o general.o simclist.o
 	$(EXEC_COMPILE) -lyaml
 
-zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o ztransport.o simclist.o
+zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zerr.o
 	$(EXEC_COMPILE)
 
 zimr-application: $(EXEC_DEPENDS) libzimr.so
@@ -82,7 +83,7 @@ zimr-application: $(EXEC_DEPENDS) libzimr.so
 
 ##### SHARED OBJS #####
 
-libzimr.so: $(SHARED_OBJ_DEPENDS) general.o ztransport.o zfildes.o website.o mime.o connection.o\
+libzimr.so: $(SHARED_OBJ_DEPENDS) general.o msg_switch.o zfildes.o website.o mime.o connection.o\
 			 					  headers.o params.o cookies.o urldecoder.o zcnf.o zsocket.o zerr.o simclist.o
 	$(EXEC_COMPILE) $(SHARED) -lyaml
 
@@ -113,8 +114,9 @@ $(OBJS): $(OBJ_DEPENDS)
 ##### COMMAND VARIABLE MODS #####
 #################################
 
-$(TEST_EXECS) tests profile-debug debug: CC += $(DBFLAGS)
-profile-debug debug: DSYMBOLS += -DDEBUG
-profile-debug debug: VERSION := $(VERSION)-debug
-profile-debug: CC += $(PROFILEFLAGS)
+$(TEST_EXECS) tests profile-local-debug profile-debug local-debug debug: CC += $(DBFLAGS)
+local-profile-debug profile-debug debug local-debug: DSYMBOLS += -DDEBUG
+local-profile-debug profile-debug debug local-debug: VERSION := $(VERSION)-debug
+local-profile-debug profile-debug: CC += $(PROFILEFLAGS)
+local-profile-debug local-debug: LDZIMR += $(LDZIMR_LOCAL)
 #debug: EXEC_COMPILE += -rdynamic -ldl $(SRCDIR)/sigsegv.c

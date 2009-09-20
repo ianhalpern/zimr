@@ -77,9 +77,9 @@ int daemon_start( int flags ) {
 		return 0;
 	}
 
-	if ( !FLAG_ISSET( D_NOLOCKFILE, flags ) ) {
+	if ( !FL_ISSET( flags, D_NOLOCKFILE ) ) {
 		pid_t pid;
-		if ( !FLAG_ISSET( D_NOLOCKCHECK, flags ) && ( pid = readlockfile( ) ) ) {// lockfile previously set
+		if ( !FL_ISSET( flags, D_NOLOCKCHECK ) && ( pid = readlockfile( ) ) ) {// lockfile previously set
 			if ( kill( pid, SIGTERM ) == 0 ) { // process running
 				printf( "failed: daemon already running.\n" );
 				return 0;
@@ -123,10 +123,10 @@ int daemon_start( int flags ) {
 		return 0;
 
 	/* Change the current working directory */
-	if ( !FLAG_ISSET( D_NOCD, flags ) && chdir( "/" ) < 0 )
+	if ( !FL_ISSET( flags, D_NOCD ) && chdir( "/" ) < 0 )
 		return 0;
 
-	if ( !FLAG_ISSET( D_NOLOCKFILE, flags ) ) {
+	if ( !FL_ISSET( flags, D_NOLOCKFILE ) ) {
 		if ( !createlockfile( ) ) {
 			printf( "failed: could not set lockfile.\n" );
 			return 0;
@@ -137,7 +137,7 @@ int daemon_start( int flags ) {
 
 	printf( "started.\n" );
 
-	if ( !FLAG_ISSET( D_KEEPSTDIO, flags ) ) {
+	if ( !FL_ISSET( flags, D_KEEPSTDIO ) ) {
 		daemon_redirect_stdio( );
 	}
 	return 1;

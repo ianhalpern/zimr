@@ -50,7 +50,6 @@ typedef struct {
 	int portno;
 	int n_open;
 	SSL_CTX* ssl; // TODO
-	void* udata;
 } zsocket_t;
 
 zsocket_t* zsockets[ FD_SETSIZE ];
