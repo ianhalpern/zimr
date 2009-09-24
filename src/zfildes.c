@@ -120,10 +120,10 @@ int zfd_select( int tv_sec ) {
 	}
 
 	for ( i = 0; i < FD_SETSIZE; i++ ) {
-		if ( FD_ISSET( i, &read_fd_set ) )
+		if ( FD_ISSET( i, &read_fd_set ) && FD_ISSET( i, &active_read_fd_set ) )
 			fd_types[ fd_data[ i ][ ZFD_R - 1 ].type ].handler( i, fd_data[ i ][ ZFD_R - 1 ].udata );
 
-		if ( FD_ISSET( i, &write_fd_set ) ) {
+		if ( FD_ISSET( i, &write_fd_set ) && FD_ISSET( i, &active_write_fd_set ) ) {
 			fd_types[ fd_data[ i ][ ZFD_W - 1 ].type ].handler( i, fd_data[ i ][ ZFD_W - 1 ].udata );
 		}
 	}

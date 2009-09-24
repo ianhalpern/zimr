@@ -36,8 +36,10 @@
 #define MSG_STAT_NEW      0x1
 #define MSG_STAT_WRITE    0x2
 #define MSG_STAT_READ     0x4
-#define MSG_STAT_RECVRESP 0x8
-#define MSG_STAT_FINISHED 0x10
+#define MSG_STAT_PENDING  0x8
+#define MSG_STAT_COMPLETE 0x10
+#define MSG_STAT_RECVRESP 0x20
+#define MSG_STAT_SENT     0x40
 
 #define PACK_DATA_SIZE 4048
 
@@ -106,7 +108,8 @@ void msg_destroy( msg_switch_t* msg_switch, int msgid );
 void msg_end( msg_switch_t* msg_switch, int msgid );
 void msg_kill( msg_switch_t* msg_switch, int msgid );
 bool msg_is_pending( msg_switch_t* msg_switch, int msgid );
-bool msg_is_finished( msg_switch_t* msg_switch, int msgid );
+bool msg_is_complete( msg_switch_t* msg_switch, int msgid );
+bool msg_is_sent( msg_switch_t* msg_switch, int msgid );
 bool msg_exists( msg_switch_t* msg_switch, int msgid );
 
 void msg_accept_resp( msg_switch_t* msg_switch, msg_packet_resp_t resp );

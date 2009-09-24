@@ -61,8 +61,8 @@ typedef struct website_data {
 	char* pubdir;
 	void  (*connection_handler)( connection_t* connection );
 	int   conn_tries;
-	int   default_pages_count;
-	char  default_pages[ 100 ][ 100 ];
+	list_t default_pages;
+	list_t ignored_files;
 	char* redirect_url;
 	conn_data_t* connections[ FD_SETSIZE ];
 	void* udata;
@@ -76,7 +76,7 @@ int  zimr_cnf_load( char* cnf_path );
 void zimr_start( );
 void zimr_shutdown( );
 
-void zimr_connection_handler( website_t* website, msg_packet_t packet );
+bool zimr_connection_handler( website_t* website, msg_packet_t packet );
 void zimr_file_handler( int fd, connection_t* connection );
 
 website_t* zimr_website_create( char* url );
@@ -89,6 +89,7 @@ char* zimr_website_get_pubdir( website_t* website );
 void  zimr_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t* ) );
 void  zimr_website_unset_connection_handler( website_t* website );
 void  zimr_website_insert_default_page( website_t* website, const char* default_page, int pos );
+void  zimr_website_insert_ignored_file( website_t* website, const char* ignored_file );
 
 void zimr_connection_send_status( connection_t* connection );
 void zimr_connection_send_headers( connection_t* connection );

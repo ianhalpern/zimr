@@ -19,10 +19,10 @@ OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o zerr.o\
 			  simclist.o msg_switch.o
 
-EXECS       = zimr-proxy zimr-application #zimr
+EXECS       = zimr-proxy zimr-application zimr
 TEST_EXECS  = test-strnstr test-client test-server
 SHARED_OBJS = libzimr.so
-PYMOD_OBJS  = #zimr.so
+PYMOD_OBJS  = zimr.so
 
 SRCDIR     = src
 LIB_SRCDIR = $(SRCDIR)/lib
@@ -63,8 +63,8 @@ install:
 	@echo "--- Success ---";
 	@echo;
 	@echo "--- Setting up system to autostart zimr ---";
-	@ls init.d | awk '{ x = "chmod 755 /etc/init.d/" $0; print x; system( x ); }'
-	@ls init.d | awk '{ x = "update-rc.d " $0 " defaults > /dev/null"; print x; system( x ); }'
+	@ls init.d | awk '{ x = "chmod 755 /etc/init.d/" $$0; print x; system( x ); }'
+	@ls init.d | awk '{ x = "update-rc.d " $$0 " defaults > /dev/null"; print x; system( x ); }'
 	@echo "--- Success ---";
 	@echo;
 	@echo "Finished. Installation succeeded!";
@@ -72,7 +72,7 @@ install:
 ##### EXECS #####
 #################
 
-zimr: $(EXEC_DEPENDS) zsocket.o ztransport.o zfildes.o zerr.o zcnf.o general.o simclist.o
+zimr: $(EXEC_DEPENDS) zsocket.o zfildes.o zerr.o zcnf.o general.o simclist.o
 	$(EXEC_COMPILE) -lyaml
 
 zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zerr.o

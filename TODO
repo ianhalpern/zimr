@@ -4,21 +4,21 @@ x*setup autostart
 x*folder view
 x*redirect if folders don't have trailing /
 x*website redirects
-*website parking
-*in python-zimr in function zimr.start( ) add param usecnffile and cnffilepath
+x*fix bug: applications do not reattach to proxy when proxy restarts
+x*fix bug: "sudo /etc/init.d/zimr-proxy start" kills already running daemon
+x*fix bug: problems when pid in .zimr.state file equals zero
+x*revamp and finish all zimr command line options
+x*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
+x*update lists to use simclist data structure
+x*ignore files
+x*update python-zimr bindings error checking and methods/member/etc. descriptions
+
 *error files/website handling
-*ignore files/ext's
 *make page handler regular and python folder
-*update lists to use simclist data structure
-*update python-zimr bindings error checking and methods/member/etc. descriptions
-*look through and update logging
-*revamp and finish all zimr command line options
+*look through and update syslog/stdio logging
 *choose unused port for local default proxy port
-*fix bug: "sudo /etc/init.d/zimr-proxy start" kills already running daemon
-*fix bug: applications do not reattach to proxy when proxy restarts
-*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
-*fix bug: problems when pid in .zimr.state file equals zero
-*thorough testing (use socat for request testing, check for memleaks)
+*change zimr-application to zimr-app
+*thorough testing (use socat for request testing, check for memleaks with valgrind)
 *add multiple architecure compilation to makefile (x86,x86-64)
 *makefile without vernum
 *make ubuntu package
@@ -27,6 +27,10 @@ x*website redirects
 
 ^ Milestone v0.1.0 ^
 
+*website parking
+*website modules (python,psp)
+*ignored extensions
+*bug: applications started with zimr command do not clean up state file on exit
 *make zimr info commands return yaml
 *ability to change cwd of zimr proc
 *add logging by website and configurable via zimr.cnf file
@@ -41,6 +45,7 @@ x*website redirects
 *wikipedia page
 *make proxy kill website connections when website dies
 *make a HTTP/GTK gui
-*support for OS X (and maybe Windows)
+*support for OS X (and maybe...maybe Windows)
 *wildcard url's
 *make a pass/fail bug test script
+*make python embedded version

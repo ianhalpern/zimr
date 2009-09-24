@@ -35,30 +35,28 @@ char* header_formatname( char* name ) {
 
 headers_t headers_parse( char* raw ) {
 	headers_t headers;
-	headers.num = 0;
+	header_t* header;
+	memset( &headers, 0, sizeof( headers ) );
 
-	char* tmp;
-	while ( !startswith( raw, HTTP_HDR_ENDL ) && *raw != '\n' && *raw != '\0' ) {
-		//TODO: check string lengths
+	char* ptr;
+	while ( headers.num < sizeof( headers ) / sizeof( header_t ) && !startswith( raw, HTTP_HDR_ENDL ) && *raw != '\n' && *raw != '\0' ) {
+		header = &headers.list[ headers.num ];
 
 		// name
-		tmp = strstr( raw, ": " );
+		ptr = strstr( raw, ": " );
 
-		if ( !tmp ) {
+		if ( !ptr || !( ptr - raw ) )
 			break;
-		}
 
-		strncpy( headers.list[ headers.num ].name, raw, tmp - raw );
-		headers.list[ headers.num ].name[ tmp - raw ] = '\0';
+		strncpy( header->name, raw, SMALLEST( ptr - raw, sizeof( header->name ) - 1 ) );
 		header_formatname( strtolower( headers.list[ headers.num ].name ) );
-		raw = tmp + 2;
+		raw = ptr + 2;
 
 		// value
-		tmp = strstr( raw, HTTP_HDR_ENDL );
-		strncpy( headers.list[ headers.num ].value, raw, tmp - raw );
-		headers.list[ headers.num ].value[ tmp - raw ] = '\0';
+		ptr = strstr( raw, HTTP_HDR_ENDL );
+		strncpy( header->value, raw, SMALLEST( ptr - raw, sizeof( header->value ) - 1 ) );
 
-		raw = tmp + strlen( HTTP_HDR_ENDL );
+		raw = ptr + strlen( HTTP_HDR_ENDL );
 		headers.num++;
 	}
 

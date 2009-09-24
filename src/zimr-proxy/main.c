@@ -356,8 +356,10 @@ bool start_website( char* url, msg_switch_t* msg_switch ) {
 // Handlers ////////////////////////////////////////////
 
 void packet_resp_recvd_event( msg_switch_t* msg_switch, msg_packet_resp_t resp ) {
-	if ( resp.status == MSG_PACK_RESP_OK && !msg_is_finished( msg_switch, resp.msgid ) )
+	if ( resp.status == MSG_PACK_RESP_OK && !msg_is_complete( msg_switch, resp.msgid ) )
 		zfd_reset( resp.msgid, EXREAD );
+	else if ( resp.status == MSG_PACK_RESP_FAIL )
+		cleanup_connection( resp.msgid );
 }
 
 void packet_recvd_event( msg_switch_t* msg_switch, msg_packet_t packet ) {
@@ -406,7 +408,6 @@ void exlisn( int sockfd, void* udata ) {
 	unsigned int cli_len = sizeof( cli_addr );
 	int newsockfd;
 
-	puts( "\nnew connection" );
 	// Connection request on original socket.
 	if ( ( newsockfd = accept( sockfd, (struct sockaddr*) &cli_addr, &cli_len ) ) < 0 ) {
 		syslog( LOG_ERR, "exlisn: accept() failed: %s", strerror( errno ) );
@@ -431,11 +432,10 @@ void exlisn( int sockfd, void* udata ) {
 void cleanup_connection( int sockfd ) {
 	conn_data_t* conn_data = connections[ sockfd ];
 	website_t* website;
-	if ( ( website = website_get_by_sockfd( conn_data->website_sockfd ) ) ) {
-		website_data_t* website_data = website->udata;
 
-		if ( msg_exists( website_data->msg_switch, sockfd ) )
-			msg_kill( website_data->msg_switch, sockfd );
+	if ( ( website = website_get_by_sockfd( conn_data->website_sockfd ) )
+	  && msg_exists( ((website_data_t*)website->udata)->msg_switch, sockfd) ) {
+		msg_kill( ((website_data_t*)website->udata)->msg_switch, sockfd );
 	}
 
 	zfd_clr( sockfd, EXREAD );
@@ -459,6 +459,7 @@ void exread( int sockfd, void* udata ) {
 cleanup:
 		// cleanup
 		cleanup_connection( sockfd );
+
 		return;
 	}
 
@@ -528,6 +529,7 @@ cleanup:
 
 		// If request_type is POST check if there is content after the HTTP header
 		char postlenbuf[ 32 ];
+		memset( postlenbuf, 0, sizeof( postlenbuf ) );
 		if ( conn_data->request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
 			memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
 			conn_data->postlen = atoi( postlenbuf );

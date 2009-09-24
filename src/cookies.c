@@ -24,48 +24,32 @@
 
 cookies_t cookies_parse( char* raw ) {
 	cookies_t cookies;
-	memset( &cookies, 0, sizeof( cookies ) );
 	cookie_t* cookie;
-	cookies.num = 0;
-	int len;
-	char* tmp = raw;
-	while ( *raw != '\0' ) {
+	memset( &cookies, 0, sizeof( cookies ) );
+
+	char* ptr;
+	while ( cookies.num < sizeof( cookies ) / sizeof( cookie_t ) && *raw != '\0' ) {
 		cookie = &cookies.list[ cookies.num ];
 
 		// name
-		tmp = strstr( raw, "=" );
+		ptr = strstr( raw, "=" );
 
-		if ( !tmp ) {
+		if ( !ptr || !( ptr - raw ) )
 			break;
-		}
 
-		len = tmp - raw;
-		if ( len > sizeof( cookie->name ) )
-			len = sizeof( cookie->name );
-
-		strncpy( cookie->name, raw, len );
-		cookie->name[ len ] = '\0';
-		raw = tmp + 1;
+		strncpy( cookie->name, raw, SMALLEST( ptr - raw, sizeof( cookie->name ) - 1 ) );
+		raw = ptr + 1;
 
 		// value
-		tmp = strstr( raw, "; " );
-		if ( !tmp ) tmp = raw + strlen( raw );
+		ptr = strstr( raw, "; " );
+		if ( !ptr ) ptr = raw + strlen( raw );
 
-		len = tmp - raw;
-		if ( len > sizeof( cookie->value ) )
-			len = sizeof( cookie->value );
+		strncpy( cookie->value, raw, SMALLEST( ptr - raw, sizeof( cookie->value ) - 1 ) );
 
-		strncpy( cookie->value, raw, len );
-		cookie->value[ len ] = '\0';
-
-		raw = tmp;
-		if ( *tmp == ';' )
+		raw = ptr;
+		if ( *ptr == ';' )
 			raw += 2;
 
-		cookie->domain[ 0 ] = '\0';
-		cookie->path[ 0 ] = '\0';
-		cookie->expires[ 0 ] = '\0';
-		cookie->updated = 0;
 		cookies.num++;
 	}
 

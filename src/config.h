@@ -29,7 +29,9 @@
 
 #define FL_ISSET( flags, flag ) ( (flags) & (flag) )
 #define FL_SET( flags, flag ) ( (flags) |= (flag) )
-#define FL_CLR( flags, flag ) ( (flags) ^= (flag) )
+#define FL_CLR( flags, flag ) ( (flags) ^= (flags)&(flag) )
+
+#define SMALLEST( X, Y ) ( (X)<=(Y) ? (X) : (Y) )
 
 #define D_LOCKFILE_PATH "/tmp/zimr-proxy.pid" // used by daemon.c
 #define ZM_APP_CNF_FILE "zimr.cnf"
@@ -82,17 +84,19 @@
 /******* headers config *******/
 
 #define HEADERS_MAX_NUM 32
-
 #define HEADER_NAME_MAX_LEN  128
 #define HEADER_VALUE_MAX_LEN 512
 
 /*************************/
 
-/******* params config *******/
+/******* cookies config *******/
 
-#define PARAMS_MAX_NUM 32
-
-#define PARAM_NAME_MAX_LEN  128
+#define COOKIES_MAX_NUM        32
+#define COOKIE_NAME_MAX_LEN    128
+#define COOKIE_VALUE_MAX_LEN   512
+#define COOKIE_DOMAIN_MAX_LEN  128
+#define COOKIE_PATH_MAX_LEN    256
+#define COOKIE_EXPIRES_MAX_LEN 30
 
 /*************************/
 

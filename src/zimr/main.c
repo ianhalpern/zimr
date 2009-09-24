@@ -34,13 +34,21 @@ zimr help
 #include <unistd.h>
 #include <sys/wait.h>
 #include <pwd.h>
+#include <fcntl.h>
 
 #include "general.h"
-#include "ztransport.h"
 #include "zsocket.h"
 #include "zfildes.h"
 #include "zcnf.h"
 #include "simclist.h"
+
+#define START   0x1
+#define STOP    0x2
+#define RESTART 0x3
+#define REMOVE  0x4
+#define STATUS  0x5
+
+#define CMDSTR(X) (X==START?"starting":X==STOP?"stopping":X==RESTART?"restarting":X==REMOVE?"removing":NULL)
 
 typedef struct command {
 	char* name;
@@ -51,31 +59,53 @@ typedef struct command {
 
 command_t root_command;
 
-void print_command( command_t* command, int depth ) {
-	char padding[ depth * 5 + 3 ];
-	memset( padding, ' ', sizeof( padding ) - 1 );
-	padding[ sizeof( padding ) - 1 ] = 0;
+int commands_to_string( char* commands[ 50 ][ 2 ], char* top_cmd, command_t* command, int* n ) {
+	int max_len;
+	char* tmp = (char*) malloc( strlen( top_cmd ) + strlen( command->name ) + 2 );
+	sprintf( tmp, "%s %s", top_cmd, command->name );
+	top_cmd = tmp;
 
-	char spacing[ 25 - ( strlen( padding ) + strlen( command->name ) ) ];
-	memset( spacing, ' ', sizeof( spacing ) - 1 );
-	spacing[ sizeof( spacing ) - 1 ] = 0;
+	if ( !command->func ) {
+		(*n)--;
+	}
 
-	printf( "%s%s%s%s\n", padding, command->name, spacing, command->description );
+	else {
+		commands[ *n ][ 0 ] = top_cmd;
+		commands[ *n ][ 1 ] = command->description;
+	}
 
+	max_len = strlen( top_cmd );
 	if ( command->sub_commands ) {
-		int i = 0;
+		int i = 0, tmp_max_len;
 		command_t* tmp;
 		while ( ( tmp = command->sub_commands + i )->name ) {
-			print_command( tmp, depth + 1 );
+			(*n)++;
+			tmp_max_len = commands_to_string( commands, top_cmd, tmp, n );
+			if ( tmp_max_len > max_len ) max_len = tmp_max_len;
 			i += sizeof( command_t );
 		}
 	}
+
+	if ( !command->func )
+		free( top_cmd );
+
+	return max_len;
 }
 
 void print_usage( ) {
 	printf( "Zimr " ZIMR_VERSION " (" BUILD_DATE ") - " ZIMR_WEBSITE "\n\n" );
 	printf( "Commands:\n" );
-	print_command( &root_command, 0 );
+	int n = 0;
+	char* commands[ 50 ][ 2 ];
+	int len = commands_to_string( commands, "", &root_command, &n );
+
+	int i;
+	for ( i = 0; i <= n; i++ ) {
+		char buf[ 16 ];
+		sprintf( buf, " %%-%ds %%s\n", len );
+		printf( buf, commands[ i ][ 0 ], commands[ i ][ 1 ] );
+		free( commands[ i ][ 0 ] );
+	}
 }
 
 bool run_commands( command_t* command, int argc, char* argv[ ] ) {
@@ -99,7 +129,7 @@ bool run_commands( command_t* command, int argc, char* argv[ ] ) {
 	return false;
 }
 
-// Application Functions ////////////////////////////
+// Functions ////////////////////////////
 
 pid_t application_exec( uid_t uid, char* exec, char* dir, list_t* args ) {
 	pid_t pid = fork( );
@@ -130,6 +160,7 @@ pid_t application_exec( uid_t uid, char* exec, char* dir, list_t* args ) {
 }
 
 bool application_kill( pid_t pid ) {
+	if ( !pid ) return true;
 	if ( !stopproc( pid ) && errno != ESRCH ) {
 		printf( "failed: %s\n", strerror( errno ) );
 		return false;
@@ -137,9 +168,12 @@ bool application_kill( pid_t pid ) {
 	return true;
 }
 
-bool application_start( char* exec, char* dir, list_t* args ) {
-	printf( " * starting %s@%s ...", exec, dir ); fflush( stdout );
-	zcnf_state_t* state = zcnf_state_load( getuid( ) );
+bool application_function( uid_t uid, char* exec, char* dir, list_t* args, char type ) {
+	if ( CMDSTR( type ) )
+		printf( " * %s %s@%s...", CMDSTR( type ), exec, dir ); fflush( stdout );
+
+	zcnf_state_t* state = zcnf_state_load( uid );
+
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
@@ -153,23 +187,75 @@ bool application_start( char* exec, char* dir, list_t* args ) {
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
 		if ( strcmp( app->dir, dir ) == 0 && strcmp( app->exec, exec ) == 0 ) {
-			zcnf_state_free( state );
-			puts( "application is already running" );
-			retval = false;
-			goto quit;
+			if ( type == START && app->pid && kill( app->pid, 0 ) == 0 ) {
+				puts( "application is already running" );
+				retval = false;
+				goto quit;
+			}
+			break;
 		}
+		app = NULL;
 	}
 
-	pid_t pid = application_exec( state->uid, exec, dir, args );
-	if ( pid == -1 ) {
-		zcnf_state_free( state );
+	if ( type != START && !app ) {
+		puts( "application not in state" );
 		retval = false;
-		printf( "failed\n" );
 		goto quit;
 	}
 
-	printf( "success.\n" );
-	zcnf_state_set_app( state, exec, dir, pid, args );
+	else {
+		pid_t pid;
+		switch ( type ) {
+			case START:
+				if ( ( pid = application_exec( state->uid, exec, dir, args ) ) == -1 ) {
+					retval = false;
+					printf( "failed\n" );
+					goto quit;
+				}
+				zcnf_state_set_app( state, exec, dir, pid, args );
+				break;
+			case STOP:
+				if ( !application_kill( app->pid ) ) {
+					retval = false;
+					printf( "failed\n" );
+					goto quit;
+				}
+				zcnf_state_set_app( state, app->exec, app->dir, 0, NULL );
+				break;
+			case RESTART:
+				if ( application_kill( app->pid )
+				  && ( pid = application_exec( state->uid, app->exec, app->dir, &app->args ) ) == -1 ) {
+					retval = false;
+					printf( "failed\n" );
+					goto quit;
+				}
+				zcnf_state_set_app( state, app->exec, app->dir, pid, NULL );
+				break;
+			case REMOVE:
+				if ( !application_kill( app->pid ) ) {
+					retval = false;
+					printf( "failed\n" );
+					goto quit;
+				}
+				list_delete_at( &state->apps, i );
+				zcnf_state_app_free( app );
+				break;
+			case STATUS:
+				printf( "%d: %s ", i, app->exec );
+
+				if ( !app->pid || kill( app->pid, 0 ) == -1 ) // process still running, not dead
+					printf( "(*not running)" );
+				else printf( "%d", app->pid );
+
+				printf( "\n   directory: %s\n", app->dir );
+				// TODO: proxy address, uptime, memory usage, running websites, etc
+				printf( "\n" );
+				break;
+		}
+	}
+
+	if ( CMDSTR( type ) )
+		printf( "success.\n" );
 	zcnf_state_save( state );
 
 quit:
@@ -177,47 +263,7 @@ quit:
 	return retval;
 }
 
-bool application_stop( char* exec, char* dir ) {
-	printf( " * stopping %s@%s...", exec, dir ); fflush( stdout );
-	zcnf_state_t* state = zcnf_state_load( getuid( ) );
-	if ( !state ) {
-		puts( "failed to load state" );
-		return false;
-	}
-
-	bool retval = true;
-
-	zcnf_state_app_t* app = NULL;
-
-	int i;
-	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		app = list_get_at( &state->apps, i );
-		if ( strcmp( app->dir, dir ) == 0 && strcmp( app->exec, exec ) == 0 ) {
-			break;
-		}
-		app = NULL;
-	}
-
-	if ( !app ) {
-		puts( "application not in state" );
-		retval = false;
-		goto quit;
-	} else {
-		if ( application_kill( app->pid ) ) {
-			printf( "success.\n" );
-			list_delete_at( &state->apps, i );
-			zcnf_state_app_free( app );
-			zcnf_state_save( state );
-		} else retval = false;
-	}
-
-quit:
-	zcnf_state_free( state );
-	return retval;
-}
-
-bool application_restart( uid_t uid, char* exec, char* dir ) {
-	printf( " * restarting %s@%s...", exec, dir ); fflush( stdout );
+bool state_function( uid_t uid, char type ) {
 	zcnf_state_t* state = zcnf_state_load( uid );
 	if ( !state ) {
 		puts( "failed to load state" );
@@ -226,31 +272,15 @@ bool application_restart( uid_t uid, char* exec, char* dir ) {
 
 	bool retval = true;
 
-	zcnf_state_app_t* app = NULL;
+	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( strcmp( app->dir, dir ) == 0 && strcmp( app->exec, exec ) == 0 ) {
-			break;
+		if ( !application_function( uid, app->exec, app->dir, NULL, type ) ) {
+			retval = false;
+			goto quit;
 		}
-		app = NULL;
-	}
-
-	if ( !app ) {
-		puts( "application not in state" );
-		retval = false;
-	} else {
-		if ( application_kill( app->pid ) ) {
-			pid_t pid = application_exec( state->uid, app->exec, app->dir, &app->args );
-			if ( pid == -1 ) {
-				retval = false;
-				goto quit;
-			}
-			zcnf_state_set_app( state, app->exec, app->dir, pid, NULL );
-			zcnf_state_save( state );
-			printf( "success.\n" );
-		} else retval = false;
 	}
 
 quit:
@@ -258,42 +288,31 @@ quit:
 	return retval;
 }
 
-bool application_status( char* exec, char* dir ) {
-	zcnf_state_t* state = zcnf_state_load( getuid( ) );
-	if ( !state ) {
-		puts( "failed to load state" );
-		return false;
+bool state_all_function( uid_t uid, char type ) {
+	/* yea...this whole bit is a hack */
+	char line[ 64 ];
+	FILE* fp;
+	fp = popen( "awk -F\":\" '{ print $3 }' /etc/passwd", "r" );
+	while ( fgets( line, sizeof( line ), fp ) ) {
+		uid_t uid = atoi( line );
+
+		char filepath[ 128 ];
+		if ( !expand_tilde( ZM_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
+			continue;
+
+		int fd;
+		if ( ( fd = open( filepath, O_RDONLY ) ) == -1 ) continue;
+		close( fd );
+
+		printf( "%d:%s\n", uid, filepath );
+
+		state_function( uid, type );
 	}
-
-	bool retval = true;
-
-	zcnf_state_app_t* app;
-
-	int i;
-	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		app = list_get_at( &state->apps, i );
-		if ( strcmp( app->dir, dir ) == 0 && strcmp( app->exec, exec ) == 0 ) {
-			printf( "%d: %s ", i, app->exec );
-
-			if ( kill( app->pid, 0 ) == -1 ) // process still running, not dead
-				printf( "(*not running)" );
-			else printf( "%d", app->pid );
-
-			printf( "\n   directory: %s\n", app->dir );
-			// TODO: proxy address, uptime, memory usage, running websites, etc
-			printf( "\n" );
-			break;
-		}
-	}
-
-	if ( i == list_size( &state->apps ) ) {
-		puts( "application is not in state." );
-		retval = false;
-	}
-
-	zcnf_state_free( state );
-	return retval;
+	pclose(fp);
+	exit( EXIT_SUCCESS );
 }
+
+///////////////////////////////////////////////////////
 
 void application_start_cmd( int optc, char* optv[ ] ) {
 	char* exec = "zimr-application";
@@ -324,8 +343,9 @@ void application_start_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_start( exec, dir, &args ) )
+	if ( !application_function( getuid( ), exec, dir, &args, START ) )
 		exit( EXIT_FAILURE );
+
 	list_destroy( &args );
 }
 
@@ -347,7 +367,7 @@ void application_stop_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_stop( exec, dir ) )
+	if ( !application_function( getuid( ), exec, dir, NULL, STOP ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -369,7 +389,29 @@ void application_restart_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_restart( getuid( ), exec, dir ) )
+	if ( !application_function( getuid( ), exec, dir, NULL, RESTART ) )
+		exit( EXIT_FAILURE );
+}
+
+void application_remove_cmd( int optc, char* optv[ ] ) {
+	char* exec = "zimr-application";
+	char dir[ PATH_MAX ] = "";
+	getcwd( dir, sizeof( dir ) );
+
+	int i;
+	for ( i = 0; i < optc; i++ ) {
+		if ( optv[ i ][ 0 ] != '-' ) {
+			exec = optv[ i ];
+		} else if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
+			realpath( optv[ i + 1 ], dir );
+			i++;
+		} else {
+			print_usage( );
+			return;
+		}
+	}
+
+	if ( !application_function( getuid( ), exec, dir, NULL, REMOVE ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -391,195 +433,67 @@ void application_status_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_status( exec, dir ) )
+	if ( !application_function( getuid( ), exec, dir, NULL, STATUS ) )
 		exit( EXIT_FAILURE );
 }
 
-///////////////////////////////////////////////
-
-
-// State Functions ////////////////////////////
-
-bool state_unload( uid_t uid ) {
-	zcnf_state_t* state = zcnf_state_load( uid );
-
-	if ( !state ) {
-		puts( "failed to load state" );
-		return false;
-	}
-
-	bool retval = true;
-
-	zcnf_state_app_t* app;
-
-	int i;
-	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		app = list_get_at( &state->apps, i );
-		printf( " * stopping %s@%s...", app->exec, app->dir ); fflush( stdout );
-		if ( !application_kill( app->pid ) ) {
-			retval = false;
-			printf( "failed.\n" );
-			goto quit;
-		}
-		printf( "success.\n" );
-	}
-
-quit:
-	zcnf_state_free( state );
-	return retval;
+void state_start_cmd( int optc, char* optv[ ] ) {
+	if ( !state_function( getuid( ), START ) )
+		exit( EXIT_FAILURE );
 }
 
-bool state_clear( ) {
-	zcnf_state_t* state = zcnf_state_load( getuid( ) );
-	if ( !state ) {
-		puts( "failed to load state" );
-		return false;
-	}
-
-	bool retval = true;
-
-	zcnf_state_app_t* app;
-
-	int i;
-	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		app = list_get_at( &state->apps, i );
-		if ( !application_stop( app->exec, app->dir ) ) {
-			retval = false;
-			goto quit;
-		}
-	}
-
-quit:
-	zcnf_state_free( state );
-	return retval;
+void state_stop_cmd( int optc, char* optv[ ] ) {
+	if ( !state_function( getuid( ), STOP ) )
+		exit( EXIT_FAILURE );
 }
 
-bool state_reload( uid_t uid ) {
-	zcnf_state_t* state = zcnf_state_load( uid );
-	if ( !state ) {
-		puts( "failed to load state" );
-		return false;
-	}
-
-	bool retval = true;
-
-	zcnf_state_app_t* app;
-
-	int i;
-	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		app = list_get_at( &state->apps, i );
-		if ( !application_restart( uid, app->exec, app->dir ) ) {
-			retval = false;
-			goto quit;
-		}
-	}
-
-quit:
-	zcnf_state_free( state );
-	return retval;
+void state_restart_cmd( int optc, char* optv[ ] ) {
+	if ( !state_function( getuid( ), RESTART ) )
+		exit( EXIT_FAILURE );
 }
 
-bool state_status( ) {
-	zcnf_state_t* state = zcnf_state_load( getuid( ) );
-	if ( !state ) {
-		puts( "failed to load state" );
-		return false;
-	}
-
-	bool retval = true;
-
-	zcnf_state_app_t* app;
-
-	int i;
-	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		app = list_get_at( &state->apps, i );
-		if ( !application_status( app->exec, app->dir ) ) {
-			retval = false;
-			goto quit;
-		}
-	}
-
-quit:
-	zcnf_state_free( state );
-	return retval;
-}
-
-void state_reload_cmd( int optc, char* optv[ ] ) {
-	int i;
-	for ( i = 0; i < optc; i++ ) {
-		if ( strcmp( optv[ i ], "all" ) == 0 ) {
-			/* yea...this whole bit is a hack */
-			char line[ 64 ];
-			FILE* fp;
-			fp = popen( "awk -F\":\" '{ print $3 }' /etc/passwd", "r" );
-			while ( fgets( line, sizeof( line ), fp ) ) {
-				uid_t uid = atoi( line );
-
-				char filepath[ 128 ];
-				if ( !expand_tilde( ZM_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
-					continue;
-
-				int fd;
-				if ( ( fd = open( filepath, O_RDONLY ) ) == -1 ) continue;
-				close( fd );
-
-				printf( "%d:%s\n", uid, filepath );
-
-				state_reload( uid );
-			}
-			pclose(fp);
-			exit( EXIT_SUCCESS );
-		}
-	}
-
-	if ( !state_reload( getuid( ) ) ) exit( EXIT_FAILURE );
-}
-
-void state_unload_cmd( int optc, char* optv[ ] ) {
-	int i;
-	for ( i = 0; i < optc; i++ ) {
-		if ( strcmp( optv[ i ], "all" ) == 0 ) {
-			/* yea...this whole bit is a hack */
-			char line[ 64 ];
-			FILE* fp;
-			fp = popen( "awk -F\":\" '{ print $3 }' /etc/passwd", "r" );
-			while ( fgets( line, sizeof( line ), fp ) ) {
-				uid_t uid = atoi( line );
-
-				char filepath[ 128 ];
-				if ( !expand_tilde( ZM_USR_STATE_FILE, filepath, sizeof( filepath ), uid ) )
-					continue;
-
-				int fd;
-				if ( ( fd = open( filepath, O_RDONLY ) ) == -1 ) continue;
-				close( fd );
-
-				printf( "%d:%s\n", uid, filepath );
-
-				state_unload( uid );
-			}
-			pclose(fp);
-			exit( EXIT_SUCCESS );
-		}
-	}
-
-	if ( !state_unload( getuid( ) ) ) exit( EXIT_FAILURE );
-}
-
-void state_clear_cmd( int optc, char* optv[ ] ) {
-	if ( !state_clear( ) ) exit( EXIT_FAILURE );
+void state_remove_cmd( int optc, char* optv[ ] ) {
+	if ( !state_function( getuid( ), REMOVE ) )
+		exit( EXIT_FAILURE );
 }
 
 void state_status_cmd( int optc, char* optv[ ] ) {
-	if ( !state_status( ) ) exit( EXIT_FAILURE );
+	if ( !state_function( getuid( ), STATUS ) )
+		exit( EXIT_FAILURE );
 }
 
-///////////////////////////////////////////////
+void state_start_all_cmd( int optc, char* optv[ ] ) {
+	if ( !state_all_function( getuid( ), START ) )
+		exit( EXIT_FAILURE );
+}
 
+void state_stop_all_cmd( int optc, char* optv[ ] ) {
+	if ( !state_all_function( getuid( ), STOP ) )
+		exit( EXIT_FAILURE );
+}
+
+void state_restart_all_cmd( int optc, char* optv[ ] ) {
+	if ( !state_all_function( getuid( ), RESTART ) )
+		exit( EXIT_FAILURE );
+}
+
+void state_remove_all_cmd( int optc, char* optv[ ] ) {
+	if ( !state_all_function( getuid( ), REMOVE ) )
+		exit( EXIT_FAILURE );
+}
+
+void state_status_all_cmd( int optc, char* optv[ ] ) {
+	if ( !state_all_function( getuid( ), STATUS ) )
+		exit( EXIT_FAILURE );
+}
+
+void help_cmd( int optc, char* optv[ ] ) {
+	print_usage( );
+}
 
 // Proxy Functions ////////////////////////////
 
-void proxy_status( ) {
+/*void proxy_status( ) {
 	int command = ZM_CMD_STATUS;
 	zsocket_init( );
 	zsocket_t* proxy = zsocket_connect( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT );
@@ -605,38 +519,70 @@ void proxy_status( ) {
 
 void proxy_status_cmd( int optc, char* optv[ ] ) {
 	proxy_status( );
-}
+}*/
 
 ///////////////////////////////////////////////
 
 
-
 int main( int argc, char* argv[ ] ) {
-	command_t app_commands[ ] = {
-		{ "start",   "options: <exec> [ -dir <path>, -a [...] ]", NULL, &application_start_cmd },
-		{ "stop",    "options: <exec> [ -dir <path>, -n ]", NULL, &application_stop_cmd },
-		{ "restart", "options: <exec> [ -dir <path>, -n ]", NULL, &application_restart_cmd },
-		{ "status",  "options: <exec> [ -dir <path>, -n ]", NULL, &application_status_cmd },
+
+	command_t start_all_commands[ ] = {
+		{ "states", "Start all zimr applications for all user's zimr states.\n", NULL, &state_start_all_cmd },
 		{ NULL }
 	};
 
-	command_t state_commands[ ] = {
-		{ "reload", "options: [all, <config path>]", NULL, &state_reload_cmd },
-		{ "unload", "options: [all, <config path>]", NULL, &state_unload_cmd },
-		{ "clear",  "options: [<config path>]", NULL, &state_clear_cmd },
-		{ "status", "options: [<config path>]", NULL, &state_status_cmd },
+	command_t start_commands[ ] = {
+		{ "all", "Start all zimr applications in the current user's state.", &start_all_commands, &state_start_cmd },
 		{ NULL }
 	};
 
-	command_t proxy_commands[ ] = {
-		{ "status", "options: <host>[:<port>]", NULL, &proxy_status_cmd },
+	command_t stop_all_commands[ ] = {
+		{ "states", "Stop all zimr applications for all user's zimr states.\n", NULL, &state_stop_all_cmd },
+		{ NULL }
+	};
+
+	command_t stop_commands[ ] = {
+		{ "all", "Stop all zimr applications for the current user's state.", &stop_all_commands, &state_stop_cmd },
+		{ NULL }
+	};
+
+	command_t restart_all_commands[ ] = {
+		{ "states", "Restart all zimr applications for all user's zimr states.\n", NULL, &state_restart_all_cmd },
+		{ NULL }
+	};
+
+	command_t restart_commands[ ] = {
+		{ "all", "Restart all zimr applications for the current user's state.", &restart_all_commands, &state_restart_cmd },
+		{ NULL }
+	};
+
+	command_t remove_all_commands[ ] = {
+		{ "states", "Remove all zimr applications for all user's zimr states.\n", NULL, &state_remove_all_cmd },
+		{ NULL }
+	};
+
+	command_t remove_commands[ ] = {
+		{ "all", "Remove all zimr applications for the current user's state.", &remove_all_commands, &state_remove_cmd },
+		{ NULL }
+	};
+
+	command_t status_all_commands[ ] = {
+		{ "states", "Report the status of all zimr applications for all user's zimr states.\n", NULL, &state_status_all_cmd },
+		{ NULL }
+	};
+
+	command_t status_commands[ ] = {
+		{ "all", "Report the status of all zimr applications for the current user's state.", &status_all_commands, &state_status_cmd },
 		{ NULL }
 	};
 
 	command_t zimr_commands[ ] = {
-		{ "application", "", &app_commands, NULL },
-		{ "state", "", &state_commands, NULL },
-		{ "proxy", "", &proxy_commands, NULL },
+		{ "start",   "Start a zimr application. options: [ -dir <path> -a [...] ]", &start_commands, &application_start_cmd },
+		{ "stop",    "Stop a zimr application. options: [ -dir <path>, -n ]", &stop_commands, &application_stop_cmd },
+		{ "restart", "Restart a zimr application. options: [ -dir <path>, -n ]", &restart_commands, &application_restart_cmd },
+		{ "remove",  "Remove a zimr application. options: [ -dir <path>, -n ]", &remove_commands, &application_remove_cmd },
+		{ "status",  "Report the status of a zimr application. options: [ -dir <path>, -n ]", &status_commands, &application_status_cmd },
+		{ "help",    "List all commands.", NULL, &help_cmd },
 		{ NULL }
 	};
 

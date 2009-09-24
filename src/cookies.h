@@ -30,13 +30,14 @@
 #include "config.h"
 
 typedef struct {
-	char name[ HEADER_NAME_MAX_LEN ];
-	char value[ HEADER_VALUE_MAX_LEN ];
-	char domain[ 128 ];
-	char path[ 256 ];
-	char expires[ 30 ];
+	char name[ COOKIE_NAME_MAX_LEN ];
+	char value[ COOKIE_VALUE_MAX_LEN ];
+	char domain[ COOKIE_DOMAIN_MAX_LEN ];
+	char path[ COOKIE_PATH_MAX_LEN ];
+	char expires[ COOKIE_EXPIRES_MAX_LEN ];
 	char updated;
 } cookie_t;
+
 
 typedef struct {
 	int num;

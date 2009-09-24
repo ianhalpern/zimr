@@ -37,12 +37,11 @@ typedef struct {
 static PyObject* pyzimr_response_set_header( PyObject* self, PyObject* args ) {
 	char* name,* value;
 
-	if ( PyArg_ParseTuple( args, "ss", &name, &value ) ) {
-		headers_set_header( &( (pyzimr_response_t*) self )->_response->headers, name, value );
-	} else {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+	if ( !PyArg_ParseTuple( args, "ss", &name, &value ) ) {
+		PyErr_SetString( PyExc_TypeError, "name and value paramater must be passed" );
 		return NULL;
 	}
+	headers_set_header( &( (pyzimr_response_t*) self )->_response->headers, name, value );
 
 	Py_RETURN_NONE;
 }
@@ -50,20 +49,18 @@ static PyObject* pyzimr_response_set_header( PyObject* self, PyObject* args ) {
 static PyObject* pyzimr_response_set_status( PyObject* self, PyObject* args ) {
 	int status_code;
 
-	if ( PyArg_ParseTuple( args, "i", &status_code ) ) {
-		response_set_status( ( (pyzimr_response_t*) self )->_response, status_code );
-	} else {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+	if ( !PyArg_ParseTuple( args, "i", &status_code ) ) {
+		PyErr_SetString( PyExc_TypeError, "status_code paramater must be passed" );
 		return NULL;
 	}
+	response_set_status( ( (pyzimr_response_t*) self )->_response, status_code );
 
 	Py_RETURN_NONE;
 }
 
-
 static PyMethodDef pyzimr_response_methods[ ] = {
-	{ "setStatus", (PyCFunction) pyzimr_response_set_status, METH_VARARGS, "Start the website." },
-	{ "setHeader", (PyCFunction) pyzimr_response_set_header, METH_VARARGS, "Start the website." },
+	{ "setStatus", (PyCFunction) pyzimr_response_set_status, METH_VARARGS, "set the response status" },
+	{ "setHeader", (PyCFunction) pyzimr_response_set_header, METH_VARARGS, "set a response header" },
 	{ NULL }  /* Sentinel */
 };
 
@@ -89,7 +86,7 @@ static PyTypeObject pyzimr_response_type = {
 	0,                         /*tp_setattro*/
 	0,                         /*tp_as_buffer*/
 	Py_TPFLAGS_DEFAULT, /*tp_flags*/
-	"zimr website objects",           /* tp_doc */
+	"zimr response object",           /* tp_doc */
 	0,		               /* tp_traverse */
 	0,		               /* tp_clear */
 	0,		               /* tp_richcompare */
@@ -123,7 +120,7 @@ static PyObject* pyzimr_request_get_param( pyzimr_request_t* self, PyObject* arg
 	param_t* param;
 
 	if ( !PyArg_ParseTuple( args, "s", &param_name ) ) {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+		PyErr_SetString( PyExc_TypeError, "param_name paramater must be passed" );
 		return NULL;
 	}
 
@@ -140,7 +137,7 @@ static PyObject* pyzimr_request_get_header( pyzimr_request_t* self, PyObject* ar
 	header_t* header;
 
 	if ( !PyArg_ParseTuple( args, "s", &header_name ) ) {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+		PyErr_SetString( PyExc_TypeError, "header_name paramater must be passed" );
 		return NULL;
 	}
 
@@ -167,8 +164,8 @@ static PyMemberDef pyzimr_request_members[ ] = {
 };
 
 static PyMethodDef pyzimr_request_methods[ ] = {
-	{ "getParam", (PyCFunction) pyzimr_request_get_param, METH_VARARGS, "Start the website." },
-	{ "getHeader", (PyCFunction) pyzimr_request_get_header, METH_VARARGS, "Start the website." },
+	{ "getParam", (PyCFunction) pyzimr_request_get_param, METH_VARARGS, "get a GET/POST query string parameter value" },
+	{ "getHeader", (PyCFunction) pyzimr_request_get_header, METH_VARARGS, "get a request header value" },
 	{ NULL }  /* Sentinel */
 };
 
@@ -177,13 +174,13 @@ static PyGetSetDef pyzimr_request_getseters[ ] = {
 	  "url",
 	  (getter) pyzimr_request_get_url,
 	  0,//(setter) pypdora_response_set_public_directory,
-	  "the websites public directory", NULL
+	  "the requested url", NULL
 	},
 	{
 	  "post_body",
 	  (getter) pyzimr_request_get_post_body,
 	  0,//(setter) pypdora_response_set_public_directory,
-	  "the websites public directory", NULL
+	  "the body of a post request", NULL
 	},
 	{ NULL }  /* Sentinel */
 };
@@ -210,7 +207,7 @@ static PyTypeObject pyzimr_request_type = {
 	0,                         /*tp_setattro*/
 	0,                         /*tp_as_buffer*/
 	Py_TPFLAGS_DEFAULT, /*tp_flags*/
-	"zimr website objects",           /* tp_doc */
+	"zimr request object",           /* tp_doc */
 	0,		               /* tp_traverse */
 	0,		               /* tp_clear */
 	0,		               /* tp_richcompare */
@@ -248,19 +245,18 @@ static void pyzimr_connection_dealloc( pyzimr_connection_t* self ) {
 	Py_DECREF( self->response );
 	Py_DECREF( self->request );
 	Py_DECREF( self->website );
-	connection_free( self->_connection );
+	//connection_free( self->_connection );
 	self->ob_type->tp_free( (PyObject*) self );
 }
 
 static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* args ) {
 	const char* message;
 
-	if ( PyArg_ParseTuple( args, "s", &message ) ) {
-		zimr_connection_send( self->_connection, (void*) message, strlen( message ) );
-	} else {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+	if ( !PyArg_ParseTuple( args, "s", &message ) ) {
+		PyErr_SetString( PyExc_TypeError, "message paramater must be passed" );
 		return NULL;
 	}
+	zimr_connection_send( self->_connection, (void*) message, strlen( message ) );
 
 	Py_RETURN_NONE;
 }
@@ -269,12 +265,11 @@ static PyObject* pyzimr_connection_send_file( pyzimr_connection_t* self, PyObjec
 	const char* filename = self->_connection->request.url;
 	unsigned char use_pubdir = 1;
 
-	if ( PyArg_ParseTuple( args, "|sb", &filename, &use_pubdir ) ) {
-		zimr_connection_send_file( self->_connection, (char*) filename, use_pubdir );
-	} else {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+	if ( !PyArg_ParseTuple( args, "|sb", &filename, &use_pubdir ) ) {
+		PyErr_SetString( PyExc_TypeError, "the filename paramater must be passed" );
 		return NULL;
 	}
+	zimr_connection_send_file( self->_connection, (char*) filename, use_pubdir );
 
 	Py_RETURN_NONE;
 }
@@ -282,12 +277,11 @@ static PyObject* pyzimr_connection_send_file( pyzimr_connection_t* self, PyObjec
 static PyObject* pyzimr_connection_redirect( pyzimr_connection_t* self, PyObject* args ) {
 	const char* redir_url = NULL;
 
-	if ( PyArg_ParseTuple( args, "s", &redir_url ) ) {
-		zimr_connection_send_redirect( self->_connection, (char*) redir_url );
-	} else {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+	if ( !PyArg_ParseTuple( args, "s", &redir_url ) ) {
+		PyErr_SetString( PyExc_TypeError, "the redir_url paramater must be passed" );
 		return NULL;
 	}
+	zimr_connection_send_redirect( self->_connection, (char*) redir_url );
 
 	Py_RETURN_NONE;
 }
@@ -297,7 +291,7 @@ static PyObject* pyzimr_connection_get_cookie( pyzimr_connection_t* self, PyObje
 	cookie_t* cookie;
 
 	if ( !PyArg_ParseTuple( args, "s", &cookie_name ) ) {
-		PyErr_SetString( PyExc_TypeError, "connection paramater must be passed" );
+		PyErr_SetString( PyExc_TypeError, "the cookie_name must be passes" );
 		return NULL;
 	}
 
@@ -315,7 +309,7 @@ static PyObject* pyzimr_connection_set_cookie( pyzimr_connection_t* self, PyObje
 	time_t expires = 0;
 
 	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|siss", kwlist, &cookie_name, &cookie_value, &expires, &cookie_domain, &cookie_path ) ) {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+		PyErr_SetString( PyExc_TypeError, "the cookie_name must be passes" );
 		return NULL;
 	}
 
@@ -333,19 +327,19 @@ static PyObject* pyzimr_connection_get_ip( pyzimr_connection_t* self, void* clos
 }
 
 static PyMemberDef pyzimr_connection_members[ ] = {
-	{ "client", T_OBJECT_EX, offsetof( pyzimr_connection_t, client ), 0, "response object of this request" }, //TODO: temporary
-	{ "response", T_OBJECT_EX, offsetof( pyzimr_connection_t, response ), RO, "response object of this request" },
-	{ "request", T_OBJECT_EX, offsetof( pyzimr_connection_t, request ), RO, "response object of this request" },
+	{ "client", T_OBJECT_EX, offsetof( pyzimr_connection_t, client ), 0, "temporary object" }, //TODO: temporary
+	{ "response", T_OBJECT_EX, offsetof( pyzimr_connection_t, response ), RO, "response object of this connection" },
+	{ "request", T_OBJECT_EX, offsetof( pyzimr_connection_t, request ), RO, "request object of this connection" },
 	{ "website", T_OBJECT_EX, offsetof( pyzimr_connection_t, website ), RO, "website object from which the request originated" },
 	{ NULL }  /* Sentinel */
 };
 
 static PyMethodDef pyzimr_connection_methods[ ] = {
-	{ "setCookie", (PyCFunction) pyzimr_connection_set_cookie, METH_VARARGS | METH_KEYWORDS, "Start the website." },
-	{ "getCookie", (PyCFunction) pyzimr_connection_get_cookie, METH_VARARGS, "Start the website." },
-	{ "send", (PyCFunction) pyzimr_connection_send, METH_VARARGS, "Start the website." },
-	{ "sendFile", (PyCFunction) pyzimr_connection_send_file, METH_VARARGS, "Start the website." },
-	{ "redirect", (PyCFunction) pyzimr_connection_redirect, METH_VARARGS, "Start the website." },
+	{ "setCookie", (PyCFunction) pyzimr_connection_set_cookie, METH_VARARGS | METH_KEYWORDS, "set a cookie" },
+	{ "getCookie", (PyCFunction) pyzimr_connection_get_cookie, METH_VARARGS, "get a value of a cookie" },
+	{ "send", (PyCFunction) pyzimr_connection_send, METH_VARARGS, "send a string as the response to the connection" },
+	{ "sendFile", (PyCFunction) pyzimr_connection_send_file, METH_VARARGS, "send a file as a response to the connection" },
+	{ "redirect", (PyCFunction) pyzimr_connection_redirect, METH_VARARGS, "redirect the connection to a different url" },
 	{ NULL }  /* Sentinel */
 };
 
@@ -354,13 +348,13 @@ static PyGetSetDef pyzimr_connection_getseters[ ] = {
 	  "hostname",
 	  (getter) pyzimr_connection_get_hostname,
 	  0,
-	  "the websites public directory", NULL
+	  "the hostname of the connection", NULL
 	},
 	{
 	  "ip",
 	  (getter) pyzimr_connection_get_ip,
 	  0,
-	  "the websites public directory", NULL
+	  "the ip address of the connection", NULL
 	},
 	{ NULL }  /* Sentinel */
 };
@@ -387,7 +381,7 @@ static PyTypeObject pyzimr_connection_type = {
 	0,                         /*tp_setattro*/
 	0,                         /*tp_as_buffer*/
 	Py_TPFLAGS_DEFAULT, /*tp_flags*/
-	"zimr website objects",           /* tp_doc */
+	"zimr website connection object",           /* tp_doc */
 	0,		               /* tp_traverse */
 	0,		               /* tp_clear */
 	0,		               /* tp_richcompare */
@@ -491,7 +485,7 @@ static PyObject* pyzimr_website_insert_default_page( pyzimr_website_t* self, PyO
 	int pos = -1;
 
 	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|i", kwlist, &default_page, &pos ) ) {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+		PyErr_SetString( PyExc_TypeError, "default_page argument must be passed" );
 		return NULL;
 	}
 
@@ -547,9 +541,9 @@ static int pypdora_website_set_connection_handler( pyzimr_website_t* self, PyObj
 }
 
 static PyMethodDef pyzimr_website_methods[ ] = {
-	{ "enable", (PyCFunction) pyzimr_website_enable, METH_NOARGS, "Start the website." },
-	{ "disable", (PyCFunction) pyzimr_website_disable, METH_NOARGS, "Stop the website." },
-	{ "insertDefaultPage", (PyCFunction) pyzimr_website_insert_default_page, METH_VARARGS | METH_KEYWORDS, "Stop the website." },
+	{ "enable", (PyCFunction) pyzimr_website_enable, METH_NOARGS, "enable the website" },
+	{ "disable", (PyCFunction) pyzimr_website_disable, METH_NOARGS, "disable the website" },
+	{ "insertDefaultPage", (PyCFunction) pyzimr_website_insert_default_page, METH_VARARGS | METH_KEYWORDS, "add a default page" },
 	{ NULL }  /* Sentinel */
 };
 
@@ -568,7 +562,7 @@ static PyGetSetDef pyzimr_website_getseters[ ] = {
 	  "connection_handler",
 	  (getter) pyzimr_website_get_connection_handler,
 	  (setter) pypdora_website_set_connection_handler,
-	  "function to be handle web requests", NULL
+	  "function to handle web connections", NULL
 	},
 	{ NULL }  /* Sentinel */
 };
@@ -595,7 +589,7 @@ static PyTypeObject pyzimr_website_type = {
 	0,                         /*tp_setattro*/
 	0,                         /*tp_as_buffer*/
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /*tp_flags*/
-	"zimr website objects",           /* tp_doc */
+	"zimr website object",           /* tp_doc */
 	0,		               /* tp_traverse */
 	0,		               /* tp_clear */
 	0,		               /* tp_richcompare */
@@ -646,8 +640,8 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 	result = PyObject_CallFunction( page_handler, "sO", filepath, connection->udata );
 
 	if ( result != NULL ) {
-		if ( ! PyString_Check( result ) ) {
-			PyErr_SetString( PyExc_TypeError, "The request_handler attribute value must be callable" );
+		if ( !PyString_Check( result ) ) {
+			PyErr_SetString( PyExc_TypeError, "result from page_handler invalid" );
 			return;
 		}
 		zimr_connection_send( connection, (void*) PyString_AsString( result ), strlen( PyString_AsString( result ) ) );
@@ -662,12 +656,12 @@ static PyObject* pyzimr_register_page_handler( PyObject* self, PyObject* args ) 
 	char* page_type;
 
 	if ( ! PyArg_ParseTuple( args, "sO", &page_type, &page_handler ) ) {
-		PyErr_SetString( PyExc_TypeError, "request paramater must be passed" );
+		PyErr_SetString( PyExc_TypeError, "page_type and page_handler must be passed" );
 		return NULL;
 	}
 
 	if ( ! PyCallable_Check( page_handler ) ) {
-		PyErr_SetString( PyExc_TypeError, "The request_handler attribute value must be callable" );
+		PyErr_SetString( PyExc_TypeError, "The page_handler attribute value must be callable" );
 		return NULL;
 	}
 
@@ -678,9 +672,9 @@ static PyObject* pyzimr_register_page_handler( PyObject* self, PyObject* args ) 
 
 static PyMethodDef pyzimr_methods[ ] = {
 	{ "version",  (PyCFunction) pyzimr_version, METH_NOARGS, "Returns the version of zimr." },
-	{ "start", (PyCFunction) pyzimr_start, METH_NOARGS, "Returns the version of zimr." },
-	{ "defaultConnectionHandler", (PyCFunction) pyzimr_default_connection_handler, METH_VARARGS, "Returns the version of zimr." },
-	{ "registerPageHandler", (PyCFunction) pyzimr_register_page_handler, METH_VARARGS, "" },
+	{ "start", (PyCFunction) pyzimr_start, METH_NOARGS, "Starts the zimr mainloop." },
+	{ "defaultConnectionHandler", (PyCFunction) pyzimr_default_connection_handler, METH_VARARGS, "The zimr default connection handler." },
+	{ "registerPageHandler", (PyCFunction) pyzimr_register_page_handler, METH_VARARGS, "Register a page handler." },
 	{ NULL }		/* Sentinel */
 };
 

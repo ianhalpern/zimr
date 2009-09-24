@@ -32,39 +32,39 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 	param_t* param;
 	int len;
 
-	char* tmp;
+	char* ptr;
 	while ( size > 0 ) {
 		char* name;
 		char* value;
 
 		// name
-		tmp = strstr( raw, "=" );
+		ptr = strstr( raw, "=" );
 
-		if ( !tmp ) {
+		if ( !ptr ) {
 			break;
 		}
 
-		size -= ( tmp + 1 ) - raw;
+		size -= ( ptr + 1 ) - raw;
 		if ( size <= 0 )
 			break;
 
-		len = tmp - raw;
+		len = ptr - raw;
 		name = (char*) malloc( len );
 		url_decode( raw, name, len );
-		raw = tmp + 1;
+		raw = ptr + 1;
 
 		// value
-		tmp = strstr( raw, "&" );
-		if ( !tmp || tmp - raw > size ) tmp = raw + size;
+		ptr = strstr( raw, "&" );
+		if ( !ptr || ptr - raw > size ) ptr = raw + size;
 
-		len = tmp - raw;
+		len = ptr - raw;
 
 		value = (char*) malloc( len + 1 );
 		url_decode( raw, value, len );
 
-		size -= tmp - raw;
-		raw = tmp;
-		if ( *tmp == '&' ) {
+		size -= ptr - raw;
+		raw = ptr;
+		if ( *ptr == '&' ) {
 			size--;
 			raw++;
 		}

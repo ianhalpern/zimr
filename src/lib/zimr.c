@@ -118,15 +118,14 @@ void zimr_start( ) {
 		timeout = 0; // reset timeout value
 
 		// Test and Start website proxies
-		while ( i < list_size( &websites ) ) {
+		for ( i = 0; i < list_size( &websites ); i++ ) {
 			website = list_get_at( &websites, i );
 			website_data = (website_data_t*) website->udata;
 
 			if ( website->sockfd == -1 && website_data->status == WS_STATUS_ENABLING ) {
-
 				/* connect to the Zimr Daemon Proxy for routing external
 				   requests or commands to this process. */
-				if ( zimr_website_enable( website ) ) {
+				if ( !zimr_website_enable( website ) ) {
 					if ( website_data->conn_tries == 0 )
 						syslog( LOG_WARNING, "%s could not connect to proxy...will retry.", website->url );
 
@@ -143,7 +142,6 @@ void zimr_start( ) {
 				}
 			}
 
-			i++;
 		}
 
 	} while ( list_size( &websites ) && zfd_select( timeout ) );
@@ -165,10 +163,13 @@ website_t* zimr_website_create( char* url ) {
 	website_data->status = WS_STATUS_DISABLED;
 	website_data->connection_handler = NULL;
 	website_data->conn_tries = 0; //ZM_NUM_PROXY_DEATH_RETRIES - 1;
-	website_data->default_pages_count = 0;
 	website_data->redirect_url = NULL;
 	memset( website_data->connections, 0, sizeof( website_data->connections ) );
+	list_init( &website_data->default_pages );
+	list_init( &website_data->ignored_files );
 	zimr_website_insert_default_page( website, "default.html", 0 );
+	zimr_website_insert_ignored_file( website, "zimr.cnf" );
+	zimr_website_insert_ignored_file( website, "zimr.log" );
 
 	return website;
 }
@@ -180,6 +181,9 @@ void zimr_website_destroy( website_t* website ) {
 
 	if ( website_data->pubdir )
 		free( website_data->pubdir );
+
+	list_destroy( &website_data->default_pages );
+	list_destroy( &website_data->ignored_files );
 
 	free( website_data );
 	website_remove( website );
@@ -210,6 +214,18 @@ void command_response_handler( msg_switch_t* msg_switch, msg_packet_resp_t resp 
 	}
 }
 
+void cleanup_connection( website_data_t* website_data, int sockfd ) {
+	if ( website_data->connections[ sockfd ]->filereadfd != -1 ) {
+		zfd_clr( website_data->connections[ sockfd ]->filereadfd, FILEREAD );
+		close( website_data->connections[ sockfd ]->filereadfd );
+	}
+	if ( website_data->connections[ sockfd ]->connection )
+		connection_free( website_data->connections[ sockfd ]->connection );
+	free( website_data->connections[ sockfd ]->data );
+	free( website_data->connections[ sockfd ] );
+	website_data->connections[ sockfd ] = NULL;
+}
+
 void packet_resp_recvd_event( msg_switch_t* msg_switch, msg_packet_resp_t resp ) {
 	if ( resp.msgid < 0 ) {
 		command_response_handler( msg_switch, resp );
@@ -219,21 +235,16 @@ void packet_resp_recvd_event( msg_switch_t* msg_switch, msg_packet_resp_t resp )
 		website_t* website = website_get_by_sockfd( msg_switch->sockfd );
 		website_data_t* website_data = website->udata;
 
-		if ( !msg_is_finished( msg_switch, resp.msgid ) && resp.status == MSG_PACK_RESP_OK ) {
+		if ( resp.status == MSG_PACK_RESP_OK && !msg_is_complete( msg_switch, resp.msgid ) ) {
 			if ( website_data->connections[ resp.msgid ]->filereadfd != -1 ) {
 				zfd_reset( website_data->connections[ resp.msgid ]->filereadfd, FILEREAD );
 			}
 		}
 
-		else {
-			if ( website_data->connections[ resp.msgid ]->filereadfd != -1 ) {
-				zfd_clr( website_data->connections[ resp.msgid ]->filereadfd, FILEREAD );
-				close( website_data->connections[ resp.msgid ]->filereadfd );
-			}
-			connection_free( website_data->connections[ resp.msgid ]->connection );
-			free( website_data->connections[ resp.msgid ] );
-			website_data->connections[ resp.msgid ] = NULL;
+		else if ( resp.status == MSG_PACK_RESP_FAIL || msg_is_sent( msg_switch, resp.msgid ) ) {
+			cleanup_connection( website_data, resp.msgid );
 		}
+
 	}
 }
 
@@ -242,15 +253,21 @@ void packet_recvd_event( msg_switch_t* msg_switch, msg_packet_t packet ) {
 	website_data_t* website_data = website->udata;
 
 	if ( !FL_ISSET( packet.flags, PACK_FL_KILL ) ) {
-		zimr_connection_handler( website, packet );
-		msg_switch_send_resp( msg_switch, packet.msgid, MSG_PACK_RESP_OK );
+		if ( zimr_connection_handler( website, packet ) )
+			msg_switch_send_resp( msg_switch, packet.msgid, MSG_PACK_RESP_OK );
+		else
+			msg_switch_send_resp( msg_switch, packet.msgid, MSG_PACK_RESP_FAIL );
 	}
 
 	else {
-		free( website_data->connections[ packet.msgid ]->data );
-		free( website_data->connections[ packet.msgid ] );
-		website_data->connections[ packet.msgid ] = NULL;
+		cleanup_connection( website_data, packet.msgid );
 	}
+}
+
+void error_event( msg_switch_t* msg_switch, char code ) {
+	website_t* website = website_get_by_sockfd( msg_switch->sockfd );
+	zimr_website_disable( website );
+	zimr_website_enable( website );
 }
 
 bool zimr_website_enable( website_t* website ) {
@@ -270,7 +287,7 @@ bool zimr_website_enable( website_t* website ) {
 	}
 
 	website_data->msg_switch = msg_switch_new( website->sockfd, packet_resp_recvd_event,
-	  packet_recvd_event, NULL );
+	  packet_recvd_event, error_event );
 
 	// send website enable command
 	msg_new( website_data->msg_switch, ZM_CMD_WS_START );
@@ -285,6 +302,12 @@ void zimr_website_disable( website_t* website ) {
 
 	/* we only need to send command if the socket is connected. */
 	if ( website->sockfd != -1 ) {
+
+		int i;
+		for ( i = 0; i < FD_SETSIZE; i++ ) {
+			if ( website_data->connections[ i ] )
+				cleanup_connection( website_data, i );
+		}
 
 		if ( website_data->status == WS_STATUS_ENABLED ) {
 			msg_new( website_data->msg_switch, ZM_CMD_WS_STOP );
@@ -304,20 +327,9 @@ static void zimr_website_default_connection_handler( connection_t* connection ) 
 	zimr_connection_send_file( connection, connection->request.url, true );
 }
 
-void zimr_connection_handler( website_t* website, msg_packet_t packet ) {
+bool zimr_connection_handler( website_t* website, msg_packet_t packet ) {
 	website_data_t* website_data = website->udata;
 	conn_data_t* conn_data;
-
-	/*if ( !ztransport_read( transport ) ) {
-		// bad socket.
-		zerr( ZMERR_SOCK_CLOSED );
-		website_data->status = WS_STATUS_ENABLING;
-		zfd_clr( website_data->socket->sockfd );
-		zsocket_close( website_data->socket );
-		website_data->socket = NULL;
-		zfd_unblock( );
-		return;
-	}*/
 
 	int msgid = packet.msgid;
 	if ( PACK_IS_FIRST( &packet ) ) {
@@ -340,7 +352,12 @@ void zimr_connection_handler( website_t* website, msg_packet_t packet ) {
 
 	if ( PACK_IS_LAST( &packet ) ) {
 		conn_data->connection = connection_create( website, msgid, conn_data->data, conn_data->size );
-		free( conn_data->data );
+
+		if ( !conn_data->connection ) {
+			cleanup_connection( website_data, packet.msgid );
+			return false;
+		}
+
 		// start optimistically
 		response_set_status( &conn_data->connection->response, 200 );
 		// To ensure thier position at the top of the headers
@@ -359,6 +376,8 @@ void zimr_connection_handler( website_t* website, msg_packet_t packet ) {
 		else
 			zimr_website_default_connection_handler( conn_data->connection );
 	}
+
+	return true;
 }
 
 void zimr_connection_send_status( connection_t* connection ) {
@@ -450,16 +469,28 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 
 		// search for the directory default page
 		ptr = full_filepath + strlen( full_filepath );
-		for ( i = 0; i < website_data->default_pages_count; i++ ) {
-			strcpy( ptr, website_data->default_pages[ i ] );
+		for ( i = 0; i < list_size( &website_data->default_pages ); i++ ) {
+			strcpy( ptr, list_get_at( &website_data->default_pages, i ) );
 			if ( !stat( full_filepath, &file_stat ) )
 				break; // default file exists...break loop
 		}
 
-		if ( i == website_data->default_pages_count ) {
+		if ( i == list_size( &website_data->default_pages ) )
 			*ptr = 0;
-		}
 
+	}
+
+	// check if file is ignored
+	ptr = strrchr( full_filepath, '/' );
+	if ( ptr ) {
+		ptr++; // skip over '/'
+		for ( i = 0; i < list_size( &website_data->ignored_files ); i++ ) {
+			if ( strcmp( list_get_at( &website_data->ignored_files, i ), ptr ) == 0 ) {
+				// Does not exist.
+				zimr_connection_send_error( connection, 404 );
+				return;
+			}
+		}
 	}
 
 	// search for a page handler by file extension
@@ -631,8 +662,9 @@ void zimr_file_handler( int fd, connection_t* connection ) {
 	if ( ( n = read( fd, buffer, sizeof( buffer ) ) ) > 0 ) {
 		msg_push_data( website_data->msg_switch, connection->sockfd, buffer, n );
 
-		if ( msg_is_pending( website_data->msg_switch, connection->sockfd ) )
+		if ( msg_is_pending( website_data->msg_switch, connection->sockfd ) ) {
 			zfd_clr( fd, FILEREAD );
+		}
 	}
 
 	else {
@@ -689,20 +721,19 @@ void zimr_website_insert_default_page( website_t* website, const char* default_p
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	if ( pos < 0 )
-		pos = website_data->default_pages_count + pos + 1;
+		pos = list_size( &website_data->default_pages ) + pos + 1;
 
-	if ( pos > website_data->default_pages_count )
-		pos = website_data->default_pages_count;
+	if ( pos > list_size( &website_data->default_pages ) )
+		pos = list_size( &website_data->default_pages );
 	else if ( pos < 0 )
 		pos = 0;
 
-	int i;
-	for ( i = website_data->default_pages_count; i > pos; i-- ) {
-		strcpy( website_data->default_pages[ i ], website_data->default_pages[ i - 1 ] );
-	}
+	list_insert_at( &website_data->default_pages, default_page, pos );
+}
 
-	strcpy( website_data->default_pages[ pos ], default_page );
-	website_data->default_pages_count++;
+void zimr_website_insert_ignored_file( website_t* website, const char* ignored_file ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
+	list_append( &website_data->ignored_files, ignored_file );
 }
 
 bool zimr_open_request_log( ) {
@@ -724,8 +755,9 @@ void zimr_log_request( connection_t* connection ) {
 	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
 
 	header_t* header = headers_get_header( &connection->request.headers, "User-Agent" );
+	header_t* referer = headers_get_header( &connection->request.headers, "Referer" );
 
-	sprintf( buffer, "%s, %s, %s, %s, http://%s/%s, %d, %s\n",
+	sprintf( buffer, "%s, %s, %s, %s, http://%s/%s, %d, %s, %s\n",
 		now_str,
 		inet_ntoa( connection->ip ),
 		connection->hostname,
@@ -733,7 +765,8 @@ void zimr_log_request( connection_t* connection ) {
 		connection->website->url,
 		connection->request.url,
 		connection->response.http_status,
-		header ? header->value : ""
+		header ? header->value : "",
+		referer ? referer->value : ""
 	);
 
 	if ( write( reqlogfd, buffer, strlen( buffer ) ) == -1 ) {

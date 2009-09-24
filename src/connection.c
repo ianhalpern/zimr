@@ -67,95 +67,111 @@ const char httpstatus[ ][ 40 ] = {
 
 connection_t* connection_create( website_t* website, int sockfd, char* raw, size_t size ) {
 	connection_t* connection = (connection_t*) malloc( sizeof( connection_t ) );
-	char* tmp,* start = raw, urlbuf[ sizeof( connection->request.url ) ];
+	char* ptr,* tmp,* start = raw, urlbuf[ sizeof( connection->request.url ) ];
+
 	connection->website = website;
 	connection->sockfd  = sockfd;
 	connection->udata   = NULL;
 	connection->request.post_body = NULL;
 	connection->request.params = params_create( );
+	connection->response.headers.num = 0;
 
 	memcpy( &connection->ip, raw, sizeof( connection->ip ) );
 	raw += sizeof( connection->ip );
 	strncpy( connection->hostname, raw, sizeof( connection->hostname ) );
-	//printf( "%s %s %d\n", connection->hostname, inet_ntoa( connection->ip ), strlen( raw ) );
 	raw += strlen( raw ) + 1;
 
-	// type
+	// type /////////////////////////////////
 	if ( startswith( raw, HTTP_GET ) ) {
 		connection->request.type = HTTP_GET_TYPE;
-		raw += strlen( HTTP_GET ) + 1;
+		raw += strlen( HTTP_GET );
 	} else if ( startswith( raw, HTTP_POST ) ) {
 		connection->request.type = HTTP_POST_TYPE;
-		raw += strlen( HTTP_POST ) + 1;
-	} else return connection;
-
-	//printf( "type: \"%s\"\n", RTYPE( r.type ) );
-
-	// url
+		raw += strlen( HTTP_POST );
+	} else goto fail;
 	raw++; // skip over space
-	tmp = strnstr( raw, "?", size - ( raw - start ) );
-	if ( !tmp || tmp > strstr( raw, HTTP_HDR_ENDL ) ) tmp = strstr( raw, " " );
-	url_decode( raw, urlbuf, tmp - raw );
+	////////////////////////////////////////
+
+	// url /////////////////////////////////
+	if ( !( tmp = strstr( raw, HTTP_HDR_ENDL ) ) )
+		goto fail;
+
+	if ( !( ptr = strnstr( raw, "?", ( tmp - raw ) ) )
+	  && !( ptr = strnstr( raw, " ", ( tmp - raw ) ) ) )
+		goto fail;
+
+	url_decode( raw, urlbuf, ptr - raw );
 
 	// Skip over websites leading url.
 	// if website is "example.com/test/" and url is "/test/hi" "/test" gets removed
-	char* ptr = strstr( connection->website->url, "/" );
-	int i = 0;
-	if ( ptr ) {
-		i = ( strlen( connection->website->url ) + connection->website->url ) - ptr - 1;
-	}
+	tmp = strstr( connection->website->url, "/" );
+	if ( tmp )
+		tmp = &urlbuf[ ( connection->website->url + strlen( connection->website->url ) ) - tmp ];
+	else
+		tmp = urlbuf;
 
-	normalize( connection->request.url, &urlbuf[ i ] );
+	normalize( connection->request.url, tmp );
 
 	while ( startswith( connection->request.url, "../" ) ) {
 		strcpy( urlbuf, connection->request.url + 3 );
 		strcpy( connection->request.url, urlbuf );
 	}
-	//printf( "url: \"%s\"\n", r.url );
+	////////////////////////////////////////
 
-	// parse qstring params
-	if ( tmp[ 0 ] == '?' ) {
-		raw = tmp + 1;
-		tmp = strstr( tmp, " " );
-		params_parse_qs( &connection->request.params, raw, tmp - raw );
-		raw = tmp + 1;
-	} else
-		raw = strstr( tmp, " " ) + 1;
-
-	// version
-	raw += 5; // skips "HTTP/"
+	// parse qstring params ////////////////
 	tmp = strstr( raw, HTTP_HDR_ENDL );
-	memcpy( connection->http_version, raw, tmp - raw + 1 );
-	connection->http_version[ tmp - raw ] = '\0';
-	raw = tmp + 2;
+	if ( ptr[ 0 ] == '?' ) {
+		raw = ptr + 1;
+		if ( !( ptr = strnstr( ptr, " ", tmp - ptr ) ) )
+			goto fail;
+		params_parse_qs( &connection->request.params, raw, ptr - raw );
+	}
 
-	// headers
+	raw = ptr + 1;
+	////////////////////////////////////////
+
+	// version /////////////////////////////
+	if ( !startswith( raw, "HTTP/" ) )
+		goto fail;
+	raw += 5; // skips "HTTP/"
+	if ( !( ptr = strstr( raw, HTTP_HDR_ENDL ) ) )
+		goto fail;
+	strncpy( connection->http_version, raw, SMALLEST( ptr - raw, sizeof( connection->http_version ) - 1 ) );
+	connection->http_version[ SMALLEST( ptr - raw, sizeof( connection->http_version ) - 1 ) ] = '\0';
+	raw = ptr + strlen( HTTP_HDR_ENDL );
+	////////////////////////////////////////
+
+	// headers /////////////////////////////
 	connection->request.headers = headers_parse( raw );
+	////////////////////////////////////////
 
-	// cookies
+	// cookies /////////////////////////////
 	header_t* header = headers_get_header( &connection->request.headers, "Cookie" );
 	if ( header )
 		connection->cookies = cookies_parse( header->value );
 	else
 		connection->cookies = cookies_parse( "" );
+	////////////////////////////////////////
 
-	// body
-	if ( connection->request.type == HTTP_POST_TYPE ) {
-		if ( ( tmp = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
-			connection->request.post_body = (char*) malloc( size - (long) ( tmp - start ) );
-			memset( connection->request.post_body, 0, size - (long) ( tmp - start ) );
-			tmp += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-			strncpy( connection->request.post_body, tmp, size - (long) ( tmp - start ) );
-			header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
-			if ( header && startswith( header->value, "application/x-www-form-urlencoded" ) ) {
-				params_parse_qs( &connection->request.params, connection->request.post_body, size - (long) ( tmp - start ) );
-			}
+	// body ////////////////////////////////
+	if ( connection->request.type == HTTP_POST_TYPE
+	 && ( ptr = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
+		ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
+		connection->request.post_body = (char*) malloc( size - (long) ( ptr - start ) );
+		memset( connection->request.post_body, 0, size - (long) ( ptr - start ) );
+		strncpy( connection->request.post_body, ptr, size - (long) ( ptr - start ) );
+		header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
+		if ( header && startswith( header->value, "application/x-www-form-urlencoded" ) ) {
+			params_parse_qs( &connection->request.params, connection->request.post_body, size - (long) ( ptr - start ) );
 		}
 	}
-
-	connection->response.headers.num = 0;
+	////////////////////////////////////////
 
 	return connection;
+
+fail:
+	connection_free( connection );
+	return NULL;
 }
 
 void connection_free( connection_t* connection ) {
@@ -165,7 +181,7 @@ void connection_free( connection_t* connection ) {
 	free( connection );
 }
 
-const char *response_status( short c ) {
+const char* response_status( short c ) {
 	char status[ 4 ];
 	int i;
 	sprintf( status, "%d", c );

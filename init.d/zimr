@@ -19,15 +19,23 @@ exitval=0
 
 case "$1" in
 	start)
-		zimr state reload all
+		zimr start all states
 		exitval=$?
 	;;
 	stop)
-		zimr state unload all
+		zimr stop all states
+		exitval=$?
+	;;
+	restart)
+		zimr restart all states
+		exitval=$?
+	;;
+	remove)
+		zimr remove all states
 		exitval=$?
 	;;
 	*)
-		echo "Usage: /etc/init.d/zimr {start|stop}"
+		echo "Usage: /etc/init.d/zimr {start|stop|restart|remove}"
 		exit 1
 	;;
 esac

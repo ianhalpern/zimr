@@ -36,7 +36,7 @@ typedef struct {
 	char url[ PATH_MAX ];
 	char* post_body;
 	headers_t headers;
-	list_t params;
+	params_t params;
 } request_t;
 
 typedef struct {

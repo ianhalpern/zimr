@@ -62,10 +62,12 @@ static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
 			}
 
 			if ( msg_get( msg_switch, resp.msgid ) ) {
+
 				if ( msg_switch->packet_resp_recvd_event )
 					msg_switch->packet_resp_recvd_event( msg_switch, resp );
 
 				msg_accept_resp( msg_switch, resp );
+
 			}
 			break;
 
@@ -104,7 +106,6 @@ static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
 
 	// pop from queue and write
 	else {
-		//printf( "writing data\n" );
 		type = MSG_TYPE_PACK;
 		packet = msg_switch_pop_packet( msg_switch );
 		size = sizeof( packet );
@@ -142,26 +143,31 @@ static msg_packet_t* msg_packet_new( msg_switch_t* msg_switch, int msgid, int fl
 static void msg_upd( msg_switch_t* msg_switch, int msgid ) {
 	msg_t* msg = msg_get( msg_switch, msgid );
 
-	if ( FL_ISSET( msg->status, MSG_STAT_RECVRESP ) )
-		return;
+	//if ( FL_ISSET( msg->status, MSG_STAT_RECVRESP ) ) return;
 
 	FL_CLR( msg->status, MSG_STAT_NEW );
-
-	if ( FL_ISSET( msg->status, MSG_STAT_FINISHED ) ) {
-		msg_destroy( msg_switch, msgid );
-		return;
-	}
 
 	if ( list_size( &msg->queue ) && ( ((msg_packet_t*)list_get_at( &msg->queue, 0 ))->size == PACK_DATA_SIZE
 	  || FL_ISSET(((msg_packet_t*)list_get_at( &msg->queue, 0 ))->flags, PACK_FL_LAST ) ) ) {
 
-		if ( !FL_ISSET( msg->status, MSG_STAT_WRITE ) ) {
+		FL_SET( msg->status, MSG_STAT_PENDING );
+		if ( !FL_ISSET( msg->status, MSG_STAT_WRITE ) && !FL_ISSET( msg->status, MSG_STAT_RECVRESP ) ) {
 			FL_SET( msg->status, MSG_STAT_WRITE );
 			list_append( &msg_switch->pending_msgs, msg );
 		}
+
+	} else {
+		FL_CLR( msg->status, MSG_STAT_PENDING );
+		if ( FL_ISSET( msg->status, MSG_STAT_COMPLETE ) ) {
+			if ( !FL_ISSET( msg->status, MSG_STAT_RECVRESP ) )
+				msg_destroy( msg_switch, msgid );
+			else
+				FL_SET( msg->status, MSG_STAT_SENT );
+			return;
+		}
 	}
 
-	if ( msg_is_pending( msg_switch, msgid ) ) {
+	if ( FL_ISSET( msg->status, MSG_STAT_WRITE ) ) {
 		//printf( "ready to write packets\n" );
 		// add write to zfd and fire event
 		zfd_set( msg_switch->sockfd, writ_type, msg_switch );
@@ -203,6 +209,7 @@ msg_switch_t* msg_switch_new(
 }
 
 void msg_switch_destroy( msg_switch_t* msg_switch ) {
+
 	while ( list_size( &msg_switch->pending_resps ) )
 		free( list_fetch( &msg_switch->pending_resps ) );
 	list_destroy( &msg_switch->pending_resps );
@@ -242,6 +249,7 @@ msg_packet_t msg_switch_pop_packet( msg_switch_t* msg_switch ) {
 
 	msg_packet_t packet = *(msg_packet_t*) list_get_at( &msg->queue, 0 );
 	free( list_fetch( &msg->queue ) );
+	msg_upd( msg_switch, packet.msgid );
 	return packet;
 }
 
@@ -293,7 +301,7 @@ void msg_end( msg_switch_t* msg_switch, int msgid ) {
 	packet->flags |= PACK_FL_LAST;
 
 	msg_upd( msg_switch, msgid );
-	FL_SET( msg->status, MSG_STAT_FINISHED );
+	FL_SET( msg->status, MSG_STAT_COMPLETE );
 }
 
 void msg_kill( msg_switch_t* msg_switch, int msgid ) {
@@ -312,7 +320,7 @@ void msg_kill( msg_switch_t* msg_switch, int msgid ) {
 	}
 
 	msg_upd( msg_switch, msgid );
-	FL_SET( msg->status, MSG_STAT_FINISHED );
+	FL_SET( msg->status, MSG_STAT_COMPLETE );
 }
 
 void msg_accept_resp( msg_switch_t* msg_switch, msg_packet_resp_t resp ) {
@@ -337,7 +345,6 @@ void msg_push_data( msg_switch_t* msg_switch, int msgid, void* data, int size ) 
 		packet = list_get_at( &msg->queue, list_size( &msg->queue ) - 1 );
 
 	int chunk = 0;
-
 	while ( size ) {
 
 		if ( packet->size == PACK_DATA_SIZE )
@@ -366,11 +373,15 @@ msg_packet_resp_t msg_switch_pop_resp( msg_switch_t* msg_switch ) {
 }
 
 bool msg_is_pending( msg_switch_t* msg_switch, int msgid ) {
-	return FL_ISSET( msg_get( msg_switch, msgid )->status, MSG_STAT_WRITE );
+	return FL_ISSET( msg_get( msg_switch, msgid )->status, MSG_STAT_PENDING );
 }
 
-bool msg_is_finished( msg_switch_t* msg_switch, int msgid ) {
-	return FL_ISSET( msg_get( msg_switch, msgid )->status, MSG_STAT_FINISHED );
+bool msg_is_complete( msg_switch_t* msg_switch, int msgid ) {
+	return FL_ISSET( msg_get( msg_switch, msgid )->status, MSG_STAT_COMPLETE );
+}
+
+bool msg_is_sent( msg_switch_t* msg_switch, int msgid ) {
+	return FL_ISSET( msg_get( msg_switch, msgid )->status, MSG_STAT_SENT );
 }
 
 bool msg_exists( msg_switch_t* msg_switch, int msgid ) {

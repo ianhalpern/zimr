@@ -80,7 +80,7 @@ int daemon_start( int flags ) {
 	if ( !FL_ISSET( flags, D_NOLOCKFILE ) ) {
 		pid_t pid;
 		if ( !FL_ISSET( flags, D_NOLOCKCHECK ) && ( pid = readlockfile( ) ) ) {// lockfile previously set
-			if ( kill( pid, SIGTERM ) == 0 ) { // process running
+			if ( kill( pid, 0 ) == 0 ) { // process running
 				printf( "failed: daemon already running.\n" );
 				return 0;
 			} else {
