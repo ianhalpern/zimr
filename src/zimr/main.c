@@ -277,7 +277,7 @@ bool state_function( uid_t uid, char type ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( !application_function( uid, app->exec, app->dir, NULL, type ) ) {
+		if ( !application_function( uid, app->exec, app->dir, &app->args, type ) ) {
 			retval = false;
 			goto quit;
 		}
@@ -288,7 +288,7 @@ quit:
 	return retval;
 }
 
-bool state_all_function( uid_t uid, char type ) {
+bool state_all_function( char type ) {
 	/* yea...this whole bit is a hack */
 	char line[ 64 ];
 	FILE* fp;
@@ -463,27 +463,27 @@ void state_status_cmd( int optc, char* optv[ ] ) {
 }
 
 void state_start_all_cmd( int optc, char* optv[ ] ) {
-	if ( !state_all_function( getuid( ), START ) )
+	if ( !state_all_function( START ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_stop_all_cmd( int optc, char* optv[ ] ) {
-	if ( !state_all_function( getuid( ), STOP ) )
+	if ( !state_all_function( STOP ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_restart_all_cmd( int optc, char* optv[ ] ) {
-	if ( !state_all_function( getuid( ), RESTART ) )
+	if ( !state_all_function( RESTART ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_remove_all_cmd( int optc, char* optv[ ] ) {
-	if ( !state_all_function( getuid( ), REMOVE ) )
+	if ( !state_all_function( REMOVE ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_status_all_cmd( int optc, char* optv[ ] ) {
-	if ( !state_all_function( getuid( ), STATUS ) )
+	if ( !state_all_function( STATUS ) )
 		exit( EXIT_FAILURE );
 }
 
