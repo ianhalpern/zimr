@@ -35,12 +35,39 @@
 
 msg_switch_t* msg_switch;
 
-void packet_resp_recvd_event( msg_switch_t* msg_switch, msg_packet_resp_t resp, void* udata ) {
-	zfd_reset( resp.msgid, EXREAD );
-}
+void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
+	switch ( event.type ) {
+		case MSG_EVT_NEW:
+			zfd_set( event.data.msgid, EXREAD, NULL );
+			break;
+		case MSG_EVT_COMPLETE:
+			zfd_clr( event.data.msgid, EXREAD );
+			break;
+		case MSG_EVT_DESTROY:
+			zfd_clr( event.data.msgid, EXREAD );
+			break;
+		case MSG_EVT_RECV_KILL:
+			zfd_clr( event.data.msgid, EXWRIT );
+			close( event.data.msgid );
+			break;
+		case MSG_EVT_RECV_PACK:
+			zfd_set( event.data.packet->msgid, EXWRIT, memdup( event.data.packet, sizeof( msg_packet_t ) ) );
+			break;
+		case MSG_EVT_BUF_FULL:
+			printf( "%d full\n", event.data.msgid );
+			zfd_clr( event.data.msgid, EXREAD );
+			break;
+		case MSG_EVT_BUF_EMPTY:
+			printf( "%d empty\n", event.data.msgid );
+			zfd_set( event.data.msgid, EXREAD, NULL );
+			break;
 
-void packet_recvd_event( msg_switch_t* msg_switch, msg_packet_t packet ) {
-	zfd_set( packet.msgid, EXWRIT, memdup( &packet, sizeof( packet ) ) );
+		case MSG_SWITCH_EVT_NEW:
+		case MSG_EVT_RECV_RESP:
+		case MSG_SWITCH_EVT_DESTROY:
+		case MSG_SWITCH_EVT_IO_FAILED:
+			break;
+	}
 }
 
 void inlisn( int sockfd, void* udata ) {
@@ -53,7 +80,7 @@ void inlisn( int sockfd, void* udata ) {
 		return;
 	}
 
-	msg_switch = msg_switch_new( clientfd, packet_resp_recvd_event, packet_recvd_event, NULL );
+	msg_switch = msg_switch_new( clientfd, msg_event_handler );
 }
 
 void exlisn( int sockfd, void* udata ) {
@@ -66,29 +93,37 @@ void exlisn( int sockfd, void* udata ) {
 		return;
 	}
 
-	msg_new( msg_switch, newsockfd, NULL );
-	zfd_set( newsockfd, EXREAD, NULL );
+	msg_new( msg_switch, newsockfd );
 }
 
 void exread( int sockfd, void* udata ) {
 	char buf[ 2048 ];
 	int n = read( sockfd, buf, sizeof( buf ) );
 
-	if ( n <= 0 ) {
-		
-	}
-	// push onto queue for sockfd
-	msg_push_data( msg_switch, sockfd, buf, n );
+	if ( n <= 0 ) puts( "exread message end" );
 
-	if ( msg_is_pending( msg_switch, sockfd ) )
-		zfd_clr( sockfd, EXREAD );
+	if ( n == 0 )
+		msg_end( msg_switch, sockfd );
+	else if ( n == -1 )
+		msg_kill( msg_switch, sockfd );
+	else
+		// push onto queue for sockfd
+		msg_push_data( msg_switch, sockfd, buf, n );
 }
 
 void exwrit( int sockfd, msg_packet_t* packet ) {
 	// pop from queue and write, remove if none to write left
-	write( sockfd, packet->data, packet->size );
-	msg_switch_send_resp( msg_switch, sockfd, MSG_PACK_RESP_OK );
+	int n = write( sockfd, packet->data, packet->size );
+	if ( n <= 0 )
+		msg_switch_send_resp( msg_switch, sockfd, MSG_PACK_RESP_FAIL );
+	else
+		msg_switch_send_resp( msg_switch, sockfd, MSG_PACK_RESP_OK );
+
+	if ( PACK_IS_LAST( packet ) )
+		close( sockfd );
+
 	zfd_clr( sockfd, EXWRIT );
+	free( packet );
 }
 
 int main( int argc, char* argv[ ] ) {

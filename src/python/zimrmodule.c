@@ -26,6 +26,7 @@
 #include "zimr.h"
 
 static PyObject* m;
+
 /********** START OF pyzimr_response_t *******/
 /**********************************************/
 

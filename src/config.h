@@ -31,6 +31,9 @@
 #define FL_SET( flags, flag ) ( (flags) |= (flag) )
 #define FL_CLR( flags, flag ) ( (flags) ^= (flags)&(flag) )
 
+#define CLR 0
+#define SET 1
+
 #define SMALLEST( X, Y ) ( (X)<=(Y) ? (X) : (Y) )
 
 #define D_LOCKFILE_PATH "/tmp/zimr-proxy.pid" // used by daemon.c

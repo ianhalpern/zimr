@@ -28,18 +28,32 @@
 #include <string.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <stdarg.h>
 
 #include "config.h"
 #include "simclist.h"
 #include "zfildes.h"
 
-#define MSG_STAT_NEW      0x1
-#define MSG_STAT_WRITE    0x2
-#define MSG_STAT_READ     0x4
-#define MSG_STAT_PENDING  0x8
-#define MSG_STAT_COMPLETE 0x10
-#define MSG_STAT_RECVRESP 0x20
-#define MSG_STAT_SENT     0x40
+#define MSG_STAT_NEW           0x1
+#define MSG_STAT_WRITE_PACK    0x2
+#define MSG_STAT_PENDING_PACKS 0x4
+#define MSG_STAT_COMPLETE      0x8
+#define MSG_STAT_READ_RESP     0x10
+
+#define MSG_EVT_NEW        0x1
+#define MSG_EVT_DESTROY    0x2
+#define MSG_EVT_COMPLETE   0x3
+#define MSG_EVT_RECV_KILL  0x4
+#define MSG_EVT_RECV_RESP  0x5
+#define MSG_EVT_RECV_PACK  0x6
+#define MSG_EVT_RECV_FIRST 0x7
+#define MSG_EVT_RECV_LAST  0x8
+#define MSG_EVT_BUF_FULL   0x9
+#define MSG_EVT_BUF_EMPTY  0xa
+
+#define MSG_SWITCH_EVT_NEW       0x81
+#define MSG_SWITCH_EVT_DESTROY   0x82
+#define MSG_SWITCH_EVT_IO_FAILED 0x83
 
 #define PACK_DATA_SIZE 4048
 
@@ -74,25 +88,33 @@ typedef struct {
 	list_t queue;
 } msg_t;
 
+typedef struct {
+	int type;
+	union {
+		int msgid;
+		msg_packet_t* packet;
+		msg_packet_resp_t* resp;
+	} data;
+} msg_event_t;
+
 typedef struct msg_switch {
 	int sockfd;
 	list_t pending_resps;
 	list_t pending_msgs;
 	msg_t* msgs[ FD_SETSIZE * 2 ];
 
+	msg_packet_t read_packet;
+	int read_packet_size;
+
 	// events
-	void (*packet_resp_recvd_event)( struct msg_switch* msg_switch, msg_packet_resp_t resp );
-	void (*packet_recvd_event)( struct msg_switch* msg_switch, msg_packet_t packet );
-	void (*error_event)( struct msg_switch*, char error );
+	void (*event_handler)( struct msg_switch*, msg_event_t event );
 } msg_switch_t;
 
 void msg_switch_init( int read_type, int writ_type );
 
 msg_switch_t* msg_switch_new(
 	int sockfd,
-	void (*packet_resp_recvd_event)( msg_switch_t*, msg_packet_resp_t ),
-	void (*packet_recvd_event)( msg_switch_t*, msg_packet_t ),
-	void (*error_event)( msg_switch_t*, char )
+	void (*event_handler)( struct msg_switch*, msg_event_t event )
 );
 void msg_switch_destroy( msg_switch_t* msg_switch );
 bool msg_switch_has_pending_msgs( msg_switch_t* msg_switch );

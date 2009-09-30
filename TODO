@@ -8,11 +8,11 @@ x*fix bug: applications do not reattach to proxy when proxy restarts
 x*fix bug: "sudo /etc/init.d/zimr-proxy start" kills already running daemon
 x*fix bug: problems when pid in .zimr.state file equals zero
 x*revamp and finish all zimr command line options
-x*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
 x*update lists to use simclist data structure
 x*ignore files
 x*update python-zimr bindings error checking and methods/member/etc. descriptions
 
+*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
 *error files/website handling
 *make page handler regular and python folder
 *look through and update syslog/stdio logging
@@ -49,3 +49,4 @@ x*update python-zimr bindings error checking and methods/member/etc. description
 *wildcard url's
 *make a pass/fail bug test script
 *make python embedded version
+*add support for UPnP to open ports in router

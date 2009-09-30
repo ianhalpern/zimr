@@ -374,10 +374,13 @@ void packet_recvd_event( msg_switch_t* msg_switch, msg_packet_t packet ) {
 			syslog( LOG_WARNING, "received a command that is to long...ignoring." );
 
 	} else {
-		connections[ packet.msgid ]->pending_packet = memdup( &packet, sizeof( packet ) );
-		/* if msgid is zero or greater it refers to a socket file
-		   descriptor that the message should be routed to. */
-		zfd_set( packet.msgid, EXWRIT, NULL );
+		if ( !FL_ISSET( packet.flags, PACK_FL_KILL ) ) {
+			connections[ packet.msgid ]->pending_packet = memdup( &packet, sizeof( packet ) );
+			/* if msgid is zero or greater it refers to a socket file
+			   descriptor that the message should be routed to. */
+			zfd_set( packet.msgid, EXWRIT, NULL );
+		} else
+			cleanup_connection( packet.msgid );
 	}
 }
 
@@ -467,8 +470,11 @@ cleanup:
 
 	ptr = buffer;
 
-	if ( conn_data->website_sockfd != -1 )
+	if ( conn_data->website_sockfd != -1 ) {
 		website = website_get_by_sockfd( conn_data->website_sockfd );
+		if ( msg_is_complete( ((website_data_t*)website->udata)->msg_switch, sockfd ) )
+			return;
+	}
 
 	else  {
 		/* If req_info is NULL this is the start of a request and the
@@ -486,12 +492,12 @@ cleanup:
 		/* Find website for request from HTTP header */
 		char urlbuf[ PACK_DATA_SIZE ];
 		if ( !get_url_from_http_header( buffer, urlbuf, sizeof( urlbuf ) ) ) {
-			syslog( LOG_WARNING, "external_connection_handler: no url found in http request headers: %s %s",
+			syslog( LOG_WARNING, "exread: no url found in http request headers: %s %s",
 			  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "" );
 			goto cleanup;
 		}
 		if ( !( website = website_find_by_url( urlbuf ) ) ) {
-			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
+			syslog( LOG_WARNING, "exread: no website to service request: %s %s %s",
 			  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
 			goto cleanup;
 		}
@@ -505,7 +511,7 @@ cleanup:
 		website_data_t* website_data = website->udata;
 
 		if ( website_data->exlisnfd != conn_data->exlisnfd ) {
-			syslog( LOG_WARNING, "external_connection_handler: no website to service request: %s %s %s",
+			syslog( LOG_WARNING, "exread: no website to service request: %s %s %s",
 			  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
 			goto cleanup;
 		}
@@ -513,7 +519,7 @@ cleanup:
 		if ( !strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) {
 			/* If the end of the headers was not found the request was either
 			   malformatted or too long, DO NOT send to website. */
-			syslog( LOG_WARNING, "external_connection_handler: headers to long" );
+			syslog( LOG_WARNING, "exread: headers to long" );
 			goto cleanup;
 		}
 
@@ -556,8 +562,8 @@ cleanup:
 		msg_end( website_data->msg_switch, sockfd );
 	}
 
-	if ( msg_is_pending( website_data->msg_switch, sockfd ) )
-		zfd_clr( sockfd, EXREAD );
+//	if ( msg_is_pending( website_data->msg_switch, sockfd ) )
+//		zfd_clr( sockfd, EXREAD );
 }
 
 void exwrit( int sockfd, void* udata ) {
@@ -569,16 +575,14 @@ void exwrit( int sockfd, void* udata ) {
 
 	zfd_clr( sockfd, EXWRIT );
 
-	if ( !FL_ISSET( conn_data->pending_packet->flags, PACK_FL_KILL ) ) {
-		n = write( sockfd, conn_data->pending_packet->data, conn_data->pending_packet->size );
+	n = write( sockfd, conn_data->pending_packet->data, conn_data->pending_packet->size );
 
-		if ( n != conn_data->pending_packet->size ) {
-			if ( n == -1 )
-				syslog( LOG_ERR, "internal_connection_handler: write failed: %s", strerror( errno ) );
-			status = MSG_PACK_RESP_FAIL;
-		}
-		msg_switch_send_resp( website_data->msg_switch, sockfd, status );
+	if ( n != conn_data->pending_packet->size ) {
+		if ( n == -1 )
+			syslog( LOG_ERR, "exwrit: write failed: %s", strerror( errno ) );
+		status = MSG_PACK_RESP_FAIL;
 	}
+	msg_switch_send_resp( website_data->msg_switch, sockfd, status );
 
 
 	if ( PACK_IS_LAST( conn_data->pending_packet ) || n != conn_data->pending_packet->size )
