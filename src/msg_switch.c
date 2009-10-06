@@ -50,17 +50,18 @@ static void msg_switch_event( msg_switch_t* msg_switch, int type, ... ) {
 		case MSG_EVT_NEW:
 		case MSG_EVT_DESTROY:
 		case MSG_EVT_COMPLETE:
-		case MSG_EVT_RECV_KILL:
-		case MSG_EVT_RECV_LAST:
-		case MSG_EVT_RECV_FIRST:
+		case MSG_EVT_SENT:
+		case MSG_RECV_EVT_KILL:
+		case MSG_RECV_EVT_LAST:
+		case MSG_RECV_EVT_FIRST:
 		case MSG_EVT_BUF_FULL:
 		case MSG_EVT_BUF_EMPTY:
 			event.data.msgid = va_arg( ap, int );
 			break;
-		case MSG_EVT_RECV_RESP:
+		case MSG_RECV_EVT_RESP:
 			event.data.resp = va_arg( ap, msg_packet_resp_t* );
 			break;
-		case MSG_EVT_RECV_PACK:
+		case MSG_RECV_EVT_PACK:
 			event.data.packet = va_arg( ap, msg_packet_t* );
 			break;
 		case MSG_SWITCH_EVT_NEW:
@@ -136,8 +137,10 @@ static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, i
 			case MSG_STAT_READ_RESP:
 				if ( FL_ISSET( msg->status, MSG_STAT_PENDING_PACKS ) )
 					msg_update_status( msg_switch, msgid, SET, MSG_STAT_WRITE_PACK );
-				else if ( FL_ISSET( msg->status, MSG_STAT_COMPLETE ) )
+				else if ( FL_ISSET( msg->status, MSG_STAT_COMPLETE ) ) {
+					msg_switch_event( msg_switch, MSG_EVT_SENT, msgid );
 					msg_destroy( msg_switch, msgid );
+				}
 				break;
 
 			case MSG_STAT_COMPLETE:
@@ -148,7 +151,7 @@ static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, i
 }
 
 static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* info ) {
-	printf( "msg_switch_failed(): %d %s\n", code, info );
+	//printf( "msg_switch_failed(): %d %s\n", code, info );
 	zfd_clr( msg_switch->sockfd, read_type );
 	zfd_clr( msg_switch->sockfd, writ_type );
 
@@ -175,11 +178,11 @@ static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
 				msg_switch_failed( msg_switch, 0, "msg_switch_read(): read resp" );
 				return;
 			}
-			printf( "[%d] %04d: got response, status %d\n", resp.msgid, n_print++, resp.status );
+			//printf( "[%d] %04d: got response, status %d\n", resp.msgid, n_print++, resp.status );
 
 			if ( msg_get( msg_switch, resp.msgid ) ) {
 
-				msg_switch_event( msg_switch, MSG_EVT_RECV_RESP, &resp );
+				msg_switch_event( msg_switch, MSG_RECV_EVT_RESP, &resp );
 
 				msg_accept_resp( msg_switch, resp );
 			}
@@ -195,22 +198,20 @@ static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
 
 			msg_switch->read_packet_size += n;
 			if ( msg_switch->read_packet_size == sizeof( msg_packet_t ) ) {
-				printf( "[%d] %04d: got complete packet, flags %d\n", msg_switch->read_packet.msgid, n_print++, msg_switch->read_packet.flags );
+				//printf( "[%d] %04d: got complete packet, flags %x\n", msg_switch->read_packet.msgid, n_print++, msg_switch->read_packet.flags );
 				msg_switch->read_packet_size = 0;
 
 				if ( !FL_ISSET( msg_switch->read_packet.flags, PACK_FL_KILL ) ) {
 					if ( FL_ISSET( msg_switch->read_packet.flags, PACK_FL_FIRST ) )
-						msg_switch_event( msg_switch, MSG_EVT_RECV_FIRST, msg_switch->read_packet.msgid );
+						msg_switch_event( msg_switch, MSG_RECV_EVT_FIRST, msg_switch->read_packet.msgid );
 
-					msg_switch_event( msg_switch, MSG_EVT_RECV_PACK, &msg_switch->read_packet );
+					msg_switch_event( msg_switch, MSG_RECV_EVT_PACK, &msg_switch->read_packet );
 
-					if ( FL_ISSET( msg_switch->read_packet.flags, PACK_FL_LAST ) )
-						msg_switch_event( msg_switch, MSG_EVT_RECV_LAST, msg_switch->read_packet.msgid );
 				} else
-					msg_switch_event( msg_switch, MSG_EVT_RECV_KILL, msg_switch->read_packet.msgid );
+					msg_switch_event( msg_switch, MSG_RECV_EVT_KILL, msg_switch->read_packet.msgid );
 
-			} else
-				printf( "[%d] %04d: got partial packet\n", msg_switch->read_packet.msgid, n_print++ );
+			}// else
+			//	printf( "[%d] %04d: got partial packet\n", msg_switch->read_packet.msgid, n_print++ );
 			break;
 	}
 }
@@ -229,7 +230,7 @@ static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
 		resp = msg_switch_pop_resp( msg_switch );
 		size = sizeof( resp );
 		data = &resp;
-		printf( "[%d] %04d: sending read response, status %d\n", resp.msgid, n_print++, resp.status );
+		//printf( "[%d] %04d: sending read response, status %d\n", resp.msgid, n_print++, resp.status );
 	}
 
 	// pop from queue and write
@@ -238,7 +239,7 @@ static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
 		packet = msg_switch_pop_packet( msg_switch );
 		size = sizeof( packet );
 		data = &packet;
-		printf( "[%d] %04d: sending packet, flags %d\n", packet.msgid, n_print++, packet.flags );
+		//printf( "[%d] %04d: sending packet, flags %x\n", packet.msgid, n_print++, packet.flags );
 	}
 
 	if ( write( sockfd, &type, sizeof( type ) ) != sizeof( type ) ) {
@@ -331,25 +332,30 @@ void msg_switch_destroy( msg_switch_t* msg_switch ) {
 	free( msg_switch );
 }
 
-void msg_switch_send_resp( msg_switch_t* msg_switch, int msgid, char status ) {
+void msg_switch_send_pack_resp( msg_switch_t* msg_switch, msg_packet_t* packet, char status ) {
 	msg_packet_resp_t* resp = (msg_packet_resp_t*) malloc( sizeof( msg_packet_resp_t ) );
 	memset( resp, 0, sizeof( msg_packet_resp_t ) ); // initializes all bytes including padded bytes
 
-	resp->msgid = msgid;
+	resp->msgid = packet->msgid;
 	resp->status = status;
 
 	list_append( &msg_switch->pending_resps, resp );
 	//printf( "ready to write resps\n" );
 	// add write to zfd and fire event
 	zfd_set( msg_switch->sockfd, writ_type, msg_switch );
+
+	if ( FL_ISSET( packet->flags, PACK_FL_LAST ) )
+		msg_switch_event( msg_switch, MSG_RECV_EVT_LAST, packet->msgid );
 }
 
 msg_packet_t msg_switch_pop_packet( msg_switch_t* msg_switch ) {
 	msg_t* msg = list_fetch( &msg_switch->pending_msgs );
-	msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_READ_RESP );
 
 	msg_packet_t packet = *(msg_packet_t*) list_get_at( &msg->queue, 0 );
 	free( list_fetch( &msg->queue ) );
+
+	if ( !FL_ISSET( packet.flags, PACK_FL_KILL ) )
+		msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_READ_RESP );
 
 	if ( !msg_has_available_packets( msg_switch, msg->msgid ) )
 		msg_update_status( msg_switch, msg->msgid, CLR, MSG_STAT_PENDING_PACKS );

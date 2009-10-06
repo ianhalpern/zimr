@@ -46,11 +46,11 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 		case MSG_EVT_DESTROY:
 			zfd_clr( event.data.msgid, EXREAD );
 			break;
-		case MSG_EVT_RECV_KILL:
+		case MSG_RECV_EVT_KILL:
 			zfd_clr( event.data.msgid, EXWRIT );
 			close( event.data.msgid );
 			break;
-		case MSG_EVT_RECV_PACK:
+		case MSG_RECV_EVT_PACK:
 			zfd_set( event.data.packet->msgid, EXWRIT, memdup( event.data.packet, sizeof( msg_packet_t ) ) );
 			break;
 		case MSG_EVT_BUF_FULL:
@@ -63,7 +63,7 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 			break;
 
 		case MSG_SWITCH_EVT_NEW:
-		case MSG_EVT_RECV_RESP:
+		case MSG_RECV_EVT_RESP:
 		case MSG_SWITCH_EVT_DESTROY:
 		case MSG_SWITCH_EVT_IO_FAILED:
 			break;
@@ -115,9 +115,9 @@ void exwrit( int sockfd, msg_packet_t* packet ) {
 	// pop from queue and write, remove if none to write left
 	int n = write( sockfd, packet->data, packet->size );
 	if ( n <= 0 )
-		msg_switch_send_resp( msg_switch, sockfd, MSG_PACK_RESP_FAIL );
+		msg_switch_send_pack_resp( msg_switch, packet, MSG_PACK_RESP_FAIL );
 	else
-		msg_switch_send_resp( msg_switch, sockfd, MSG_PACK_RESP_OK );
+		msg_switch_send_pack_resp( msg_switch, packet, MSG_PACK_RESP_OK );
 
 	if ( PACK_IS_LAST( packet ) )
 		close( sockfd );

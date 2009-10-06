@@ -43,17 +43,19 @@
 #define MSG_EVT_NEW        0x1
 #define MSG_EVT_DESTROY    0x2
 #define MSG_EVT_COMPLETE   0x3
-#define MSG_EVT_RECV_KILL  0x4
-#define MSG_EVT_RECV_RESP  0x5
-#define MSG_EVT_RECV_PACK  0x6
-#define MSG_EVT_RECV_FIRST 0x7
-#define MSG_EVT_RECV_LAST  0x8
-#define MSG_EVT_BUF_FULL   0x9
-#define MSG_EVT_BUF_EMPTY  0xa
+#define MSG_EVT_SENT       0x4
+#define MSG_EVT_BUF_FULL   0x5
+#define MSG_EVT_BUF_EMPTY  0x6
 
-#define MSG_SWITCH_EVT_NEW       0x81
-#define MSG_SWITCH_EVT_DESTROY   0x82
-#define MSG_SWITCH_EVT_IO_FAILED 0x83
+#define MSG_RECV_EVT_KILL  0x20
+#define MSG_RECV_EVT_RESP  0x21
+#define MSG_RECV_EVT_PACK  0x22
+#define MSG_RECV_EVT_FIRST 0x23
+#define MSG_RECV_EVT_LAST  0x24
+
+#define MSG_SWITCH_EVT_NEW       0x40
+#define MSG_SWITCH_EVT_DESTROY   0x41
+#define MSG_SWITCH_EVT_IO_FAILED 0x42
 
 #define PACK_DATA_SIZE 4048
 
@@ -120,7 +122,7 @@ void msg_switch_destroy( msg_switch_t* msg_switch );
 bool msg_switch_has_pending_msgs( msg_switch_t* msg_switch );
 bool msg_switch_has_pending_resps( msg_switch_t* msg_switch );
 bool msg_switch_is_pending( msg_switch_t* msg_switch );
-void msg_switch_send_resp( msg_switch_t* msg_switch, int msgid, char status );
+void msg_switch_send_pack_resp( msg_switch_t* msg_switch, msg_packet_t* packet, char status );
 
 msg_packet_resp_t msg_switch_pop_resp( msg_switch_t* msg_switch );
 msg_packet_t msg_switch_pop_packet( msg_switch_t* msg_switch );

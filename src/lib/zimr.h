@@ -76,7 +76,7 @@ int  zimr_cnf_load( char* cnf_path );
 void zimr_start( );
 void zimr_shutdown( );
 
-bool zimr_connection_handler( website_t* website, msg_packet_t packet );
+bool zimr_connection_handler( website_t* website, msg_packet_t* packet );
 void zimr_file_handler( int fd, connection_t* connection );
 
 website_t* zimr_website_create( char* url );

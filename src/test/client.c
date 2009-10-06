@@ -54,22 +54,22 @@ bool packet_recvd( msg_packet_t* packet ) {
 
 void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 	switch ( event.type ) {
-		case MSG_EVT_RECV_LAST:
+		case MSG_RECV_EVT_LAST:
 			// rename
 			break;
-		case MSG_EVT_RECV_KILL:
+		case MSG_RECV_EVT_KILL:
 			// remove
 			break;
-		case MSG_EVT_RECV_PACK:
+		case MSG_RECV_EVT_PACK:
 			if ( packet_recvd( event.data.packet ) )
-				msg_switch_send_resp( msg_switch, event.data.packet->msgid, MSG_PACK_RESP_OK );
+				msg_switch_send_pack_resp( msg_switch, event.data.packet, MSG_PACK_RESP_OK );
 			else
-				msg_switch_send_resp( msg_switch, event.data.packet->msgid, MSG_PACK_RESP_FAIL );
+				msg_switch_send_pack_resp( msg_switch, event.data.packet, MSG_PACK_RESP_FAIL );
 			break;
 		case MSG_EVT_NEW:
 		case MSG_EVT_DESTROY:
 		case MSG_EVT_COMPLETE:
-		case MSG_EVT_RECV_RESP:
+		case MSG_RECV_EVT_RESP:
 		case MSG_EVT_BUF_FULL:
 		case MSG_EVT_BUF_EMPTY:
 		case MSG_SWITCH_EVT_NEW:

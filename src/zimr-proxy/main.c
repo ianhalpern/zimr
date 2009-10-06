@@ -66,7 +66,7 @@ void exlisn( int sockfd, void* udata );
 void exread( int sockfd, void* udata );
 void exwrit( int sockfd, void* udata );
 
-void command_handler( msg_switch_t* msg_switch, msg_packet_t packet );
+void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet );
 void cleanup_connection( int sockfd );
 
 void signal_handler( int sig ) {
@@ -355,40 +355,62 @@ bool start_website( char* url, msg_switch_t* msg_switch ) {
 
 // Handlers ////////////////////////////////////////////
 
-void packet_resp_recvd_event( msg_switch_t* msg_switch, msg_packet_resp_t resp ) {
-	if ( resp.status == MSG_PACK_RESP_OK && !msg_is_complete( msg_switch, resp.msgid ) )
-		zfd_reset( resp.msgid, EXREAD );
-	else if ( resp.status == MSG_PACK_RESP_FAIL )
-		cleanup_connection( resp.msgid );
-}
+void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
+	switch ( event.type ) {
+		case MSG_EVT_NEW:
+			zfd_set( event.data.msgid, EXREAD, NULL );
+			break;
+		case MSG_EVT_COMPLETE:
+		case MSG_EVT_DESTROY:
+			zfd_clr( event.data.msgid, EXREAD );
+			break;
+		case MSG_RECV_EVT_LAST:
+		case MSG_RECV_EVT_KILL:
+			if ( event.data.msgid >= 0 )
+				cleanup_connection( event.data.msgid );
+			break;
+		case MSG_RECV_EVT_PACK:
+			if ( event.data.packet->msgid < 0 ) {
+				/* If the msgid is less than zero, it refers to a command and
+				   the message should not be routed to a file descriptor. */
 
-void packet_recvd_event( msg_switch_t* msg_switch, msg_packet_t packet ) {
-	if ( packet.msgid < 0 ) {
-		/* If the msgid is less than zero, it refers to a command and
-		   the message should not be routed to a file descriptor. */
+				// the entire command must fit inside one transport
+				if ( PACK_IS_FIRST( event.data.packet ) && PACK_IS_LAST( event.data.packet ) )
+					command_handler( msg_switch, event.data.packet );
+				else
+					syslog( LOG_WARNING, "received a command that is to long...ignoring." );
 
-		// the entire command must fit inside one transport
-		if ( PACK_IS_FIRST( &packet ) && PACK_IS_LAST( &packet ) )
-			command_handler( msg_switch, packet );
-		else
-			syslog( LOG_WARNING, "received a command that is to long...ignoring." );
-
-	} else {
-		if ( !FL_ISSET( packet.flags, PACK_FL_KILL ) ) {
-			connections[ packet.msgid ]->pending_packet = memdup( &packet, sizeof( packet ) );
-			/* if msgid is zero or greater it refers to a socket file
-			   descriptor that the message should be routed to. */
-			zfd_set( packet.msgid, EXWRIT, NULL );
-		} else
-			cleanup_connection( packet.msgid );
+			} else {
+				/* if msgid is zero or greater it refers to a socket file
+				   descriptor that the message should be routed to. */
+				connections[ event.data.packet->msgid ]->pending_packet = memdup( event.data.packet, sizeof( msg_packet_t ) );
+				zfd_set( event.data.packet->msgid, EXWRIT, NULL );
+			}
+			break;
+		case MSG_RECV_EVT_RESP:
+			if ( event.data.resp->status == MSG_PACK_RESP_OK )
+				zfd_reset( event.data.resp->msgid, EXREAD );
+			else if ( event.data.resp->status == MSG_PACK_RESP_FAIL ) {
+				cleanup_connection( event.data.msgid );
+				msg_destroy( msg_switch, event.data.msgid );
+			}
+			break;
+		case MSG_EVT_BUF_FULL:
+			zfd_clr( event.data.msgid, EXREAD );
+			break;
+		case MSG_EVT_BUF_EMPTY:
+			zfd_set( event.data.msgid, EXREAD, NULL );
+			break;
+		case MSG_SWITCH_EVT_IO_FAILED:
+			close( msg_switch->sockfd );
+			if ( website_get_by_sockfd( msg_switch->sockfd ) )
+				remove_website( msg_switch );
+			break;
+		case MSG_RECV_EVT_FIRST:
+		case MSG_SWITCH_EVT_NEW:
+		case MSG_SWITCH_EVT_DESTROY:
+			break;
 	}
-}
-
-void error_event( msg_switch_t* msg_switch, char code ) {
-	website_t* website = website_get_by_sockfd( msg_switch->sockfd );
-	close( msg_switch->sockfd );
-	if ( website )
-		remove_website( msg_switch );
 }
 
 void inlisn( int sockfd, void* udata ) {
@@ -402,7 +424,7 @@ void inlisn( int sockfd, void* udata ) {
 		return;
 	}
 
-	msg_switch_new( insockfd, packet_resp_recvd_event, packet_recvd_event, error_event );
+	msg_switch_new( insockfd, msg_event_handler );
 }
 
 void exlisn( int sockfd, void* udata ) {
@@ -434,19 +456,13 @@ void exlisn( int sockfd, void* udata ) {
 
 void cleanup_connection( int sockfd ) {
 	conn_data_t* conn_data = connections[ sockfd ];
-	website_t* website;
-
-	if ( ( website = website_get_by_sockfd( conn_data->website_sockfd ) )
-	  && msg_exists( ((website_data_t*)website->udata)->msg_switch, sockfd) ) {
-		msg_kill( ((website_data_t*)website->udata)->msg_switch, sockfd );
-	}
 
 	zfd_clr( sockfd, EXREAD );
 	zfd_clr( sockfd, EXWRIT );
 	close( sockfd );
 
 	if ( conn_data->pending_packet )
-		free( conn_data->pending_packet );
+		fprintf( stderr, "cleanup_connection(): conn_dat->pending_packet is not null!" );
 	free( conn_data );
 	connections[ sockfd ] = NULL;
 }
@@ -461,22 +477,18 @@ void exread( int sockfd, void* udata ) {
 	if ( ( len = read( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
 cleanup:
 		// cleanup
-		cleanup_connection( sockfd );
-
-		return;
+		website = website_get_by_sockfd( conn_data->website_sockfd );
+		if ( website )
+			msg_kill( ((website_data_t*)website->udata)->msg_switch, sockfd );
+		else
+			cleanup_connection( sockfd );
 	}
 
 	memset( buffer + len, 0, sizeof( buffer ) - len );
 
 	ptr = buffer;
 
-	if ( conn_data->website_sockfd != -1 ) {
-		website = website_get_by_sockfd( conn_data->website_sockfd );
-		if ( msg_is_complete( ((website_data_t*)website->udata)->msg_switch, sockfd ) )
-			return;
-	}
-
-	else  {
+	if ( conn_data->website_sockfd == -1 ) {
 		/* If req_info is NULL this is the start of a request and the
 		   HTTP request headers need to be parsed. */
 		struct hostent* hp;
@@ -562,8 +574,6 @@ cleanup:
 		msg_end( website_data->msg_switch, sockfd );
 	}
 
-//	if ( msg_is_pending( website_data->msg_switch, sockfd ) )
-//		zfd_clr( sockfd, EXREAD );
 }
 
 void exwrit( int sockfd, void* udata ) {
@@ -572,35 +582,31 @@ void exwrit( int sockfd, void* udata ) {
 	website_t* website = website_get_by_sockfd( conn_data->website_sockfd );
 	website_data_t* website_data = website->udata;
 	int n;
+	msg_packet_t* packet = conn_data->pending_packet;
+	conn_data->pending_packet = NULL;
 
 	zfd_clr( sockfd, EXWRIT );
 
-	n = write( sockfd, conn_data->pending_packet->data, conn_data->pending_packet->size );
+	n = write( sockfd, packet->data, packet->size );
 
-	if ( n != conn_data->pending_packet->size ) {
+	if ( n != packet->size ) {
 		if ( n == -1 )
 			syslog( LOG_ERR, "exwrit: write failed: %s", strerror( errno ) );
 		status = MSG_PACK_RESP_FAIL;
 	}
-	msg_switch_send_resp( website_data->msg_switch, sockfd, status );
 
+	msg_switch_send_pack_resp( website_data->msg_switch, packet, status );
 
-	if ( PACK_IS_LAST( conn_data->pending_packet ) || n != conn_data->pending_packet->size )
-		// clean up external connection
-		cleanup_connection( sockfd );
-	else {
-		free( conn_data->pending_packet );
-		conn_data->pending_packet = NULL;
-	}
+	free( packet );
 }
 
-void command_handler( msg_switch_t* msg_switch, msg_packet_t packet ) {
+void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet ) {
 	char status;
 
-	switch ( packet.msgid ) {
+	switch ( packet->msgid ) {
 
 		case ZM_CMD_WS_START:
-			if ( start_website( packet.data, msg_switch ) )
+			if ( start_website( packet->data, msg_switch ) )
 				status = MSG_PACK_RESP_OK;
 			else
 				status = MSG_PACK_RESP_FAIL;
@@ -623,7 +629,7 @@ void command_handler( msg_switch_t* msg_switch, msg_packet_t packet ) {
 			break;
 	}
 
-	msg_switch_send_resp( msg_switch, packet.msgid, status );
+	msg_switch_send_pack_resp( msg_switch, packet, status );
 }
 
 ////////////////////////////////////////////////////////////////
