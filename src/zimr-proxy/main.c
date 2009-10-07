@@ -392,7 +392,6 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 				zfd_reset( event.data.resp->msgid, EXREAD );
 			else if ( event.data.resp->status == MSG_PACK_RESP_FAIL ) {
 				cleanup_connection( event.data.resp->msgid );
-				msg_destroy( msg_switch, event.data.resp->msgid );
 			}
 			break;
 		case MSG_EVT_BUF_FULL:

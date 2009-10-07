@@ -58,7 +58,7 @@ install:
 	@echo "--- Copying zimr execs, libs, and modules ---";
 	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
 	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
-	#cp --remove-destination $(PYMOD_OBJS) $(INSTALL_PYDIR)
+	cp --remove-destination $(PYMOD_OBJS) $(INSTALL_PYDIR)
 	@echo "--- Success ---";
 	@echo;
 	@#@echo "--- Setting up system to autostart zimr ---";

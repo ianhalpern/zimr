@@ -128,7 +128,6 @@ msg_packet_resp_t msg_switch_pop_resp( msg_switch_t* msg_switch );
 msg_packet_t msg_switch_pop_packet( msg_switch_t* msg_switch );
 
 void msg_new( msg_switch_t* msg_switch, int msgid );
-void msg_destroy( msg_switch_t* msg_switch, int msgid );
 void msg_end( msg_switch_t* msg_switch, int msgid );
 void msg_kill( msg_switch_t* msg_switch, int msgid );
 bool msg_is_pending( msg_switch_t* msg_switch, int msgid );

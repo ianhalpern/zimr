@@ -79,6 +79,17 @@ quit:
 	va_end( ap );
 }
 
+static void msg_destroy( msg_switch_t* msg_switch, int msgid ) {
+	msg_switch_event( msg_switch, MSG_EVT_DESTROY, msgid );
+
+	msg_t* msg = msg_get( msg_switch, msgid );
+	while ( list_size( &msg->queue ) )
+		free( list_fetch( &msg->queue ) );
+	list_destroy( &msg->queue );
+	free( msg );
+	msg_set( msg_switch, msgid, NULL );
+}
+
 static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, int status ) {
 	msg_t* msg = msg_get( msg_switch, msgid );
 
@@ -394,17 +405,6 @@ void msg_new( msg_switch_t* msg_switch, int msgid ) {
 	msg_set( msg_switch, msgid, msg );
 
 	msg_update_status( msg_switch, msgid, SET, MSG_STAT_NEW );
-}
-
-void msg_destroy( msg_switch_t* msg_switch, int msgid ) {
-	msg_switch_event( msg_switch, MSG_EVT_DESTROY, msgid );
-
-	msg_t* msg = msg_get( msg_switch, msgid );
-	while ( list_size( &msg->queue ) )
-		free( list_fetch( &msg->queue ) );
-	list_destroy( &msg->queue );
-	free( msg );
-	msg_set( msg_switch, msgid, NULL );
 }
 
 void msg_end( msg_switch_t* msg_switch, int msgid ) {
