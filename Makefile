@@ -59,14 +59,14 @@ install:
 	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
 	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
 	#cp --remove-destination $(PYMOD_OBJS) $(INSTALL_PYDIR)
-	cp init.d/* /etc/init.d/
 	@echo "--- Success ---";
 	@echo;
-	@echo "--- Setting up system to autostart zimr ---";
-	@ls init.d | awk '{ x = "chmod 755 /etc/init.d/" $$0; print x; system( x ); }'
-	@ls init.d | awk '{ x = "update-rc.d " $$0 " defaults > /dev/null"; print x; system( x ); }'
-	@echo "--- Success ---";
-	@echo;
+	@#@echo "--- Setting up system to autostart zimr ---";
+	@#cp init.d/* /etc/init.d/
+	@#@ls init.d | awk '{ x = "chmod 755 /etc/init.d/" $$0; print x; system( x ); }'
+	@#@ls init.d | awk '{ x = "update-rc.d " $$0 " defaults > /dev/null"; print x; system( x ); }'
+	@#@echo "--- Success ---";
+	@#@echo;
 	@echo "Finished. Installation succeeded!";
 
 ##### EXECS #####

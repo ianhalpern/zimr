@@ -12,6 +12,7 @@ x*update lists to use simclist data structure
 x*ignore files
 x*update python-zimr bindings error checking and methods/member/etc. descriptions
 
+*update msg_switch.h not to die on partial write, but to try and write again
 *fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
 *error files/website handling
 *make page handler regular and python folder
