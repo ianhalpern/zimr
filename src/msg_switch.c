@@ -162,7 +162,7 @@ static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, i
 }
 
 static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* info ) {
-	//printf( "msg_switch_failed(): %d %s\n", code, info );
+	printf( "msg_switch_failed(): %d %s\n", code, info );
 	zfd_clr( msg_switch->sockfd, read_type );
 	zfd_clr( msg_switch->sockfd, writ_type );
 
@@ -170,112 +170,94 @@ static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* i
 }
 
 static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
-	char type;
-	msg_packet_resp_t resp;
-
 	int n;
 
-	if ( msg_switch->read_packet_size )
-		type = MSG_TYPE_PACK;
-
-	else if ( read( sockfd, &type, sizeof( type ) ) != sizeof( type ) ) {
-		msg_switch_failed( msg_switch, 0, "msg_switch_read(): read type" );
-		return;
+	if ( !msg_switch->read_data_size ) {
+		if ( read( sockfd, &msg_switch->read_data_type, sizeof( msg_switch->read_data_type ) ) != sizeof( msg_switch->read_data_type ) ) {
+			msg_switch_failed( msg_switch, 0, "msg_switch_read(): read type" );
+			return;
+		}
 	}
 
-	switch( type ) {
-		case MSG_TYPE_RESP:
-			if ( read( sockfd, &resp, sizeof( resp ) ) != sizeof( resp ) ) {
-				msg_switch_failed( msg_switch, 0, "msg_switch_read(): read resp" );
-				return;
-			}
-			//printf( "[%d] %04d: got response, status %d\n", resp.msgid, n_print++, resp.status );
+	n = read( sockfd, &msg_switch->read_data + msg_switch->read_data_size,
+	  MSG_TYPE_GET_SIZE( msg_switch->read_data_type ) - msg_switch->read_data_size );
 
-			if ( msg_get( msg_switch, resp.msgid ) ) {
+	if ( n <= 0 ) {
+		msg_switch->read_data_size = 0;
+		msg_switch_failed( msg_switch, n, "msg_switch_read(): read data" );
+		return;
+	}
+	//printf( "[%d] %04d: got response, status %d\n", resp.msgid, n_print++, resp.status );
 
-				msg_switch_event( msg_switch, MSG_RECV_EVT_RESP, &resp );
+	msg_switch->read_data_size += n;
 
-				msg_accept_resp( msg_switch, resp );
-			}
-			break;
+	if ( msg_switch->read_data_size == MSG_TYPE_GET_SIZE( msg_switch->read_data_type ) ) {
+		msg_switch->read_data_size = 0;
 
-		case MSG_TYPE_PACK:
-			n = read( sockfd, &msg_switch->read_packet + msg_switch->read_packet_size, sizeof( msg_packet_t ) - msg_switch->read_packet_size );
-			if ( n <= 0 ) {
-				msg_switch->read_packet_size = 0;
-				msg_switch_failed( msg_switch, 0, "msg_switch_read(): read packet" );
-				return;
-			}
+		switch( msg_switch->read_data_type ) {
+			case MSG_TYPE_RESP:
+				if ( msg_get( msg_switch, msg_switch->read_data.resp.msgid ) ) {
 
-			msg_switch->read_packet_size += n;
-			if ( msg_switch->read_packet_size == sizeof( msg_packet_t ) ) {
-				//printf( "[%d] %04d: got complete packet, flags %x\n", msg_switch->read_packet.msgid, n_print++, msg_switch->read_packet.flags );
-				msg_switch->read_packet_size = 0;
+					msg_switch_event( msg_switch, MSG_RECV_EVT_RESP, &msg_switch->read_data.resp );
 
-				if ( !FL_ISSET( msg_switch->read_packet.flags, PACK_FL_KILL ) ) {
-					if ( FL_ISSET( msg_switch->read_packet.flags, PACK_FL_FIRST ) )
-						msg_switch_event( msg_switch, MSG_RECV_EVT_FIRST, msg_switch->read_packet.msgid );
+					msg_accept_resp( msg_switch, msg_switch->read_data.resp );
+				}
+				break;
 
-					msg_switch_event( msg_switch, MSG_RECV_EVT_PACK, &msg_switch->read_packet );
+			case MSG_TYPE_PACK:
+				if ( !FL_ISSET( msg_switch->read_data.packet.flags, PACK_FL_KILL ) ) {
+					if ( FL_ISSET( msg_switch->read_data.packet.flags, PACK_FL_FIRST ) )
+						msg_switch_event( msg_switch, MSG_RECV_EVT_FIRST, msg_switch->read_data.packet.msgid );
+
+					msg_switch_event( msg_switch, MSG_RECV_EVT_PACK, &msg_switch->read_data.packet );
 
 				} else
-					msg_switch_event( msg_switch, MSG_RECV_EVT_KILL, msg_switch->read_packet.msgid );
+					msg_switch_event( msg_switch, MSG_RECV_EVT_KILL, msg_switch->read_data.packet.msgid );
 
-			}// else
-			//	printf( "[%d] %04d: got partial packet\n", msg_switch->read_packet.msgid, n_print++ );
-			break;
+				break;
+		}
 	}
 }
 
 static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
-	char type;
-	int size, n;
-	void* data;
+	int n;
 
-	msg_packet_resp_t resp;
-
-	if ( !msg_switch->write_packet_size ) {
+	if ( !msg_switch->write_data_size ) {
 		// check if waiting to send returns
 		if ( msg_switch_has_pending_resps( msg_switch ) ) {
-			type = MSG_TYPE_RESP;
-			resp = msg_switch_pop_resp( msg_switch );
-			size = sizeof( resp );
-			data = &resp;
+			msg_switch->write_data_type = MSG_TYPE_RESP;
+			msg_switch->write_data.resp = msg_switch_pop_resp( msg_switch );
 			//printf( "[%d] %04d: sending read response, status %d\n", resp.msgid, n_print++, resp.status );
 		}
 
 		// pop from queue and write
 		else {
-			type = MSG_TYPE_PACK;
-			msg_switch->write_packet = msg_switch_pop_packet( msg_switch );
-			msg_switch->write_packet_size = sizeof( msg_switch->write_packet );
+			msg_switch->write_data_type = MSG_TYPE_PACK;
+			msg_switch->write_data.packet = msg_switch_pop_packet( msg_switch );
 			//printf( "[%d] %04d: sending packet, flags %x\n", packet.msgid, n_print++, packet.flags );
 		}
 
-		if ( write( sockfd, &type, sizeof( type ) ) != sizeof( type ) ) {
+		msg_switch->write_data_size = MSG_TYPE_GET_SIZE( msg_switch->write_data_type );
+
+		if ( write( sockfd, &msg_switch->write_data_type, sizeof( msg_switch->write_data_type ) )
+		  != sizeof( msg_switch->write_data_type ) ) {
 			msg_switch_failed( msg_switch, 0, "msg_switch_writ(): write type" );
 			return;
 		}
 	}
 
-	else type = MSG_TYPE_PACK;
+	n = write( sockfd, &msg_switch->write_data + ( MSG_TYPE_GET_SIZE( msg_switch->write_data_type ) - msg_switch->write_data_size ),
+	  msg_switch->write_data_size );
 
-	if ( type == MSG_TYPE_PACK ) {
-		size = msg_switch->write_packet_size;
-		data = (&msg_switch->write_packet) + ( sizeof( msg_switch->write_packet ) - size );
-	}
-
-	n = write( sockfd, data, size );
-	if ( n <= 0 || ( n != size && type == MSG_TYPE_RESP ) ) {
+	if ( n <= 0 ) {
+		msg_switch->write_data_size = 0;
 		msg_switch_failed( msg_switch, 0, "msg_switch_writ(): write data" );
 		return;
 	}
 
-	else if ( type == MSG_TYPE_PACK ) {
-		msg_switch->write_packet_size -= n;
-	}
+	msg_switch->write_data_size -= n;
 
-	if ( !msg_switch->write_packet_size && !msg_switch_is_pending( msg_switch ) ) {
+	if ( !msg_switch->write_data_size && !msg_switch_is_pending( msg_switch ) ) {
 		zfd_clr( sockfd, writ_type );
 	}
 }
@@ -322,8 +304,8 @@ msg_switch_t* msg_switch_new(
 	list_init( &msg_switch->pending_resps );
 	list_init( &msg_switch->pending_msgs );
 	msg_switch->sockfd = sockfd;
-	msg_switch->read_packet_size = 0;
-	msg_switch->write_packet_size = 0;
+	msg_switch->read_data_size = 0;
+	msg_switch->write_data_size = 0;
 	msg_switch->event_handler = event_handler;
 
 	zfd_set( msg_switch->sockfd, read_type, msg_switch );

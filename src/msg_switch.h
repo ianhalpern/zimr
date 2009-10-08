@@ -72,6 +72,8 @@
 #define MSG_TYPE_RESP 0x1
 #define MSG_TYPE_PACK 0x2
 
+#define MSG_TYPE_GET_SIZE(X) ( (X) == MSG_TYPE_PACK ? sizeof( msg_packet_t ) : sizeof( msg_packet_resp_t ) )
+
 typedef struct {
 	int msgid;
 	char status;
@@ -105,11 +107,19 @@ typedef struct msg_switch {
 	list_t pending_msgs;
 	msg_t* msgs[ FD_SETSIZE * 2 ];
 
-	msg_packet_t read_packet;
-	int read_packet_size;
+	char read_data_type;
+	union {
+		msg_packet_t packet;
+		msg_packet_resp_t resp;
+	} read_data;
+	int  read_data_size;
 
-	msg_packet_t write_packet;
-	int write_packet_size;
+	char write_data_type;
+	union {
+		msg_packet_t packet;
+		msg_packet_resp_t resp;
+	} write_data;
+	int  write_data_size;
 
 	// events
 	void (*event_handler)( struct msg_switch*, msg_event_t event );
