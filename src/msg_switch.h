@@ -108,6 +108,9 @@ typedef struct msg_switch {
 	msg_packet_t read_packet;
 	int read_packet_size;
 
+	msg_packet_t write_packet;
+	int write_packet_size;
+
 	// events
 	void (*event_handler)( struct msg_switch*, msg_event_t event );
 } msg_switch_t;
