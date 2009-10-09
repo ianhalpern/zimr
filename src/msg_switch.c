@@ -184,6 +184,8 @@ static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
 
 	if ( n <= 0 ) {
 		msg_switch->read_data_size = 0;
+		if ( n == -1 )
+			perror( "msg_switch_read(): read data"  );
 		msg_switch_failed( msg_switch, n, "msg_switch_read(): read data" );
 		return;
 	}

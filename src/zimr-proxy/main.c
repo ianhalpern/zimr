@@ -254,7 +254,9 @@ char* get_url_from_http_header( char* raw, char* url, int size ) {
 
 	ptr += 6;
 
-	ptr2 = strnstr( ptr, HTTP_HDR_ENDL, size - ( ptr - raw ) - 1 );
+	if ( !( ptr2 = strnstr( ptr, HTTP_HDR_ENDL, size - ( ptr - raw ) - 1 ) ) )
+		return NULL;
+
 	strncpy( url, ptr, ptr2 - ptr );
 
 	*( url + ( ptr2 - ptr ) ) = 0;
