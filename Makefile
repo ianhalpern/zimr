@@ -19,7 +19,7 @@ OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o zerr.o\
 			  simclist.o msg_switch.o
 
-EXECS       = zimr-proxy zimr-application zimr
+EXECS       = zimr-proxy zimr-app zimr
 TEST_EXECS  = test-strnstr test-client test-server
 SHARED_OBJS = libzimr.so
 PYMOD_OBJS  = zimr.so
@@ -32,7 +32,7 @@ INSTALL_EXECDIR = /usr/bin
 INSTALL_LIBDIR  = /usr/lib
 INSTALL_PYDIR   = /usr/lib/python$(PYVERSION)
 
-VERSION  = `vernum`
+VERSION  = `command vernum 2> /dev/null || cat VERSION`
 
 OBJ_DEPENDS        = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
 EXEC_DEPENDS       = %: $(SRCDIR)/%/main.c $(SRCDIR)/config.h
@@ -58,7 +58,7 @@ install:
 	@echo "--- Copying zimr execs, libs, and modules ---";
 	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
 	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
-	cp --remove-destination $(PYMOD_OBJS) $(INSTALL_PYDIR)
+	cp --remove-destination -r python/* $(INSTALL_PYDIR)
 	@echo "--- Success ---";
 	@echo;
 	@#@echo "--- Setting up system to autostart zimr ---";
@@ -78,7 +78,7 @@ zimr: $(EXEC_DEPENDS) zsocket.o zfildes.o zerr.o zcnf.o general.o simclist.o
 zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zerr.o
 	$(EXEC_COMPILE)
 
-zimr-application: $(EXEC_DEPENDS) libzimr.so
+zimr-app: $(EXEC_DEPENDS) libzimr.so
 	$(EXEC_COMPILE) $(LDZIMR)
 
 ##### SHARED OBJS #####
@@ -91,6 +91,7 @@ libzimr.so: $(SHARED_OBJ_DEPENDS) general.o msg_switch.o zfildes.o website.o mim
 
 zimr.so: $(PYMOD_DEPENDS) libzimr.so
 	$(EXEC_COMPILE) $(PYMOD) $(LDZIMR)
+	cp $@ python/zimr/__init__.so
 
 ##### TESTS #####
 

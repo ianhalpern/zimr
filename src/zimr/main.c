@@ -315,7 +315,7 @@ bool state_all_function( char type ) {
 ///////////////////////////////////////////////////////
 
 void application_start_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-application";
+	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	list_t args;
 
@@ -350,7 +350,7 @@ void application_start_cmd( int optc, char* optv[ ] ) {
 }
 
 void application_stop_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-application";
+	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
@@ -372,7 +372,7 @@ void application_stop_cmd( int optc, char* optv[ ] ) {
 }
 
 void application_restart_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-application";
+	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
@@ -394,7 +394,7 @@ void application_restart_cmd( int optc, char* optv[ ] ) {
 }
 
 void application_remove_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-application";
+	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
@@ -416,7 +416,7 @@ void application_remove_cmd( int optc, char* optv[ ] ) {
 }
 
 void application_status_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-application";
+	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 

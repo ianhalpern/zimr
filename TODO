@@ -14,20 +14,20 @@ x*update python-zimr bindings error checking and methods/member/etc. description
 x*update msg_switch.h not to die on partial write, but to try and write again
 x*setup launchpad
 x*update website
-
-*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
-*error files/website handling
-*make page handler regular and python folder
-*look through and update syslog/stdio logging
-*choose unused port for local default proxy port
-*change zimr-application to zimr-app
-*thorough testing (use socat for request testing, check for memleaks with valgrind)
-*add multiple architecure compilation to makefile (x86,x86-64)
-*makefile without vernum
-*make ubuntu package
+x*choose unused port for local default proxy port
+x*make page handler regular and python folder
+x*change zimr-application to zimr-app
+x*makefile without vernum
 
 ^ Milestone v0.1.0 ^
 
+*add multiple architecure compilation to makefile (x86,x86-64)
+*thorough testing (use socat for request testing, check for memleaks with valgrind)
+*make ubuntu package
+*look through and update syslog/stdio logging
+*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
+*error files/website handling
+*add a "init" function
 *bug: connections sometimes fail on read and get "connection reset by peers"
 *add support for http headers that are just \n and not \r\n
 *website parking

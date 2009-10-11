@@ -42,7 +42,7 @@
 #define ZM_REQ_LOGFILE "zimr.log"
 
 #define ZM_PROXY_ADDR "127.0.0.1"
-#define ZM_PROXY_PORT 8888
+#define ZM_PROXY_PORT 7672
 
 #define ZM_NUM_PROXY_DEATH_RETRIES 1000 // set to 0(ZERO) for infinite retries
 #define ZM_PROXY_DEATH_RETRY_DELAY 2
