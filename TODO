@@ -21,6 +21,7 @@ x*makefile without vernum
 
 ^ Milestone v0.1.0 ^
 
+*change "zimr stop" command to "zimr pause"
 *add multiple architecure compilation to makefile (x86,x86-64)
 *thorough testing (use socat for request testing, check for memleaks with valgrind)
 *make ubuntu package
