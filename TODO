@@ -1,27 +1,4 @@
-x*setup autostart/stop/etc. (init.d)
-x*make install build routine
-x*setup autostart
-x*folder view
-x*redirect if folders don't have trailing /
-x*website redirects
-x*fix bug: applications do not reattach to proxy when proxy restarts
-x*fix bug: "sudo /etc/init.d/zimr-proxy start" kills already running daemon
-x*fix bug: problems when pid in .zimr.state file equals zero
-x*revamp and finish all zimr command line options
-x*update lists to use simclist data structure
-x*ignore files
-x*update python-zimr bindings error checking and methods/member/etc. descriptions
-x*update msg_switch.h not to die on partial write, but to try and write again
-x*setup launchpad
-x*update website
-x*choose unused port for local default proxy port
-x*make page handler regular and python folder
-x*change zimr-application to zimr-app
-x*makefile without vernum
-
-^ Milestone v0.1.0 ^
-
-*change "zimr stop" command to "zimr pause"
+*add "zimr init" command which will be a quick wizard to create a zimr.cnf file
 *add multiple architecure compilation to makefile (x86,x86-64)
 *thorough testing (use socat for request testing, check for memleaks with valgrind)
 *make ubuntu package
@@ -54,3 +31,30 @@ x*makefile without vernum
 *make a pass/fail bug test script
 *make python embedded version
 *add support for UPnP to open ports in router
+
+< Milestone v0.1.x >
+
+x*change "zimr stop" command to "zimr pause"
+
+< Milestone v0.1.0 >
+
+x*makefile without vernum
+x*change zimr-application to zimr-app
+x*make page handler regular and python folder
+x*choose unused port for local default proxy port
+x*update website
+x*setup launchpad
+x*update msg_switch.h not to die on partial write, but to try and write again
+x*update python-zimr bindings error checking and methods/member/etc. descriptions
+x*ignore files
+x*update lists to use simclist data structure
+x*revamp and finish all zimr command line options
+x*fix bug: problems when pid in .zimr.state file equals zero
+x*fix bug: "sudo /etc/init.d/zimr-proxy start" kills already running daemon
+x*fix bug: applications do not reattach to proxy when proxy restarts
+x*website redirects
+x*redirect if folders don't have trailing /
+x*folder view
+x*setup autostart
+x*make install build routine
+x*setup autostart/stop/etc. (init.d)

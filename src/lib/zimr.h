@@ -31,6 +31,7 @@
 #include <signal.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <dlfcn.h>
 
 #include "website.h"
 #include "zsocket.h"
@@ -68,6 +69,11 @@ typedef struct website_data {
 	void* udata;
 } website_data_t;
 
+typedef struct {
+	char name[ ZM_MODULE_NAME_MAX_LEN ];
+	void* handle;
+} module_info_t;
+
 const char* zimr_version( );
 const char* zimr_build_date( );
 
@@ -83,6 +89,8 @@ website_t* zimr_website_create( char* url );
 void  zimr_website_destroy( website_t* website );
 bool  zimr_website_enable( website_t* website );
 void  zimr_website_disable( website_t* website );
+int   zimr_website_load_module( website_t*, const char* );
+void  zimr_unload_module( module_info_t* );
 void  zimr_website_set_redirect( website_t* website, char* redirect_url );
 void  zimr_website_set_pubdir( website_t* website, const char* pubdir );
 char* zimr_website_get_pubdir( website_t* website );

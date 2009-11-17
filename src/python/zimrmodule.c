@@ -435,7 +435,7 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 	PyObject_CallFunctionObjArgs( website->connection_handler, connection, NULL );
 
 	Py_DECREF( connection );
-	if ( PyErr_Occurred( ) ) {
+	if ( PyErr_Occurred() ) {
 		PyErr_PrintEx( 0 );
 	}
 
@@ -613,19 +613,19 @@ static PyTypeObject pyzimr_website_type = {
 /**********************************************/
 /********** END OF pyzimr_website_t *********/
 
-static PyObject* pyzimr_version( ) {
-	return PyString_FromString( zimr_version( ) );
+static PyObject* pyzimr_version() {
+	return PyString_FromString( zimr_version() );
 }
 
-static PyObject* pyzimr_start( ) {
-	zimr_start( );
+static PyObject* pyzimr_start() {
+	zimr_start();
 	Py_RETURN_NONE;
 }
 
 static PyObject* pyzimr_default_connection_handler( PyObject* self, PyObject* args, PyObject* kwargs ) {
 	pyzimr_connection_t* connection;
 
-	if ( ! PyArg_ParseTuple( args, "O", &connection ) ) {
+	if ( !PyArg_ParseTuple( args, "O", &connection ) ) {
 		PyErr_SetString( PyExc_TypeError, "connection paramater must be passed" );
 		return NULL;
 	}
@@ -638,7 +638,7 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 	PyObject* page_handler = udata;
 	PyObject* result;
 
-	result = PyObject_CallFunction( page_handler, "sO", filepath, connection->udata );
+	result = PyObject_CallFunction( page_handler, "s|O", filepath, connection->udata );
 
 	if ( result != NULL ) {
 		if ( !PyString_Check( result ) ) {
@@ -648,6 +648,11 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 		zimr_connection_send( connection, (void*) PyString_AsString( result ), strlen( PyString_AsString( result ) ) );
 
 		Py_DECREF( result );
+	}
+
+	else {
+		PyErr_Print();
+		zimr_connection_send_error( connection, 500 );
 	}
 
 }

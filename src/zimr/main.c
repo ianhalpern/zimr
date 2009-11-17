@@ -21,7 +21,7 @@
 
 TODO:
 zimr start [all [states]]
-zimr stop [all [states]]
+zimr pause [all [states]]
 zimr restart [all [states]]
 zimr status [all [states], proxy]
 zimr help
@@ -43,12 +43,12 @@ zimr help
 #include "simclist.h"
 
 #define START   0x1
-#define STOP    0x2
+#define PAUSE    0x2
 #define RESTART 0x3
 #define REMOVE  0x4
 #define STATUS  0x5
 
-#define CMDSTR(X) (X==START?"starting":X==STOP?"stopping":X==RESTART?"restarting":X==REMOVE?"removing":NULL)
+#define CMDSTR(X) (X==START?"starting":X==PAUSE?"pausing":X==RESTART?"restarting":X==REMOVE?"removing":NULL)
 
 typedef struct command {
 	char* name;
@@ -131,14 +131,14 @@ bool run_commands( command_t* command, int argc, char* argv[ ] ) {
 
 // Functions ////////////////////////////
 
-pid_t application_exec( uid_t uid, char* exec, char* dir, list_t* args ) {
+pid_t application_exec( uid_t uid, char* dir, list_t* args ) {
 	pid_t pid = fork( );
 
 	if ( pid == 0 ) {
 		// in the child, do exec
 		chdir( dir );
 		char* argv[ list_size( args ) + 2 ];
-		argv[ 0 ] = exec;
+		argv[ 0 ] = ZM_APP_EXEC;
 		argv[ list_size( args ) + 1 ] = NULL;
 
 		int i;
@@ -168,9 +168,9 @@ bool application_kill( pid_t pid ) {
 	return true;
 }
 
-bool application_function( uid_t uid, char* exec, char* dir, list_t* args, char type ) {
+bool application_function( uid_t uid, char* dir, list_t* args, char type ) {
 	if ( CMDSTR( type ) )
-		printf( " * %s %s@%s...", CMDSTR( type ), exec, dir ); fflush( stdout );
+		printf( " * %s %s...", CMDSTR( type ), dir ); fflush( stdout );
 
 	zcnf_state_t* state = zcnf_state_load( uid );
 
@@ -181,12 +181,12 @@ bool application_function( uid_t uid, char* exec, char* dir, list_t* args, char 
 
 	bool retval = true;
 
-	zcnf_state_app_t* app;
+	zcnf_state_app_t* app = NULL;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( strcmp( app->dir, dir ) == 0 && strcmp( app->exec, exec ) == 0 ) {
+		if ( strcmp( app->dir, dir ) == 0 ) {
 			if ( type == START && app->pid && kill( app->pid, 0 ) == 0 ) {
 				puts( "application is already running" );
 				retval = false;
@@ -207,29 +207,29 @@ bool application_function( uid_t uid, char* exec, char* dir, list_t* args, char 
 		pid_t pid;
 		switch ( type ) {
 			case START:
-				if ( ( pid = application_exec( state->uid, exec, dir, args ) ) == -1 ) {
+				if ( ( pid = application_exec( state->uid, dir, args ) ) == -1 ) {
 					retval = false;
 					printf( "failed\n" );
 					goto quit;
 				}
-				zcnf_state_set_app( state, exec, dir, pid, args );
+				zcnf_state_set_app( state, dir, pid, args );
 				break;
-			case STOP:
+			case PAUSE:
 				if ( !application_kill( app->pid ) ) {
 					retval = false;
 					printf( "failed\n" );
 					goto quit;
 				}
-				zcnf_state_set_app( state, app->exec, app->dir, 0, NULL );
+				zcnf_state_set_app( state, app->dir, 0, NULL );
 				break;
 			case RESTART:
 				if ( application_kill( app->pid )
-				  && ( pid = application_exec( state->uid, app->exec, app->dir, &app->args ) ) == -1 ) {
+				  && ( pid = application_exec( state->uid, app->dir, &app->args ) ) == -1 ) {
 					retval = false;
 					printf( "failed\n" );
 					goto quit;
 				}
-				zcnf_state_set_app( state, app->exec, app->dir, pid, NULL );
+				zcnf_state_set_app( state, app->dir, pid, NULL );
 				break;
 			case REMOVE:
 				if ( !application_kill( app->pid ) ) {
@@ -241,14 +241,13 @@ bool application_function( uid_t uid, char* exec, char* dir, list_t* args, char 
 				zcnf_state_app_free( app );
 				break;
 			case STATUS:
-				printf( "%d: %s ", i, app->exec );
+				printf( "%d: %s ", i, app->dir  );
 
 				if ( !app->pid || kill( app->pid, 0 ) == -1 ) // process still running, not dead
-					printf( "(*not running)" );
+					printf( "(*Paused)" );
 				else printf( "%d", app->pid );
-
-				printf( "\n   directory: %s\n", app->dir );
 				// TODO: proxy address, uptime, memory usage, running websites, etc
+
 				printf( "\n" );
 				break;
 		}
@@ -277,7 +276,7 @@ bool state_function( uid_t uid, char type ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( !application_function( uid, app->exec, app->dir, &app->args, type ) ) {
+		if ( !application_function( uid, app->dir, &app->args, type ) ) {
 			retval = false;
 			goto quit;
 		}
@@ -315,7 +314,6 @@ bool state_all_function( char type ) {
 ///////////////////////////////////////////////////////
 
 void application_start_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	list_t args;
 
@@ -324,9 +322,7 @@ void application_start_cmd( int optc, char* optv[ ] ) {
 
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( optv[ i ][ 0 ] != '-' ) {
-			exec = optv[ i ];
-		} else if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
+		if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
 			realpath( optv[ i + 1 ], dir );
 			i++;
 		} else if ( strcmp( optv[ i ], "-a" ) == 0 ) {
@@ -343,22 +339,19 @@ void application_start_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_function( getuid( ), exec, dir, &args, START ) )
+	if ( !application_function( getuid( ), dir, &args, START ) )
 		exit( EXIT_FAILURE );
 
 	list_destroy( &args );
 }
 
 void application_stop_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( optv[ i ][ 0 ] != '-' ) {
-			exec = optv[ i ];
-		} else if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
+		if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
 			realpath( optv[ i + 1 ], dir );
 			i++;
 		} else {
@@ -367,20 +360,17 @@ void application_stop_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_function( getuid( ), exec, dir, NULL, STOP ) )
+	if ( !application_function( getuid( ), dir, NULL, PAUSE ) )
 		exit( EXIT_FAILURE );
 }
 
 void application_restart_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( optv[ i ][ 0 ] != '-' ) {
-			exec = optv[ i ];
-		} else if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
+		if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
 			realpath( optv[ i + 1 ], dir );
 			i++;
 		} else {
@@ -389,20 +379,17 @@ void application_restart_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_function( getuid( ), exec, dir, NULL, RESTART ) )
+	if ( !application_function( getuid( ), dir, NULL, RESTART ) )
 		exit( EXIT_FAILURE );
 }
 
 void application_remove_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( optv[ i ][ 0 ] != '-' ) {
-			exec = optv[ i ];
-		} else if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
+		if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
 			realpath( optv[ i + 1 ], dir );
 			i++;
 		} else {
@@ -411,20 +398,17 @@ void application_remove_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_function( getuid( ), exec, dir, NULL, REMOVE ) )
+	if ( !application_function( getuid( ), dir, NULL, REMOVE ) )
 		exit( EXIT_FAILURE );
 }
 
 void application_status_cmd( int optc, char* optv[ ] ) {
-	char* exec = "zimr-app";
 	char dir[ PATH_MAX ] = "";
 	getcwd( dir, sizeof( dir ) );
 
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( optv[ i ][ 0 ] != '-' ) {
-			exec = optv[ i ];
-		} else if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
+		if ( strcmp( optv[ i ], "-dir" ) == 0 && i + 1 < optc ) {
 			realpath( optv[ i + 1 ], dir );
 			i++;
 		} else {
@@ -433,7 +417,7 @@ void application_status_cmd( int optc, char* optv[ ] ) {
 		}
 	}
 
-	if ( !application_function( getuid( ), exec, dir, NULL, STATUS ) )
+	if ( !application_function( getuid( ), dir, NULL, STATUS ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -442,8 +426,8 @@ void state_start_cmd( int optc, char* optv[ ] ) {
 		exit( EXIT_FAILURE );
 }
 
-void state_stop_cmd( int optc, char* optv[ ] ) {
-	if ( !state_function( getuid( ), STOP ) )
+void state_pause_cmd( int optc, char* optv[ ] ) {
+	if ( !state_function( getuid( ), PAUSE ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -467,8 +451,8 @@ void state_start_all_cmd( int optc, char* optv[ ] ) {
 		exit( EXIT_FAILURE );
 }
 
-void state_stop_all_cmd( int optc, char* optv[ ] ) {
-	if ( !state_all_function( STOP ) )
+void state_pause_all_cmd( int optc, char* optv[ ] ) {
+	if ( !state_all_function( PAUSE ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -536,13 +520,13 @@ int main( int argc, char* argv[ ] ) {
 		{ NULL }
 	};
 
-	command_t stop_all_commands[ ] = {
-		{ "states", "Stop all zimr applications for all user's zimr states.\n", NULL, &state_stop_all_cmd },
+	command_t pause_all_commands[ ] = {
+		{ "states", "Stop all zimr applications for all user's zimr states.\n", NULL, &state_pause_all_cmd },
 		{ NULL }
 	};
 
-	command_t stop_commands[ ] = {
-		{ "all", "Stop all zimr applications for the current user's state.", &stop_all_commands, &state_stop_cmd },
+	command_t pause_commands[ ] = {
+		{ "all", "Stop all zimr applications for the current user's state.", &pause_all_commands, &state_pause_cmd },
 		{ NULL }
 	};
 
@@ -578,7 +562,7 @@ int main( int argc, char* argv[ ] ) {
 
 	command_t zimr_commands[ ] = {
 		{ "start",   "Start a zimr application. options: [ -dir <path> -a [...] ]", &start_commands, &application_start_cmd },
-		{ "stop",    "Stop a zimr application. options: [ -dir <path>, -n ]", &stop_commands, &application_stop_cmd },
+		{ "pause",    "Stop a zimr application. options: [ -dir <path>, -n ]", &pause_commands, &application_stop_cmd },
 		{ "restart", "Restart a zimr application. options: [ -dir <path>, -n ]", &restart_commands, &application_restart_cmd },
 		{ "remove",  "Remove a zimr application. options: [ -dir <path>, -n ]", &remove_commands, &application_remove_cmd },
 		{ "status",  "Report the status of a zimr application. options: [ -dir <path>, -n ]", &status_commands, &application_status_cmd },

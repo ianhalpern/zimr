@@ -82,9 +82,9 @@ bool zcnf_load( yaml_document_t* document, const char* filepath ) {
 
 bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index ) {
 	yaml_node_t* root = yaml_document_get_node( document, index );
-	int i, j;
+	int i, j, k;
 
-	if ( ! root || root->type != YAML_SEQUENCE_NODE )
+	if ( !root || root->type != YAML_SEQUENCE_NODE )
 		return 0;
 
 	for ( i = 0; i < root->data.sequence.items.top - root->data.sequence.items.start; i++ ) {
@@ -97,6 +97,7 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 		website->url = NULL;
 		website->pubdir = NULL;
 		website->redirect_url = NULL;
+		list_init( &website->modules );
 
 		for ( j = 0; j < website_node->data.mapping.pairs.top - website_node->data.mapping.pairs.start; j++ ) {
 			yaml_node_t* attr_key = yaml_document_get_node( document, website_node->data.mapping.pairs.start[ j ].key );
@@ -129,6 +130,21 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 				website->redirect_url = strdup( (char*) attr_val->data.scalar.value );
 			}
 
+			// modules
+			else if ( strcmp( "modules", (char*) attr_key->data.scalar.value ) == 0 ) {
+				if ( !attr_val || attr_val->type != YAML_SEQUENCE_NODE )
+					break;
+
+				for ( k = 0; k < attr_val->data.sequence.items.top - attr_val->data.sequence.items.start; k++ ) {
+					yaml_node_t* module = yaml_document_get_node( document, attr_val->data.sequence.items.start[ k ] );
+
+					if ( !module || module->type != YAML_SCALAR_NODE )
+						break;
+
+					list_append( &website->modules, strdup( (char*) module->data.scalar.value ) );
+				}
+			}
+
 		}
 
 		website->next = cnf->website_node;
@@ -153,7 +169,6 @@ bool zcnf_state_load_apps( zcnf_state_t* state, yaml_document_t* document, int i
 
 		zcnf_state_app_t* app = (zcnf_state_app_t*) malloc( sizeof( zcnf_state_app_t ) );
 		list_append( &state->apps, app );
-		app->exec = NULL;
 		app->dir = NULL;
 		app->pid = 0;
 		list_init( &app->args );
@@ -168,15 +183,8 @@ bool zcnf_state_load_apps( zcnf_state_t* state, yaml_document_t* document, int i
 			if ( ! attr_val )
 				continue;
 
-			// exec
-			if ( strcmp( "exec", (char*) attr_key->data.scalar.value ) == 0 ) {
-				if ( attr_val->type != YAML_SCALAR_NODE )
-					continue;
-				app->exec = strdup( (char*) attr_val->data.scalar.value );
-			}
-
 			// dir
-			else if ( strcmp( "dir", (char*) attr_key->data.scalar.value ) == 0 ) {
+			if ( strcmp( "dir", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
 					continue;
 				app->dir = strdup( (char*) attr_val->data.scalar.value );
@@ -297,7 +305,7 @@ zcnf_app_t* zcnf_app_load( char* cnf_path ) {
 		}
 
 		if ( strcmp( "websites", (char*) node->data.scalar.value ) == 0 ) {
-			if ( ! zcnf_load_websites( cnf, &document, root->data.mapping.pairs.start[ i ].value ) ) {
+			if ( !zcnf_load_websites( cnf, &document, root->data.mapping.pairs.start[ i ].value ) ) {
 				zcnf_app_free( cnf );
 				cnf = NULL;
 				break;
@@ -310,20 +318,19 @@ quit:
 	return cnf;
 }
 
-void zcnf_state_set_app( zcnf_state_t* state, const char* exec, const char* dir, pid_t pid, list_t* args ) {
+void zcnf_state_set_app( zcnf_state_t* state, const char* dir, pid_t pid, list_t* args ) {
 	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( strcmp( app->exec, exec ) == 0 && strcmp( app->dir, dir ) == 0 ) {
+		if ( strcmp( app->dir, dir ) == 0 ) {
 			break;
 		}
 	}
 
 	if ( i == list_size( &state->apps ) ) {
 		app = (zcnf_state_app_t*) malloc( sizeof( zcnf_state_app_t ) );
-		app->exec = strdup( exec );
 		app->dir  = strdup( dir );
 		list_init( &app->args );
 		list_append( &state->apps, app );
@@ -339,13 +346,13 @@ void zcnf_state_set_app( zcnf_state_t* state, const char* exec, const char* dir,
 
 }
 
-bool zcnf_state_app_is_running( zcnf_state_t* state, const char* exec, const char* dir ) {
+bool zcnf_state_app_is_running( zcnf_state_t* state, const char* dir ) {
 	zcnf_state_app_t* app;
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( strcmp( app->exec, exec ) == 0 && strcmp( app->dir, dir ) == 0 ) {
+		if ( strcmp( app->dir, dir ) == 0 ) {
 			if ( !app->pid ) return false;
 			return true;
 		}
@@ -375,15 +382,9 @@ void zcnf_state_save( zcnf_state_t* state ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		zcnf_state_app_t* app = list_get_at( &state->apps, i );
-		int app_map, exec_name, exec_value, dir_name, dir_value, pid_name, pid_value, args_name, args_value;
+		int app_map, dir_name, dir_value, pid_name, pid_value, args_name, args_value;
 
 		assert( ( app_map = yaml_document_add_mapping( &document, NULL, YAML_BLOCK_SEQUENCE_STYLE ) ) );
-
-		assert( ( exec_name = yaml_document_add_scalar( &document, NULL,
-		  (unsigned char*) "exec", 4, YAML_PLAIN_SCALAR_STYLE ) ) );
-		assert( ( exec_value = yaml_document_add_scalar( &document, NULL,
-		  (unsigned char*) app->exec, strlen( app->exec ), YAML_PLAIN_SCALAR_STYLE ) ) );
-		assert( yaml_document_append_mapping_pair( &document, app_map, exec_name, exec_value ) );
 
 		assert( ( dir_name = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) "dir", 3, YAML_PLAIN_SCALAR_STYLE ) ) );
@@ -441,6 +442,9 @@ void zcnf_app_free( zcnf_app_t* cnf ) {
 		free( website->url );
 		free( website->pubdir );
 		free( website->redirect_url );
+		while( list_size( &website->modules ) )
+			free( list_fetch( &website->modules ) );
+		list_destroy( &website->modules );
 		cnf->website_node = website->next;
 		free( website );
 	}
@@ -449,7 +453,6 @@ void zcnf_app_free( zcnf_app_t* cnf ) {
 
 void zcnf_state_app_free( zcnf_state_app_t* app ) {
 	list_destroy( &app->args );
-	free( app->exec );
 	free( app->dir );
 	free( app );
 }

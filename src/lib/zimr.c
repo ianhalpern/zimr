@@ -21,7 +21,7 @@
  */
 
 #include "zimr.h"
-
+static bool initialized = false;
 static int reqlogfd = -1;
 
 typedef struct {
@@ -32,17 +32,26 @@ typedef struct {
 
 static int page_handler_count = 0;
 static page_handler_t page_handlers[ 100 ];
+static list_t loaded_modules;
+
+// module function definitions //////////////////
+static void (*modzimr_init)();
+static void (*modzimr_destroy)();
+static int (*modzimr_website_init)( website_t* );
+/////////////////////////////////////////////////
+
 void command_response_handler( msg_switch_t* msg_switch, msg_packet_resp_t* resp );
 
-const char* zimr_version( ) {
+const char* zimr_version() {
 	return ZIMR_VERSION;
 }
 
-const char* zimr_build_date( ) {
+const char* zimr_build_date() {
 	return BUILD_DATE;
 }
 
-bool zimr_init( ) {
+bool zimr_init() {
+	if ( initialized ) return true;
 	// Setup syslog logging - see SETLOGMASK(3)
 #if defined(DEBUG)
 	setlogmask( LOG_UPTO( LOG_DEBUG ) );
@@ -53,11 +62,13 @@ bool zimr_init( ) {
 #endif
 
 	// call any needed library init functions
-	website_init( );
-	zsocket_init( );
+	website_init();
+	zsocket_init();
 	msg_switch_init( INREAD, INWRIT );
 
-	if ( !zimr_open_request_log( ) )
+	list_init( &loaded_modules );
+
+	if ( !zimr_open_request_log() )
 		return false;
 
 	// Register file descriptor type handlers
@@ -65,18 +76,26 @@ bool zimr_init( ) {
 	zfd_register_type( FILEREAD, ZFD_R, ZFD_TYPE_HDLR zimr_file_handler );
 
 	syslog( LOG_INFO, "initialized." );
+	initialized = true;
 	return true;
 }
 
-void zimr_shutdown( ) {
+void zimr_shutdown() {
 	int i;
+
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		zimr_website_destroy( list_get_at( &websites, i ) );
 	}
 
-	list_clear( &websites );
+	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
+		zimr_unload_module( list_get_at( &loaded_modules, i ) );
+	}
+
+	list_destroy( &websites );
+	list_destroy( &loaded_modules );
 	syslog( LOG_INFO, "shutdown." );
-	zimr_close_request_log( );
+	zimr_close_request_log();
+	initialized = false;
 }
 
 int zimr_cnf_load( char* cnf_path ) {
@@ -87,6 +106,7 @@ int zimr_cnf_load( char* cnf_path ) {
 
 	while ( website_cnf ) {
 		if ( website_cnf->url ) {
+
 			website_t* website = zimr_website_create( website_cnf->url );
 
 			if ( website_cnf->pubdir )
@@ -94,6 +114,12 @@ int zimr_cnf_load( char* cnf_path ) {
 
 			if ( website_cnf->redirect_url )
 				zimr_website_set_redirect( website, website_cnf->redirect_url );
+
+			int i;
+			for ( i = 0; i < list_size( &website_cnf->modules ); i++ )
+				if ( !zimr_website_load_module( website, list_get_at( &website_cnf->modules, i ) ) )
+					return 0;
+
 
 			zimr_website_enable( website );
 		}
@@ -104,7 +130,7 @@ int zimr_cnf_load( char* cnf_path ) {
 	return 1;
 }
 
-void zimr_start( ) {
+void zimr_start() {
 
 	int timeout = 0, i = 0;
 	website_t* website;
@@ -534,14 +560,20 @@ void zimr_connection_send_error( connection_t* connection, short code ) {
 
 	response_set_status( &connection->response, code );
 	headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
-	sprintf( sizebuf, "%d", 48 );
+
+	char error_msg_buf[ 128 ];
+	strcpy( error_msg_buf, "<html><body><h1>" );
+	strcat( error_msg_buf, response_status( code ) );
+	strcat( error_msg_buf, "</h1></body></html>" );
+
+	sprintf( sizebuf, "%d", strlen( error_msg_buf ) );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
 	zimr_connection_send_status( connection );
 	zimr_connection_send_headers( connection );
 
 	msg_push_data( website_data->msg_switch, connection->sockfd,
-	  (void*) "<html><body><h1>404 Not Found</h1></body></html>", 48 );
+	  (void*) error_msg_buf, strlen( error_msg_buf ) );
 	msg_end( website_data->msg_switch, connection->sockfd );
 }
 
@@ -571,12 +603,12 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 	int num = 0;
 	char* files[ 512 ];
 
-	char html_header_fmt[ ] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>/%s</h1>\n";
-	char html_file_fmt[ ]   = "<a href=\"%s\">%s</a><br/>\n";
-	char html_dir_fmt[ ]    = "<a href=\"%s/\">%s/</a><br/>\n";
+	char html_header_fmt[] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>/%s</h1>\n";
+	char html_file_fmt[]   = "<a href=\"%s\">%s</a><br/>\n";
+	char html_dir_fmt[]    = "<a href=\"%s/\">%s/</a><br/>\n";
 	char html_header[ strlen( html_header_fmt ) + strlen( filepath ) - strlen( zimr_website_get_pubdir( connection->website ) ) ];
 	sprintf( html_header, html_header_fmt, filepath + strlen( zimr_website_get_pubdir( connection->website ) ) );
-	char html_footer[ ] = "<br/>"  "Zimr/" ZIMR_VERSION "\n</body></html>";
+	char html_footer[] = "<br/>"  "Zimr/" ZIMR_VERSION "\n</body></html>";
 
 	int size = strlen( html_header ) + strlen( html_footer );
 	while ( ( dp = readdir( dir ) ) != NULL && num < sizeof( files ) / sizeof( char* ) ) {
@@ -686,6 +718,70 @@ void zimr_file_handler( int fd, connection_t* connection ) {
 	}
 }
 
+void zimr_unload_module( module_info_t* module_info ) {
+
+	*(void**) (&modzimr_destroy) = dlsym( module_info->handle, "modzimr_destroy" );
+	if ( modzimr_destroy ) (*modzimr_destroy)();
+
+	//TODO: locate module_info in loaded_modules and remove
+	dlclose( module_info->handle );
+	free( module_info );
+}
+
+int zimr_website_load_module( website_t* website, const char* module_name ) {
+
+	if ( strlen( module_name ) > ZM_MODULE_NAME_MAX_LEN ) {
+	 	fprintf( stderr, "module name excedes max length: %s\n", module_name );
+		return 0;
+	}
+
+	module_info_t* module_info = NULL;
+
+	int i;
+	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
+		module_info = list_get_at( &loaded_modules, i );
+		if ( strcmp( module_name, module_info->name ) == 0 )
+			break;
+		module_info = NULL;
+	}
+
+	if ( !module_info ) {
+
+		char module_filename[ strlen( module_name ) + 6 ];
+		strcpy( module_filename, "mod" );
+		strcat( module_filename, module_name );
+		strcat( module_filename, ".so" );
+
+		void* handle = dlopen( module_filename, RTLD_LAZY );
+		if ( handle == NULL ) {
+			// report error ...
+			fprintf( stderr, "%s\n", dlerror() );
+			return 0;
+		}
+
+		module_info = malloc( sizeof( module_info_t ) );
+		strcpy( module_info->name, module_name );
+		module_info->handle = handle;
+
+		list_append( &loaded_modules, module_info );
+
+		*(void**) (&modzimr_init) = dlsym( module_info->handle, "modzimr_init" );
+
+		if ( !modzimr_init ) {
+			fprintf( stderr, "module %s has no modzimr_init() defined\n", module_name );
+			zimr_unload_module( module_info );
+			return 0;
+		}
+
+		(*modzimr_init)();
+	}
+
+	*(void **)(&modzimr_website_init) = dlsym( module_info->handle, "modzimr_website_init" );
+	if ( modzimr_website_init ) (*modzimr_website_init)( website );
+
+	return 1;
+}
+
 void zimr_website_set_redirect( website_t* website, char* redirect_url ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	if ( website_data->redirect_url ) free( website_data->redirect_url );
@@ -745,7 +841,7 @@ void zimr_website_insert_ignored_file( website_t* website, const char* ignored_f
 	list_append( &website_data->ignored_files, ignored_file );
 }
 
-bool zimr_open_request_log( ) {
+bool zimr_open_request_log() {
 	if ( ( reqlogfd = open( ZM_REQ_LOGFILE, O_WRONLY | O_APPEND ) ) == -1 ) {
 		if ( errno != ENOENT
 		 || ( reqlogfd = creat( ZM_REQ_LOGFILE, S_IRUSR | S_IWUSR ) ) == -1 ) {
@@ -783,6 +879,6 @@ void zimr_log_request( connection_t* connection ) {
 	}
 }
 
-void zimr_close_request_log( ) {
+void zimr_close_request_log() {
 	close( reqlogfd );
 }
