@@ -81,8 +81,11 @@ bool zimr_init() {
 }
 
 void zimr_shutdown() {
-	int i;
+	if ( !initialized ) return;
 
+	initialized = false;
+
+	int i;
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		zimr_website_destroy( list_get_at( &websites, i ) );
 	}
@@ -95,7 +98,6 @@ void zimr_shutdown() {
 	list_destroy( &loaded_modules );
 	syslog( LOG_INFO, "shutdown." );
 	zimr_close_request_log();
-	initialized = false;
 }
 
 int zimr_cnf_load( char* cnf_path ) {
