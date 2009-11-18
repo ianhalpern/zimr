@@ -36,11 +36,12 @@ void modzimr_init() {
 	Py_DECREF( local_path );
 
 	if ( !PyRun_SimpleString(
-		"from pyzimr import zimr\n"
-		"from pyzimr.page_handlers import psp\n"
+		"import zimr\n"
+		"from zimr.page_handlers import psp\n"
 		"zimr.registerPageHandler( 'psp', psp.render )\n"
-	) )
+	) ) {
 		PyErr_Print();
+	}
 }
 
 void modzimr_destroy() {
@@ -49,14 +50,18 @@ void modzimr_destroy() {
 
 void modzimr_website_init( website_t* website ) {
 	//TODO: Look for memleaks
-
-	PyObject* zimr_module  = PyImport_ImportModule( "pyzimr.zimr" );
+	PyObject* zimr_module  = PyImport_ImportModule( "zimr" );
 	PyObject* website_type = PyObject_GetAttrString( zimr_module, "website" );
 	PyObject* website_obj  = PyObject_CallFunction( website_type, "s", website->url );
 
 	PyObject* main_name   = PyString_FromString( "main" );
 	PyObject* main_module = PyImport_Import( main_name );
 	Py_DECREF( main_name );
+
+	if ( !main_module ) {
+		PyErr_Print();
+		return;
+	}
 
 	if ( PyObject_HasAttrString( main_module, "public_directory" ) ) {
 		PyObject* public_dir = PyObject_GetAttrString( main_module, "public_directory" );
@@ -70,6 +75,4 @@ void modzimr_website_init( website_t* website ) {
 		Py_DECREF( connection_handler );
 	}
 
-	if ( !main_module )
-		PyErr_Print();
 }

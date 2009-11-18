@@ -566,7 +566,7 @@ void zimr_connection_send_error( connection_t* connection, short code ) {
 	strcat( error_msg_buf, response_status( code ) );
 	strcat( error_msg_buf, "</h1></body></html>" );
 
-	sprintf( sizebuf, "%d", strlen( error_msg_buf ) );
+	sprintf( sizebuf, "%zu", strlen( error_msg_buf ) );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
 	zimr_connection_send_status( connection );
@@ -752,7 +752,7 @@ int zimr_website_load_module( website_t* website, const char* module_name ) {
 		strcat( module_filename, module_name );
 		strcat( module_filename, ".so" );
 
-		void* handle = dlopen( module_filename, RTLD_LAZY );
+		void* handle = dlopen( module_filename, RTLD_NOW | RTLD_GLOBAL );
 		if ( handle == NULL ) {
 			// report error ...
 			fprintf( stderr, "%s\n", dlerror() );

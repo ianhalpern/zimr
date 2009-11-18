@@ -102,7 +102,7 @@ libzimr.so: $(SHARED_OBJ_DEPENDS) general.o msg_switch.o zfildes.o website.o mim
 
 zimr.so: $(PYMOD_DEPENDS) libzimr.so
 	$(EXEC_COMPILE) $(PYMOD) $(LDZIMR)
-	cp $@ python/pyzimr/
+	cp $@ python/zimr/__init__.so
 
 ##### MODULES #####
 
