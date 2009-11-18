@@ -27,12 +27,15 @@
 #include "zimr.h"
 
 void modzimr_init() {
-	puts( "Hello from modpython!" );
-
 	Py_Initialize();
+
+	PyObject* local_path = PyString_FromString( "" );
+	PyObject* sys_path   = PySys_GetObject( "path" );
+
+	PyList_Insert( sys_path, 0, local_path );
+	Py_DECREF( local_path );
+
 	if ( !PyRun_SimpleString(
-		"import sys\n"
-		"sys.path.insert( 0, '' )\n"
 		"from pyzimr import zimr\n"
 		"from pyzimr.page_handlers import psp\n"
 		"zimr.registerPageHandler( 'psp', psp.render )\n"
@@ -45,14 +48,27 @@ void modzimr_destroy() {
 }
 
 void modzimr_website_init( website_t* website ) {
-	printf( "Hello website %s from modpython\n", website->url );
+	//TODO: Look for memleaks
 
-	PyObject* main_name,* main_module;
+	PyObject* zimr_module  = PyImport_ImportModule( "pyzimr.zimr" );
+	PyObject* website_type = PyObject_GetAttrString( zimr_module, "website" );
+	PyObject* website_obj  = PyObject_CallFunction( website_type, "s", website->url );
 
-	main_name = PyString_FromString( "main" );
-	main_module = PyImport_Import( main_name );
+	PyObject* main_name   = PyString_FromString( "main" );
+	PyObject* main_module = PyImport_Import( main_name );
 	Py_DECREF( main_name );
-	//TODO: error check ^
+
+	if ( PyObject_HasAttrString( main_module, "public_directory" ) ) {
+		PyObject* public_dir = PyObject_GetAttrString( main_module, "public_directory" );
+		PyObject_SetAttrString( website_obj, "public_directory", public_dir );
+		Py_DECREF( public_dir );
+	}
+
+	if ( PyObject_HasAttrString( main_module, "connection_handler" ) ) {
+		PyObject* connection_handler = PyObject_GetAttrString( main_module, "connection_handler" );
+		PyObject_SetAttrString( website_obj, "connection_handler", connection_handler);
+		Py_DECREF( connection_handler );
+	}
 
 	if ( !main_module )
 		PyErr_Print();

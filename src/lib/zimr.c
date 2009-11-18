@@ -603,7 +603,7 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 	int num = 0;
 	char* files[ 512 ];
 
-	char html_header_fmt[] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>/%s</h1>\n";
+	char html_header_fmt[] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>%s</h1>\n";
 	char html_file_fmt[]   = "<a href=\"%s\">%s</a><br/>\n";
 	char html_dir_fmt[]    = "<a href=\"%s/\">%s/</a><br/>\n";
 	char html_header[ strlen( html_header_fmt ) + strlen( filepath ) - strlen( zimr_website_get_pubdir( connection->website ) ) ];

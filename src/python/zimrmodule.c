@@ -59,7 +59,7 @@ static PyObject* pyzimr_response_set_status( PyObject* self, PyObject* args ) {
 	Py_RETURN_NONE;
 }
 
-static PyMethodDef pyzimr_response_methods[ ] = {
+static PyMethodDef pyzimr_response_methods[] = {
 	{ "setStatus", (PyCFunction) pyzimr_response_set_status, METH_VARARGS, "set the response status" },
 	{ "setHeader", (PyCFunction) pyzimr_response_set_header, METH_VARARGS, "set a response header" },
 	{ NULL }  /* Sentinel */
@@ -160,17 +160,17 @@ static PyObject* pyzimr_request_get_post_body( pyzimr_request_t* self, void* clo
 	return PyString_FromString( self->_request->post_body );
 }
 
-static PyMemberDef pyzimr_request_members[ ] = {
+static PyMemberDef pyzimr_request_members[] = {
 	{ NULL }  /* Sentinel */
 };
 
-static PyMethodDef pyzimr_request_methods[ ] = {
+static PyMethodDef pyzimr_request_methods[] = {
 	{ "getParam", (PyCFunction) pyzimr_request_get_param, METH_VARARGS, "get a GET/POST query string parameter value" },
 	{ "getHeader", (PyCFunction) pyzimr_request_get_header, METH_VARARGS, "get a request header value" },
 	{ NULL }  /* Sentinel */
 };
 
-static PyGetSetDef pyzimr_request_getseters[ ] = {
+static PyGetSetDef pyzimr_request_getseters[] = {
 	{
 	  "url",
 	  (getter) pyzimr_request_get_url,
@@ -305,7 +305,7 @@ static PyObject* pyzimr_connection_get_cookie( pyzimr_connection_t* self, PyObje
 }
 
 static PyObject* pyzimr_connection_set_cookie( pyzimr_connection_t* self, PyObject* args, PyObject* kwargs ) {
-	static char* kwlist[ ] = { "name", "value", "expires", "domain", "path", NULL };
+	static char* kwlist[] = { "name", "value", "expires", "domain", "path", NULL };
 	const char* cookie_name,* cookie_value,* cookie_domain = "",* cookie_path = "";
 	time_t expires = 0;
 
@@ -327,7 +327,7 @@ static PyObject* pyzimr_connection_get_ip( pyzimr_connection_t* self, void* clos
 	return PyString_FromString( inet_ntoa( self->_connection->ip ) );
 }
 
-static PyMemberDef pyzimr_connection_members[ ] = {
+static PyMemberDef pyzimr_connection_members[] = {
 	{ "client", T_OBJECT_EX, offsetof( pyzimr_connection_t, client ), 0, "temporary object" }, //TODO: temporary
 	{ "response", T_OBJECT_EX, offsetof( pyzimr_connection_t, response ), RO, "response object of this connection" },
 	{ "request", T_OBJECT_EX, offsetof( pyzimr_connection_t, request ), RO, "request object of this connection" },
@@ -335,7 +335,7 @@ static PyMemberDef pyzimr_connection_members[ ] = {
 	{ NULL }  /* Sentinel */
 };
 
-static PyMethodDef pyzimr_connection_methods[ ] = {
+static PyMethodDef pyzimr_connection_methods[] = {
 	{ "setCookie", (PyCFunction) pyzimr_connection_set_cookie, METH_VARARGS | METH_KEYWORDS, "set a cookie" },
 	{ "getCookie", (PyCFunction) pyzimr_connection_get_cookie, METH_VARARGS, "get a value of a cookie" },
 	{ "send", (PyCFunction) pyzimr_connection_send, METH_VARARGS, "send a string as the response to the connection" },
@@ -344,7 +344,7 @@ static PyMethodDef pyzimr_connection_methods[ ] = {
 	{ NULL }  /* Sentinel */
 };
 
-static PyGetSetDef pyzimr_connection_getseters[ ] = {
+static PyGetSetDef pyzimr_connection_getseters[] = {
 	{
 	  "hostname",
 	  (getter) pyzimr_connection_get_hostname,
@@ -456,11 +456,13 @@ static PyObject* pyzimr_website_new( PyTypeObject* type, PyObject* args, PyObjec
 }
 
 static int pyzimr_website_init( pyzimr_website_t* self, PyObject* args, PyObject* kwargs ) {
-	char* kwlist[ ] = { "url", NULL };
+	char* kwlist[] = { "url", NULL };
 	char* url;
 
 	PyArg_ParseTupleAndKeywords( args, kwargs, "s", kwlist, &url );
-	self->_website = zimr_website_create( url );
+
+	if ( !( self->_website = website_get_by_url( url ) ) )
+		self->_website = zimr_website_create( url );
 
 	( (website_data_t*) self->_website->udata )->udata = self;
 
@@ -481,7 +483,7 @@ static PyObject* pyzimr_website_disable( pyzimr_website_t* self ) {
 }
 
 static PyObject* pyzimr_website_insert_default_page( pyzimr_website_t* self, PyObject* args, PyObject* kwargs ) {
-	static char* kwlist[ ] = { "default_page", "pos", NULL };
+	static char* kwlist[] = { "default_page", "pos", NULL };
 	const char* default_page = "";
 	int pos = -1;
 
@@ -541,18 +543,18 @@ static int pypdora_website_set_connection_handler( pyzimr_website_t* self, PyObj
 	return 0;
 }
 
-static PyMethodDef pyzimr_website_methods[ ] = {
+static PyMethodDef pyzimr_website_methods[] = {
 	{ "enable", (PyCFunction) pyzimr_website_enable, METH_NOARGS, "enable the website" },
 	{ "disable", (PyCFunction) pyzimr_website_disable, METH_NOARGS, "disable the website" },
 	{ "insertDefaultPage", (PyCFunction) pyzimr_website_insert_default_page, METH_VARARGS | METH_KEYWORDS, "add a default page" },
 	{ NULL }  /* Sentinel */
 };
 
-static PyMemberDef pyzimr_website_members[ ] = {
+static PyMemberDef pyzimr_website_members[] = {
 	{ NULL }  /* Sentinel */
 };
 
-static PyGetSetDef pyzimr_website_getseters[ ] = {
+static PyGetSetDef pyzimr_website_getseters[] = {
 	{
 	  "public_directory",
 	  (getter) pyzimr_website_get_public_directory,
@@ -637,8 +639,11 @@ static PyObject* pyzimr_default_connection_handler( PyObject* self, PyObject* ar
 static void pyzimr_page_handler( connection_t* connection, const char* filepath, void* udata ) {
 	PyObject* page_handler = udata;
 	PyObject* result;
+	PyObject* connection_obj = connection->udata;
 
-	result = PyObject_CallFunction( page_handler, "s|O", filepath, connection->udata );
+	if ( !connection_obj ) connection_obj = Py_None;
+
+	result = PyObject_CallFunction( page_handler, "sO", filepath, connection_obj );
 
 	if ( result != NULL ) {
 		if ( !PyString_Check( result ) ) {
@@ -676,7 +681,7 @@ static PyObject* pyzimr_register_page_handler( PyObject* self, PyObject* args ) 
 	Py_RETURN_NONE;
 }
 
-static PyMethodDef pyzimr_methods[ ] = {
+static PyMethodDef pyzimr_methods[] = {
 	{ "version",  (PyCFunction) pyzimr_version, METH_NOARGS, "Returns the version of zimr." },
 	{ "start", (PyCFunction) pyzimr_start, METH_NOARGS, "Starts the zimr mainloop." },
 	{ "defaultConnectionHandler", (PyCFunction) pyzimr_default_connection_handler, METH_VARARGS, "The zimr default connection handler." },
@@ -684,7 +689,7 @@ static PyMethodDef pyzimr_methods[ ] = {
 	{ NULL }		/* Sentinel */
 };
 
-PyMODINIT_FUNC initzimr ( void ) {
+PyMODINIT_FUNC initzimr( void ) {
 
 	if ( PyType_Ready( &pyzimr_website_type ) < 0 )
 		return;

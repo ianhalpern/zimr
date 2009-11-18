@@ -5,11 +5,9 @@
 *look through and update syslog/stdio logging
 *fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
 *error files/website handling
-*add a "init" function
 *bug: connections sometimes fail on read and get "connection reset by peers"
 *add support for http headers that are just \n and not \r\n
 *website parking
-*website modules (python,psp)
 *ignored extensions
 *bug: applications started with zimr command do not clean up state file on exit
 *make zimr info commands return yaml
@@ -35,6 +33,7 @@
 < Milestone v0.1.x >
 
 x*change "zimr stop" command to "zimr pause"
+x*website modules (python,psp)
 
 < Milestone v0.1.0 >
 
