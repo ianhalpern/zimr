@@ -157,8 +157,8 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	if ( connection->request.type == HTTP_POST_TYPE
 	 && ( ptr = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
 		ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-		connection->request.post_body = (char*) malloc( size - (long) ( ptr - start ) );
-		memset( connection->request.post_body, 0, size - (long) ( ptr - start ) );
+		connection->request.post_body = (char*) malloc( size - (long) ( ptr - start ) + 1 );
+		memset( connection->request.post_body, 0, size - (long) ( ptr - start ) + 1 );
 		strncpy( connection->request.post_body, ptr, size - (long) ( ptr - start ) );
 		header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
 		if ( header && startswith( header->value, "application/x-www-form-urlencoded" ) ) {

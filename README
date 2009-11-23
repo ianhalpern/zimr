@@ -1,0 +1,61 @@
+System Requirements
+
+  A Linux System
+  Python 2.6
+  Mako (python templates)
+  Yaml >=v1.1
+
+Installation
+
+  Requirements
+
+    * gcc
+    * make
+    * libyaml-dev
+    * python2.6-dev
+
+   Build
+
+     To build zimr simply use the make command:
+     $ make
+
+   Install
+
+     Run the "make install" command as root to install:
+     $ sudo make install
+
+How To
+
+  To use zimr you must first start the zimr-proxy daemon:
+  $ sudo zimr-proxy start
+
+  Then create a zimr.cnf file in the desired website directories.
+  Example zimr.cnf:
+
+    websites:
+    - url: zimr.org
+
+  Then start the zimr application:
+  $ zimr start
+
+  For more information please refer to < http://Zimr.org/#documentation >
+
+Known Issues
+
+  Because of Zimr's complex inter process communication system, the current transfer speeds
+  are dampened considerably. This issue is not a result of CPU performance, zimr does
+  not make even a tiny dent to CPU usage. It is related to how sockets and file descriptors
+  are handled by the linux kernel. The main thing is it works. The speed issue will be address
+  soon.
+
+  There have been reports that for big files, the internel IPC socket connections between zimr-proxy
+  and zimr-app falter occasionally by zimr-app receiving a "Connection reset by peer" interrupt. The
+  cause is unknown but this will cause zimr to kill all open connections and reset.
+
+About
+
+  Created by Ian Halpern
+  Copyright (c) 2009 Ian Halpern
+  Website: http://Zimr.org
+  License: GNU GPL v3
+  Contact: ian@ian-halpern.com

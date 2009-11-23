@@ -479,7 +479,7 @@ void exread( int sockfd, void* udata ) {
 cleanup:
 		// cleanup
 		website = website_get_by_sockfd( conn_data->website_sockfd );
-		if ( website )
+		if ( website && msg_exists( ((website_data_t*)website->udata)->msg_switch, sockfd ) )
 			msg_kill( ((website_data_t*)website->udata)->msg_switch, sockfd );
 		else
 			cleanup_connection( sockfd );

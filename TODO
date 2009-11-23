@@ -22,18 +22,19 @@
 *permissions/credentials
 *default configuration for applications/websites in state
 *wikipedia page
-*make proxy kill website connections when website dies
 *make a HTTP/GTK gui
 *support for OS X (and maybe...maybe Windows)
 *wildcard url's
 *make a pass/fail bug test script
-*make python embedded version
 *add support for UPnP to open ports in router
 
 < Milestone v0.1.x >
 
+< Milestone v0.1.6 >
+
 x*change "zimr stop" command to "zimr pause"
 x*website modules (python,psp)
+x*make python embedded version
 
 < Milestone v0.1.0 >
 
@@ -57,3 +58,4 @@ x*folder view
 x*setup autostart
 x*make install build routine
 x*setup autostart/stop/etc. (init.d)
+x*make proxy kill website connections when website dies

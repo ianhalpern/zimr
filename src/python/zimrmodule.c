@@ -497,6 +497,10 @@ static PyObject* pyzimr_website_insert_default_page( pyzimr_website_t* self, PyO
 	Py_RETURN_NONE;
 }
 
+static PyObject* pyzimr_website_get_url( pyzimr_website_t* self, void* closure ) {
+	return PyString_FromString( self->_website->url );
+}
+
 static PyObject* pyzimr_website_get_public_directory( pyzimr_website_t* self, void* closure ) {
 	if ( !zimr_website_get_pubdir( self->_website ) ) Py_RETURN_NONE;
 	return PyString_FromString( zimr_website_get_pubdir( self->_website ) );
@@ -555,6 +559,12 @@ static PyMemberDef pyzimr_website_members[] = {
 };
 
 static PyGetSetDef pyzimr_website_getseters[] = {
+	{
+	  "url",
+	  (getter) pyzimr_website_get_url,
+	  0,//(setter) pypdora_response_set_public_directory,
+	  "the requested url", NULL
+	},
 	{
 	  "public_directory",
 	  (getter) pyzimr_website_get_public_directory,
