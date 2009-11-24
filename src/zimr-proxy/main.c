@@ -560,6 +560,13 @@ cleanup:
 		msg_push_data( website_data->msg_switch, sockfd, (void*) buffer, ( ptr - buffer ) );
 	}
 
+	else {
+		if ( !( website = website_get_by_sockfd( conn_data->website_sockfd ) ) ) {
+			syslog( LOG_WARNING, "exread: no website to service request" );
+			goto cleanup;
+		}
+	}
+
 	website_data_t* website_data = website->udata;
 	if ( conn_data->request_type == HTTP_POST_TYPE && conn_data->postlen ) {
 		int left = len - ( ptr - buffer );

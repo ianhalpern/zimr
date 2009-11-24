@@ -1,4 +1,6 @@
 *add "zimr init" command which will be a quick wizard to create a zimr.cnf file
+*make a local modules directory where users can add or remove modules locally
+*add a flag to the ~/.zimr.state file that shows whether or not a app is paused
 *add multiple architecure compilation to makefile (x86,x86-64)
 *thorough testing (use socat for request testing, check for memleaks with valgrind)
 *make ubuntu package
@@ -27,6 +29,7 @@
 *wildcard url's
 *make a pass/fail bug test script
 *add support for UPnP to open ports in router
+*update zcnf.o error checking
 
 < Milestone v0.1.x >
 
