@@ -77,15 +77,16 @@ void modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	if ( !fd ) return;
 
 	PyObject* main_module = PyImport_AddModule( "__main__" );
+	PyObject* main_dict = PyModule_GetDict( main_module );
 
-	if ( !PyRun_SimpleFile( fd, filename ) ) {
+	if ( !PyRun_File( fd, filename, Py_file_input, main_dict, main_dict ) ) {
 		PyErr_Print();
 		return;
 	}
 
 	if ( PyObject_HasAttrString( main_module, "connection_handler" ) ) {
 		PyObject* connection_handler = PyObject_GetAttrString( main_module, "connection_handler" );
-		PyObject_SetAttrString( website_obj, "connection_handler", connection_handler);
+		PyObject_SetAttrString( website_obj, "connection_handler", connection_handler );
 		Py_DECREF( connection_handler );
 	}
 

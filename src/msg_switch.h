@@ -107,14 +107,14 @@ typedef struct msg_switch {
 	list_t pending_msgs;
 	msg_t* msgs[ FD_SETSIZE * 2 ];
 
-	char read_data_type;
+	int read_data_type;
 	union {
 		msg_packet_t packet;
 		msg_packet_resp_t resp;
 	} read_data;
 	int  read_data_size;
 
-	char write_data_type;
+	int write_data_type;
 	union {
 		msg_packet_t packet;
 		msg_packet_resp_t resp;

@@ -251,6 +251,8 @@ website_t* zimr_website_create( char* url ) {
 	website_data->connection_handler = NULL;
 	website_data->conn_tries = 0; //ZM_NUM_PROXY_DEATH_RETRIES - 1;
 	website_data->redirect_url = NULL;
+	strcpy( website_data->proxy.ip, ZM_PROXY_DEFAULT_ADDR );
+	website_data->proxy.port = ZM_PROXY_DEFAULT_PORT;
 	memset( website_data->connections, 0, sizeof( website_data->connections ) );
 	list_init( &website_data->default_pages );
 	list_init( &website_data->ignored_files );
@@ -792,8 +794,8 @@ void zimr_website_set_redirect( website_t* website, char* redirect_url ) {
 
 void zimr_website_set_proxy( website_t* website, char* ip, int port ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
-	strcpy( website_data->proxy.ip, ip );
-	website_data->proxy.port = port;
+	if ( ip ) strcpy( website_data->proxy.ip, ip );
+	if ( port ) website_data->proxy.port = port;
 }
 
 void zimr_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
