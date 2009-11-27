@@ -41,14 +41,17 @@
 #define ZM_USR_STATE_FILE "~/.zimr.state"
 #define ZM_REQ_LOGFILE "zimr.log"
 #define ZM_APP_EXEC "zimr-app"
+#define ZM_PROXY_CNF_FILE "/etc/zimr/zimr-proxy.cnf"
 
-#define ZM_PROXY_ADDR "127.0.0.1"
-#define ZM_PROXY_PORT 7672
+#define ZM_PROXY_DEFAULT_ADDR "127.0.0.1"
+#define ZM_PROXY_DEFAULT_PORT 7672
+#define ZM_PROXY_MAX_PROXIES 64
 
 #define ZM_NUM_PROXY_DEATH_RETRIES 1000 // set to 0(ZERO) for infinite retries
 #define ZM_PROXY_DEATH_RETRY_DELAY 2
 
 #define ZM_MODULE_NAME_MAX_LEN 100
+#define ZM_MODULE_MAX_ARGS 20
 
 /******* ZM_CMD's *********/
 
@@ -59,9 +62,8 @@
 
 /**************************/
 
-/****** ztransport config *******/
+/****** msg_switch config *******/
 
-#define ZT_MSG_SIZE 4084
 
 /**************************/
 

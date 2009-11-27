@@ -29,6 +29,8 @@ websites:
 - url: [ welive.net, www.welive.net ]
   ip: [ default, "10.10.1.0" ]
   public directory: welive.net/
+  default files: [ default.html ]
+  ignore files: [ .log, .cnf ]
 
 - url: zimr.org
   www-redirect
@@ -58,7 +60,18 @@ websites:
 #include "simclist.h"
 #include "general.h"
 
+typedef struct {
+	char ip[ 16 ];
+	int port;
+} zcnf_proxy_t;
+
 // Website Config structs
+typedef struct zcnf_module {
+	char* name;
+	int argc;
+	char* argv[ ZM_MODULE_MAX_ARGS ];
+} zcnf_module_t;
+
 typedef struct zcnf_website {
 	char* url;
 	char* pubdir;
@@ -69,10 +82,11 @@ typedef struct zcnf_website {
 
 typedef struct {
 	zcnf_website_t* website_node;
+	zcnf_proxy_t proxy;
 } zcnf_app_t;
 ///////////////////////////
 
-// Proxy State structs
+// zimr state structs
 typedef struct zcnf_state_app {
 	char* dir;
 	list_t args;
@@ -85,9 +99,17 @@ typedef struct {
 } zcnf_state_t;
 ///////////////////////////
 
+// zimr proxy structs
+
+typedef struct {
+	int n;
+	zcnf_proxy_t proxies[ ZM_PROXY_MAX_PROXIES ];
+} zcnf_proxies_t;
+///////////////////////////
+
 zcnf_state_t* zcnf_state_load( uid_t uid );
 zcnf_app_t* zcnf_app_load( char* path );
-
+zcnf_proxies_t* zcnf_proxy_load();
 bool zcnf_state_app_is_running( zcnf_state_t* state, const char* cwd );
 void zcnf_state_set_app( zcnf_state_t* state, const char* cwd, pid_t pid, list_t* args );
 void zcnf_state_save( zcnf_state_t* state );
@@ -95,5 +117,6 @@ void zcnf_state_save( zcnf_state_t* state );
 void zcnf_app_free( zcnf_app_t* cnf );
 void zcnf_state_app_free( zcnf_state_app_t* app );
 void zcnf_state_free( zcnf_state_t* state );
+void zcnf_proxies_free( zcnf_proxies_t* proxies );
 
 #endif

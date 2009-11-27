@@ -22,11 +22,12 @@
 
 #include "zcnf.h"
 
+// zcnf_walk is more to show an example of how to walk through a yaml config file
 int zcnf_walk( yaml_document_t* document, int index, int depth ) {
 	int i;
 	yaml_node_t *node = yaml_document_get_node( document, index );
 
-	if ( ! node )
+	if ( !node )
 		return 0;
 
 	switch ( node->type ) {
@@ -51,6 +52,18 @@ int zcnf_walk( yaml_document_t* document, int index, int depth ) {
 	}
 
 	return 1;
+}
+
+void zcnf_parse_proxy( zcnf_proxy_t* proxy, char* proxy_str ) {
+	memset( proxy->ip, 0, sizeof( proxy->ip ) );
+	char* port = strchr( proxy_str, ':' );
+	strncpy(
+		proxy->ip, proxy_str,
+		!port || strlen( proxy_str ) - strlen( port ) > sizeof( proxy->ip ) - 1
+		? sizeof( proxy->ip ) - 1
+		: strlen( proxy_str ) - strlen( port )
+	);
+	proxy->port = port ? atoi( port + 1 ) : ZM_PROXY_DEFAULT_PORT;
 }
 
 bool zcnf_load( yaml_document_t* document, const char* filepath ) {
@@ -82,7 +95,7 @@ bool zcnf_load( yaml_document_t* document, const char* filepath ) {
 
 bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index ) {
 	yaml_node_t* root = yaml_document_get_node( document, index );
-	int i, j, k;
+	int i, j, k, l;
 
 	if ( !root || root->type != YAML_SEQUENCE_NODE )
 		return 0;
@@ -106,42 +119,82 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 				break;
 
 			yaml_node_t* attr_val = yaml_document_get_node( document, website_node->data.mapping.pairs.start[ j ].value );
-			if ( ! attr_val )
-				break;
+			if ( !attr_val )
+				continue;
 
 			// url
 			if ( strcmp( "url", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
-					break;
+					continue;
 				website->url = strdup( (char*) attr_val->data.scalar.value );
 			}
 
 			// public directory
 			else if ( strcmp( "public directory", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
-					break;
+					continue;
 				website->pubdir = strdup( (char*) attr_val->data.scalar.value );
 			}
 
 			// redirect url
 			else if ( strcmp( "redirect to", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
-					break;
+					continue;
 				website->redirect_url = strdup( (char*) attr_val->data.scalar.value );
 			}
 
 			// modules
 			else if ( strcmp( "modules", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( !attr_val || attr_val->type != YAML_SEQUENCE_NODE )
-					break;
+					continue;
 
 				for ( k = 0; k < attr_val->data.sequence.items.top - attr_val->data.sequence.items.start; k++ ) {
-					yaml_node_t* module = yaml_document_get_node( document, attr_val->data.sequence.items.start[ k ] );
+					yaml_node_t* module_node = yaml_document_get_node( document, attr_val->data.sequence.items.start[ k ] );
 
-					if ( !module || module->type != YAML_SCALAR_NODE )
-						break;
+					if ( !module_node || module_node->type == YAML_SEQUENCE_NODE )
+						continue;
 
-					list_append( &website->modules, strdup( (char*) module->data.scalar.value ) );
+					else if ( module_node->type == YAML_SCALAR_NODE ) {
+						zcnf_module_t* module = (zcnf_module_t*) malloc( sizeof( zcnf_module_t ) );
+						module->name = strdup( (char*) module_node->data.scalar.value );
+						module->argc = 0;
+						list_append( &website->modules, module );
+					}
+
+					else if ( module_node->type == YAML_MAPPING_NODE ) {
+						if ( module_node->data.mapping.pairs.top - module_node->data.mapping.pairs.start != 1 )
+							continue;
+
+						yaml_node_t* module_name = yaml_document_get_node( document, module_node->data.mapping.pairs.start[ 0 ].key );
+						if ( !module_name || module_name->type != YAML_SCALAR_NODE )
+							continue;
+
+						zcnf_module_t* module = (zcnf_module_t*) malloc( sizeof( zcnf_module_t ) );
+						module->name = strdup( (char*) module_name->data.scalar.value );
+						module->argc = 0;
+						list_append( &website->modules, module );
+
+						yaml_node_t* module_args = yaml_document_get_node( document, module_node->data.mapping.pairs.start[ 0 ].value );
+						if ( !module_args || module_args->type != YAML_SEQUENCE_NODE )
+							continue;
+
+						for ( l = 0; l < module_args->data.sequence.items.top - module_args->data.sequence.items.start; l++ ) {
+							yaml_node_t* module_arg = yaml_document_get_node( document, module_args->data.sequence.items.start[ l ] );
+
+							if ( !module_arg || module_arg->type != YAML_SCALAR_NODE )
+								continue;
+
+							char arg[ strlen( (char*) module_arg->data.scalar.value ) + 1 ];
+
+							memset( arg, 0, strlen( (char*) module_arg->data.scalar.value ) + 1 );
+							strncpy( arg, (char*) module_arg->data.scalar.value,
+							  strlen( (char*) module_arg->data.scalar.value ) );
+							module->argv[ module->argc++ ] = strdup( arg );
+
+							if ( module->argc == ZM_MODULE_MAX_ARGS )
+								break;
+						}
+					}
 				}
 			}
 
@@ -257,12 +310,12 @@ zcnf_state_t* zcnf_state_load( uid_t uid ) {
 		yaml_node_t* node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].key );
 
 		if ( ! node || node->type != YAML_SCALAR_NODE ) {
-			break;
+			continue;
 		}
 
 		if ( strcmp( "applications", (char*) node->data.scalar.value ) == 0 ) {
 			if ( ! zcnf_state_load_apps( state, &document, root->data.mapping.pairs.start[ i ].value ) ) {
-				break;
+				continue;
 			}
 		}
 	}
@@ -280,7 +333,7 @@ zcnf_app_t* zcnf_app_load( char* cnf_path ) {
 
 	if ( !cnf_path ) cnf_path = ZM_APP_CNF_FILE;
 
-	if ( !expand_tilde( cnf_path, filepath, sizeof( filepath ), getuid( ) ) )
+	if ( !expand_tilde( cnf_path, filepath, sizeof( filepath ), getuid() ) )
 		return NULL;
 
 	if ( !zcnf_load( &document, filepath ) )
@@ -295,6 +348,10 @@ zcnf_app_t* zcnf_app_load( char* cnf_path ) {
 
 	cnf = (zcnf_app_t*) malloc( sizeof( zcnf_app_t ) );
 	memset( cnf, 0, sizeof( zcnf_app_t ) );
+
+	strcpy( cnf->proxy.ip, ZM_PROXY_DEFAULT_ADDR );
+	cnf->proxy.port = ZM_PROXY_DEFAULT_PORT;
+
 	for ( i = 0; i < root->data.mapping.pairs.top - root->data.mapping.pairs.start; i++ ) {
 		yaml_node_t* node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].key );
 
@@ -311,6 +368,82 @@ zcnf_app_t* zcnf_app_load( char* cnf_path ) {
 				break;
 			}
 		}
+
+		else if ( strcmp( "proxy", (char*) node->data.scalar.value ) == 0 ) {
+			yaml_node_t* proxy_node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].value );
+			if ( !proxy_node || proxy_node->type != YAML_SCALAR_NODE )
+				continue;
+			zcnf_parse_proxy( &cnf->proxy, (char*) proxy_node->data.scalar.value );
+		}
+	}
+
+quit:
+	yaml_document_delete( &document );
+	return cnf;
+}
+
+zcnf_proxies_t* zcnf_proxy_load() {
+	char cnf_path[] = ZM_PROXY_CNF_FILE;
+	zcnf_proxies_t* cnf = NULL;
+	yaml_document_t document;
+	int i, j;
+
+	if ( !zcnf_load( &document, cnf_path ) )
+		return NULL;
+
+	// start parsing config settings
+	yaml_node_t* root = yaml_document_get_node( &document, 1 );
+
+	if ( ! root || root->type != YAML_MAPPING_NODE ) {
+		goto quit;
+	}
+
+	cnf = (zcnf_proxies_t*) malloc( sizeof( zcnf_proxies_t ) );
+	memset( cnf, 0, sizeof( zcnf_proxies_t ) );
+
+	bool default_proxy = true;
+	for ( i = 0; i < root->data.mapping.pairs.top - root->data.mapping.pairs.start; i++ ) {
+		yaml_node_t* node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].key );
+
+		if ( ! node || node->type != YAML_SCALAR_NODE ) {
+			zcnf_proxies_free( cnf );
+			cnf = NULL;
+			break;
+		}
+
+		if ( strcmp( "default proxy", (char*) node->data.scalar.value ) == 0 ) {
+			yaml_node_t* default_proxy_node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].value );
+			if ( !default_proxy_node || default_proxy_node->type != YAML_SCALAR_NODE )
+				continue;
+
+			if ( strcmp( "off", (char*) default_proxy_node->data.scalar.value ) == 0 ) {
+				default_proxy = false;
+			}
+		}
+
+		else if ( strcmp( "other proxies", (char*) node->data.scalar.value ) == 0 ) {
+			yaml_node_t* other_proxies_node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].value );
+
+			if ( !other_proxies_node || other_proxies_node->type != YAML_SEQUENCE_NODE )
+				continue;
+
+			for ( j = 0; j < other_proxies_node->data.sequence.items.top - other_proxies_node->data.sequence.items.start; j++ ) {
+				yaml_node_t* proxy_node = yaml_document_get_node( &document, other_proxies_node->data.sequence.items.start[ j ] );
+				if ( !proxy_node || proxy_node->type != YAML_SCALAR_NODE )
+					continue;
+
+				zcnf_parse_proxy( &cnf->proxies[ cnf->n ], (char*) proxy_node->data.scalar.value );
+
+				if ( ++cnf->n == ZM_PROXY_MAX_PROXIES - 1 )
+					break;
+			}
+		}
+	}
+
+	if ( default_proxy ) {
+		strncpy( cnf->proxies[ cnf->n ].ip, ZM_PROXY_DEFAULT_ADDR, sizeof( cnf->proxies[ cnf->n ].ip ) - 1 );
+		cnf->proxies[ cnf->n ].port = ZM_PROXY_DEFAULT_PORT;
+		cnf->n++;
 	}
 
 quit:
@@ -442,8 +575,15 @@ void zcnf_app_free( zcnf_app_t* cnf ) {
 		free( website->url );
 		free( website->pubdir );
 		free( website->redirect_url );
-		while( list_size( &website->modules ) )
-			free( list_fetch( &website->modules ) );
+		while( list_size( &website->modules ) ) {
+			zcnf_module_t* module = list_fetch( &website->modules );
+			int i;
+			for ( i = 0; i < module->argc; i++ ) {
+				free( module->argv[ i ] );
+			}
+			free( module->name );
+			free( module );
+		}
 		list_destroy( &website->modules );
 		cnf->website_node = website->next;
 		free( website );
@@ -465,4 +605,8 @@ void zcnf_state_free( zcnf_state_t* state ) {
 	}
 	list_destroy( &state->apps );
 	free( state );
+}
+
+void zcnf_proxies_free( zcnf_proxies_t* proxies ) {
+	free( proxies );
 }

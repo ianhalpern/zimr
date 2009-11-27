@@ -35,6 +35,7 @@
 #include "zsocket.h"
 #include "daemon.h"
 #include "zerr.h"
+#include "zcnf.h"
 
 #define DAEMON_NAME "zimr-proxy"
 
@@ -86,7 +87,7 @@ void signal_handler( int sig ) {
 	}
 }
 
-void print_usage( ) {
+void print_usage() {
 	printf( "Zimr Proxy " ZIMR_VERSION " (" BUILD_DATE ") - "  ZIMR_WEBSITE "\n" );
 	printf(
 "\nUsage: zimr-proxy [OPTIONS] {start|stop|restart}\n\
@@ -116,13 +117,13 @@ int main( int argc, char* argv[ ] ) {
 		} else {
 			if ( strcmp( argv[ i ], "--help" ) != 0 && strcmp( argv[ i ], "-h" ) != 0 )
 				printf( "\nUnknown Option: %s\n", argv[ i ] );
-			print_usage( );
+			print_usage();
 			exit( 0 );
 		}
 	}
 
 	if ( i == argc ) {
-		print_usage( );
+		print_usage();
 		exit( 0 );
 	}
 
@@ -130,18 +131,24 @@ int main( int argc, char* argv[ ] ) {
 	for ( i = i; i < argc; i++ ) {
 		if ( strcmp( argv[ i ], "start" ) == 0 ) break;
 		else if ( strcmp( argv[ i ], "stop" ) == 0 ) {
-			if ( !daemon_stop( ) ) exit( EXIT_FAILURE );
+			if ( !daemon_stop() ) exit( EXIT_FAILURE );
 			exit( EXIT_SUCCESS );
 		} else if ( strcmp( argv[ i ], "restart" ) == 0 ) {
-			if ( !daemon_stop( ) ) exit( EXIT_FAILURE );
+			if ( !daemon_stop() ) exit( EXIT_FAILURE );
 			break;
 		} else {
 			printf( "\nUnknown Command: %s\n", argv[ i ] );
-			print_usage( );
+			print_usage();
 			exit( 0 );
 		}
 	}
 	/////////////////////////////////////////////////
+
+	zcnf_proxies_t* proxy_cnf = zcnf_proxy_load();
+	if ( !proxy_cnf ) {
+		fprintf( stderr, "failed to load config.\n" );
+		exit( EXIT_FAILURE );
+	}
 
 	// signal handling is also set up in daemon.c
 	// but this signal handler will log what signal
@@ -184,22 +191,26 @@ int main( int argc, char* argv[ ] ) {
 	zfd_register_type( EXWRIT, ZFD_W, ZFD_TYPE_HDLR exwrit );
 
 	// call any needed library init functions
-	website_init( );
-	zsocket_init( );
+	website_init();
+	zsocket_init();
 	msg_switch_init( INREAD, INWRIT );
 
 	memset( connections, 0, sizeof( connections ) );
 
-	int sockfd = zsocket( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT, ZSOCK_LISTEN );
-	if ( sockfd == -1 ) {
-		ret = EXIT_FAILURE;
-		goto quit;
+	for ( i = 0; i < proxy_cnf->n; i++ ) {
+		int sockfd = zsocket( inet_addr( proxy_cnf->proxies[ i ].ip ), proxy_cnf->proxies[ i ].port, ZSOCK_LISTEN );
+		if ( sockfd == -1 ) {
+			ret = EXIT_FAILURE;
+			fprintf( stderr, "Proxy failed on %s:%d\n", proxy_cnf->proxies[ i ].ip, proxy_cnf->proxies[ i ].port );
+			goto quit;
+		}
+
+		zfd_set( sockfd, INLISN, NULL );
+		printf( "Proxy listening on %s:%d\n", proxy_cnf->proxies[ i ].ip, proxy_cnf->proxies[ i ].port );
 	}
 
-	zfd_set( sockfd, INLISN, NULL );
-
 #ifndef DEBUG
-	daemon_redirect_stdio( );
+	daemon_redirect_stdio();
 #endif
 
 	// starts a select() loop and calls
@@ -218,7 +229,7 @@ quit:
 		syslog( LOG_INFO, "exit: success" );
 	}
 
-	closelog( );
+	closelog();
 	return ret;
 }
 

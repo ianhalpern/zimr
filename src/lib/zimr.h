@@ -58,6 +58,10 @@ typedef struct {
 
 typedef struct website_data {
 	msg_switch_t* msg_switch;
+	struct {
+		char ip[ 16 ];
+		int port;
+	} proxy;
 	char  status;
 	char* pubdir;
 	void  (*connection_handler)( connection_t* connection );
@@ -72,15 +76,18 @@ typedef struct website_data {
 typedef struct {
 	char name[ ZM_MODULE_NAME_MAX_LEN ];
 	void* handle;
-} module_info_t;
+} module_t;
 
-const char* zimr_version( );
-const char* zimr_build_date( );
+const char* zimr_version();
+const char* zimr_build_date();
 
-bool zimr_init( );
+bool zimr_init();
 int  zimr_cnf_load( char* cnf_path );
-void zimr_start( );
-void zimr_shutdown( );
+void zimr_start();
+void zimr_shutdown();
+module_t* zimr_load_module( const char* module_name );
+module_t* (*zimr_get_module)( const char* module_name );
+void  zimr_unload_module( module_t* );
 
 bool zimr_connection_handler( website_t* website, msg_packet_t* packet );
 void zimr_file_handler( int fd, connection_t* connection );
@@ -89,11 +96,11 @@ website_t* zimr_website_create( char* url );
 void  zimr_website_destroy( website_t* website );
 bool  zimr_website_enable( website_t* website );
 void  zimr_website_disable( website_t* website );
-int   zimr_website_load_module( website_t*, const char* );
-void  zimr_unload_module( module_info_t* );
+void  zimr_website_load_module( website_t*, module_t*, int, char** );
 void  zimr_website_set_redirect( website_t* website, char* redirect_url );
 void  zimr_website_set_pubdir( website_t* website, const char* pubdir );
 char* zimr_website_get_pubdir( website_t* website );
+void  zimr_website_set_proxy( website_t* website, char* ip, int port );
 void  zimr_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t* ) );
 void  zimr_website_unset_connection_handler( website_t* website );
 void  zimr_website_insert_default_page( website_t* website, const char* default_page, int pos );
@@ -109,8 +116,8 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 
 void zimr_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata );
 
-bool zimr_open_request_log( );
+bool zimr_open_request_log();
 void zimr_log_request( connection_t* connection );
-void zimr_close_request_log( );
+void zimr_close_request_log();
 
 #endif

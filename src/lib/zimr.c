@@ -37,7 +37,7 @@ static list_t loaded_modules;
 // module function definitions //////////////////
 static void (*modzimr_init)();
 static void (*modzimr_destroy)();
-static int (*modzimr_website_init)( website_t* );
+static int  (*modzimr_website_init)( website_t*, int, char** );
 /////////////////////////////////////////////////
 
 void command_response_handler( msg_switch_t* msg_switch, msg_packet_resp_t* resp );
@@ -111,6 +111,8 @@ int zimr_cnf_load( char* cnf_path ) {
 
 			website_t* website = zimr_website_create( website_cnf->url );
 
+			zimr_website_set_proxy( website, cnf->proxy.ip, cnf->proxy.port );
+
 			if ( website_cnf->pubdir )
 				zimr_website_set_pubdir( website, website_cnf->pubdir );
 
@@ -118,10 +120,12 @@ int zimr_cnf_load( char* cnf_path ) {
 				zimr_website_set_redirect( website, website_cnf->redirect_url );
 
 			int i;
-			for ( i = 0; i < list_size( &website_cnf->modules ); i++ )
-				if ( !zimr_website_load_module( website, list_get_at( &website_cnf->modules, i ) ) )
-					return 0;
-
+			for ( i = 0; i < list_size( &website_cnf->modules ); i++ ) {
+				zcnf_module_t* module_cnf = list_get_at( &website_cnf->modules, i );
+				module_t* module = zimr_load_module( module_cnf->name );
+				if ( !module ) return 0;
+				zimr_website_load_module( website, module, module_cnf->argc, module_cnf->argv );
+			}
 
 			zimr_website_enable( website );
 		}
@@ -174,6 +178,61 @@ void zimr_start() {
 
 	} while ( list_size( &websites ) && zfd_select( timeout ) );
 
+}
+
+module_t* zimr_load_module( const char* module_name ) {
+	if ( strlen( module_name ) >= ZM_MODULE_NAME_MAX_LEN ) {
+		fprintf( stderr, "module name excedes max length: %s\n", module_name );
+		return NULL;
+	}
+
+	module_t* module = NULL;
+
+	int i;
+	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
+		module = list_get_at( &loaded_modules, i );
+		if ( strcmp( module_name, module->name ) == 0 )
+			break;
+		module = NULL;
+	}
+
+	if ( !module ) {
+
+		char module_filename[ strlen( module_name ) + 6 ];
+		strcpy( module_filename, "mod" );
+		strcat( module_filename, module_name );
+		strcat( module_filename, ".so" );
+
+		void* handle = dlopen( module_filename, RTLD_NOW | RTLD_GLOBAL );
+		if ( handle == NULL ) {
+			// report error ...
+			fprintf( stderr, "%s\n", dlerror() );
+			return NULL;
+		}
+
+		module = malloc( sizeof( module_t ) );
+		strcpy( module->name, module_name );
+		module->handle = handle;
+
+		list_append( &loaded_modules, module );
+
+		*(void**) (&modzimr_init) = dlsym( module->handle, "modzimr_init" );
+		if ( modzimr_init ) (*modzimr_init)();
+	}
+
+	return module;
+}
+
+module_t* (*zimr_get_module)( const char* module_name ) = zimr_load_module;
+
+void zimr_unload_module( module_t* module ) {
+
+	*(void**) (&modzimr_destroy) = dlsym( module->handle, "modzimr_destroy" );
+	if ( modzimr_destroy ) (*modzimr_destroy)();
+
+	//TODO: locate module in loaded_modules and remove
+	dlclose( module->handle );
+	free( module );
 }
 
 website_t* zimr_website_create( char* url ) {
@@ -320,7 +379,7 @@ bool zimr_website_enable( website_t* website ) {
 	}
 
 	website_data->status = WS_STATUS_ENABLING;
-	website->sockfd = zsocket( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT, ZSOCK_CONNECT );
+	website->sockfd = zsocket( inet_addr( website_data->proxy.ip ), website_data->proxy.port, ZSOCK_CONNECT );
 
 	if ( website->sockfd == -1 ) {
 		zerr( ZMERR_ZSOCK_CONN );
@@ -720,74 +779,21 @@ void zimr_file_handler( int fd, connection_t* connection ) {
 	}
 }
 
-void zimr_unload_module( module_info_t* module_info ) {
-
-	*(void**) (&modzimr_destroy) = dlsym( module_info->handle, "modzimr_destroy" );
-	if ( modzimr_destroy ) (*modzimr_destroy)();
-
-	//TODO: locate module_info in loaded_modules and remove
-	dlclose( module_info->handle );
-	free( module_info );
-}
-
-int zimr_website_load_module( website_t* website, const char* module_name ) {
-
-	if ( strlen( module_name ) > ZM_MODULE_NAME_MAX_LEN ) {
-	 	fprintf( stderr, "module name excedes max length: %s\n", module_name );
-		return 0;
-	}
-
-	module_info_t* module_info = NULL;
-
-	int i;
-	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
-		module_info = list_get_at( &loaded_modules, i );
-		if ( strcmp( module_name, module_info->name ) == 0 )
-			break;
-		module_info = NULL;
-	}
-
-	if ( !module_info ) {
-
-		char module_filename[ strlen( module_name ) + 6 ];
-		strcpy( module_filename, "mod" );
-		strcat( module_filename, module_name );
-		strcat( module_filename, ".so" );
-
-		void* handle = dlopen( module_filename, RTLD_NOW | RTLD_GLOBAL );
-		if ( handle == NULL ) {
-			// report error ...
-			fprintf( stderr, "%s\n", dlerror() );
-			return 0;
-		}
-
-		module_info = malloc( sizeof( module_info_t ) );
-		strcpy( module_info->name, module_name );
-		module_info->handle = handle;
-
-		list_append( &loaded_modules, module_info );
-
-		*(void**) (&modzimr_init) = dlsym( module_info->handle, "modzimr_init" );
-
-		if ( !modzimr_init ) {
-			fprintf( stderr, "module %s has no modzimr_init() defined\n", module_name );
-			zimr_unload_module( module_info );
-			return 0;
-		}
-
-		(*modzimr_init)();
-	}
-
-	*(void **)(&modzimr_website_init) = dlsym( module_info->handle, "modzimr_website_init" );
-	if ( modzimr_website_init ) (*modzimr_website_init)( website );
-
-	return 1;
+void zimr_website_load_module( website_t* website, module_t* module, int argc, char* argv[] ) {
+	*(void **)(&modzimr_website_init) = dlsym( module->handle, "modzimr_website_init" );
+	if ( modzimr_website_init ) (*modzimr_website_init)( website, argc, argv );
 }
 
 void zimr_website_set_redirect( website_t* website, char* redirect_url ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	if ( website_data->redirect_url ) free( website_data->redirect_url );
 	website_data->redirect_url = strdup( redirect_url );
+}
+
+void zimr_website_set_proxy( website_t* website, char* ip, int port ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
+	strcpy( website_data->proxy.ip, ip );
+	website_data->proxy.port = port;
 }
 
 void zimr_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {

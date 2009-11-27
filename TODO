@@ -33,7 +33,7 @@
 
 < Milestone v0.1.x >
 
-< Milestone v0.1.6 >
+< Milestone v0.1.7 >
 
 x*change "zimr stop" command to "zimr pause"
 x*website modules (python,psp)

@@ -27,12 +27,12 @@
 
 #include "zimr.h"
 
-void sigquit( ) {
+void sigquit() {
 	exit( 0 );
 }
 
-int main( int argc, char *argv[ ] ) {
-	zimr_init( );
+int main( int argc, char* argv[] ) {
+	zimr_init();
 
 	signal( SIGTERM, sigquit );
 	signal( SIGINT,  sigquit );
@@ -45,7 +45,7 @@ int main( int argc, char *argv[ ] ) {
 
 	atexit( zimr_shutdown );
 
-	zimr_start( );
+	zimr_start();
 
 	return 0;
 }

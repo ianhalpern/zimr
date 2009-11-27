@@ -22,7 +22,7 @@
 
 #include <Python.h>
 #include <stdio.h>
-#include <unistd.h> 
+#include <unistd.h>
 
 #include "zimr.h"
 
@@ -48,25 +48,39 @@ void modzimr_destroy() {
 	Py_Finalize();
 }
 
-void modzimr_website_init( website_t* website ) {
-	//TODO: Look for memleaks
+void modzimr_website_init( website_t* website, int argc, char* argv[] ) {
+	int i;
+	for ( i = 0; i < argc; i++ )
+		puts( argv[ i ] );
+
+	char* filename;
+	FILE* fd;
+
+	if ( !argc ) {
+		filename = "main.py";
+		fd = fopen( filename, "r" );
+	}
+
+	else {
+		filename = argv[ 0 ];
+		if ( !( fd = fopen( filename, "r" ) ) ) {
+			fprintf( stderr, "%s: modpython could not open file %s.\n", strerror( errno ), filename );
+			return;
+		}
+	}
+
+	//TODO: Look for memleaks, errors, etc
 	PyObject* zimr_module  = PyImport_ImportModule( "zimr" );
 	PyObject* website_type = PyObject_GetAttrString( zimr_module, "website" );
 	PyObject* website_obj  = PyObject_CallFunction( website_type, "s", website->url );
 
-	PyObject* main_name   = PyString_FromString( "main" );
-	PyObject* main_module = PyImport_Import( main_name );
-	Py_DECREF( main_name );
+	if ( !fd ) return;
 
-	if ( !main_module ) {
+	PyObject* main_module = PyImport_AddModule( "__main__" );
+
+	if ( !PyRun_SimpleFile( fd, filename ) ) {
 		PyErr_Print();
 		return;
-	}
-
-	if ( PyObject_HasAttrString( main_module, "public_directory" ) ) {
-		PyObject* public_dir = PyObject_GetAttrString( main_module, "public_directory" );
-		PyObject_SetAttrString( website_obj, "public_directory", public_dir );
-		Py_DECREF( public_dir );
 	}
 
 	if ( PyObject_HasAttrString( main_module, "connection_handler" ) ) {

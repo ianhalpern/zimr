@@ -37,6 +37,7 @@ INSTALL_EXECDIR = /usr/bin
 INSTALL_LIBDIR  = /usr/lib
 INSTALL_PYDIR   = /usr/lib/python$(PYVERSION)
 INSTALL_MODDIR  = /usr/lib/zimr
+INSTALL_CNFDIR  = /etc/zimr
 
 VERSION  = `command vernum 2> /dev/null || cat VERSION`
 
@@ -65,7 +66,8 @@ clean:
 
 install:
 	@echo "--- Copying zimr execs, libs, and modules ---";
-	@mkdir -p $(INSTALL_EXECDIR) $(INSTALL_LIBDIR) $(INSTALL_PYDIR) $(INSTALL_MODDIR)
+	@mkdir -p $(INSTALL_EXECDIR) $(INSTALL_LIBDIR) $(INSTALL_PYDIR) $(INSTALL_MODDIR) $(INSTALL_CNFDIR)
+	cp default-configs/* $(INSTALL_CNFDIR)
 	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
 	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
 	cp --remove-destination -r python/* $(INSTALL_PYDIR)
@@ -86,8 +88,8 @@ install:
 zimr: $(EXEC_DEPENDS) zsocket.o zfildes.o zerr.o zcnf.o general.o simclist.o
 	$(EXEC_COMPILE) -lyaml
 
-zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zerr.o
-	$(EXEC_COMPILE)
+zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zerr.o zcnf.o
+	$(EXEC_COMPILE) -lyaml
 
 zimr-app: $(EXEC_DEPENDS) libzimr.so
 	$(EXEC_COMPILE) $(LDZIMR)
