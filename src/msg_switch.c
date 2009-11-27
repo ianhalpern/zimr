@@ -172,17 +172,18 @@ static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* i
 static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
 	int n;
 
-	if ( !msg_switch->read_data_size ) {
-		if ( read( sockfd, &msg_switch->read_data_type, sizeof( msg_switch->read_data_type ) ) != sizeof( msg_switch->read_data_type ) ) {
+	if ( !msg_switch->read_data_type ) {
+		if ( ( n = read( sockfd, &msg_switch->read_data_type, sizeof( msg_switch->read_data_type ) ) ) != sizeof( msg_switch->read_data_type ) ) {
 			msg_switch_failed( msg_switch, 0, "msg_switch_read(): read type" );
-			return;
 		}
+		return;
 	}
 
-	n = read( sockfd, &msg_switch->read_data + msg_switch->read_data_size,
+	n = read( sockfd, (void*) &msg_switch->read_data + msg_switch->read_data_size,
 	  MSG_TYPE_GET_SIZE( msg_switch->read_data_type ) - msg_switch->read_data_size );
 
 	if ( n <= 0 ) {
+		msg_switch->read_data_type = 0;
 		msg_switch->read_data_size = 0;
 		if ( n == -1 )
 			perror( "msg_switch_read(): read data"  );
@@ -194,7 +195,6 @@ static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
 	msg_switch->read_data_size += n;
 
 	if ( msg_switch->read_data_size == MSG_TYPE_GET_SIZE( msg_switch->read_data_type ) ) {
-		msg_switch->read_data_size = 0;
 
 		switch( msg_switch->read_data_type ) {
 			case MSG_TYPE_RESP:
@@ -218,13 +218,16 @@ static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
 
 				break;
 		}
+
+		msg_switch->read_data_size = 0;
+		msg_switch->read_data_type = 0;
 	}
 }
 
 static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
 	int n;
 
-	if ( !msg_switch->write_data_size ) {
+	if ( !msg_switch->write_data_type ) {
 		// check if waiting to send returns
 		if ( msg_switch_has_pending_resps( msg_switch ) ) {
 			msg_switch->write_data_type = MSG_TYPE_RESP;
@@ -241,25 +244,32 @@ static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
 
 		msg_switch->write_data_size = MSG_TYPE_GET_SIZE( msg_switch->write_data_type );
 
-		if ( write( sockfd, &msg_switch->write_data_type, sizeof( msg_switch->write_data_type ) )
+		if ( ( n = write( sockfd, &msg_switch->write_data_type, sizeof( msg_switch->write_data_type ) ) )
 		  != sizeof( msg_switch->write_data_type ) ) {
 			msg_switch_failed( msg_switch, 0, "msg_switch_writ(): write type" );
-			return;
 		}
+		return;
 	}
 
-	n = write( sockfd, &msg_switch->write_data + ( MSG_TYPE_GET_SIZE( msg_switch->write_data_type ) - msg_switch->write_data_size ),
+	n = write( sockfd, (void*) &msg_switch->write_data + ( MSG_TYPE_GET_SIZE( msg_switch->write_data_type ) - msg_switch->write_data_size ),
 	  msg_switch->write_data_size );
 
 	if ( n <= 0 ) {
+		msg_switch->write_data_type = 0;
 		msg_switch->write_data_size = 0;
-		msg_switch_failed( msg_switch, 0, "msg_switch_writ(): write data" );
+		if ( n == -1 )
+			perror( "msg_switch_write(): write data"  );
+		msg_switch_failed( msg_switch, n, "msg_switch_writ(): write data" );
 		return;
 	}
 
 	msg_switch->write_data_size -= n;
 
-	if ( !msg_switch->write_data_size && !msg_switch_is_pending( msg_switch ) ) {
+	if ( !msg_switch->write_data_size ) {
+		msg_switch->write_data_type = 0;
+	}
+
+	if ( !msg_switch->write_data_type && !msg_switch_is_pending( msg_switch ) ) {
 		zfd_clr( sockfd, writ_type );
 	}
 }
@@ -306,6 +316,8 @@ msg_switch_t* msg_switch_new(
 	list_init( &msg_switch->pending_resps );
 	list_init( &msg_switch->pending_msgs );
 	msg_switch->sockfd = sockfd;
+	msg_switch->read_data_type = 0;
+	msg_switch->write_data_type = 0;
 	msg_switch->read_data_size = 0;
 	msg_switch->write_data_size = 0;
 	msg_switch->event_handler = event_handler;

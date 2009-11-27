@@ -57,7 +57,7 @@
 #define MSG_SWITCH_EVT_DESTROY   0x41
 #define MSG_SWITCH_EVT_IO_FAILED 0x42
 
-#define PACK_DATA_SIZE 4048
+#define PACK_DATA_SIZE ( 4 * 1024 - sizeof( int ) * 3 )
 
 #define PACK_FL_FIRST 0x1
 #define PACK_FL_LAST  0x2

@@ -67,7 +67,7 @@ clean:
 install:
 	@echo "--- Copying zimr execs, libs, and modules ---";
 	@mkdir -p $(INSTALL_EXECDIR) $(INSTALL_LIBDIR) $(INSTALL_PYDIR) $(INSTALL_MODDIR) $(INSTALL_CNFDIR)
-	cp default-configs/* $(INSTALL_CNFDIR)
+	cp -u default-configs/* $(INSTALL_CNFDIR)
 	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
 	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
 	cp --remove-destination -r python/* $(INSTALL_PYDIR)
