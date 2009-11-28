@@ -64,6 +64,7 @@
 
 /****** msg_switch config *******/
 
+#define PACK_DATA_SIZE ( 8 * 1024 - sizeof( int ) * 3 )
 
 /**************************/
 

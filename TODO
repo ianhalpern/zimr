@@ -1,3 +1,4 @@
+*add zimr.cnf attributes to zimr-app command line
 *add "zimr init" command which will be a quick wizard to create a zimr.cnf file
 *make a local modules directory where users can add or remove modules locally
 *add a flag to the ~/.zimr.state file that shows whether or not a app is paused
