@@ -1,6 +1,8 @@
 *add zimr.cnf attributes to zimr-app command line
 *add "zimr init" command which will be a quick wizard to create a zimr.cnf file
+*found bug that crashes zimr-proxy; if bad packets get sent from libzimr, or instance sending data on a connection twice...like if you send a page handler then also call the default page handler afterwards.
 *make a local modules directory where users can add or remove modules locally
+*update pyzimr cookies type to accept expires, path, etc.
 *add a flag to the ~/.zimr.state file that shows whether or not a app is paused
 *add multiple architecure compilation to makefile (x86,x86-64)
 *thorough testing (use socat for request testing, check for memleaks with valgrind)
@@ -18,7 +20,6 @@
 *add logging by website and configurable via zimr.cnf file
 *SSL for external encryption, SSH for internal encryption
 *multipart/form-data support and attachments http://community.roxen.com/developers/idocs/rfc/rfc1867.html
-*make proxy config file
 *comb through rfc specs and add missing features, or features that need to be updated to conform to it to the TODO list
 *write man page/documentation
 *remove asserts
@@ -33,6 +34,8 @@
 *update zcnf.o error checking
 
 < Milestone v0.1.x >
+
+*make proxy config file
 
 < Milestone v0.1.7 >
 

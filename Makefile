@@ -8,7 +8,7 @@ PTHREAD     = -pthread
 DSYMBOLS    = -DZIMR_VERSION="\"$(VERSION)\""
 OUTPUT      = -o $@
 SHARED      = -shared -fPIC -Wl,-soname,$@
-LDPYTHON    = -lpython$(PYVERSION) -I/usr/include/python$(PYVERSION)
+LDPYTHON    = -lpython$(PYVERSION) -I/usr/include/python$(PYVERSION) #-lpthread
 PYMOD       = -shared -fPIC -Wl,-O1 -Wl,-Bsymbolic-functions $(LDPYTHON)
 LDZIMR      = -lzimr -L.
 LDZIMR_LOCAL= -Wl,-rpath,`pwd`

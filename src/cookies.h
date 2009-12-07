@@ -34,7 +34,7 @@ typedef struct {
 	char value[ COOKIE_VALUE_MAX_LEN ];
 	char domain[ COOKIE_DOMAIN_MAX_LEN ];
 	char path[ COOKIE_PATH_MAX_LEN ];
-	char expires[ COOKIE_EXPIRES_MAX_LEN ];
+	time_t expires;
 	char updated;
 } cookie_t;
 
@@ -46,6 +46,7 @@ typedef struct {
 
 cookies_t cookies_parse( char* raw );
 void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t expires, const char* domain, const char* path );
+void cookies_del_cookie( cookies_t* cookies, const char* name );
 cookie_t* cookies_get_cookie( cookies_t* cookies, const char* name );
 char* cookies_to_string( cookies_t* cookies, char* cookies_str, int size );
 

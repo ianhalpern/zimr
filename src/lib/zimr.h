@@ -68,6 +68,7 @@ typedef struct website_data {
 	int   conn_tries;
 	list_t default_pages;
 	list_t ignored_files;
+	list_t page_handlers;
 	char* redirect_url;
 	conn_data_t* connections[ FD_SETSIZE ];
 	void* udata;
@@ -114,7 +115,7 @@ void zimr_connection_send_error( connection_t* connection, short code );
 void zimr_connection_send_redirect( connection_t* connection, char* url );
 void zimr_connection_default_page_handler( connection_t* connection, char* filepath );
 
-void zimr_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata );
+void zimr_website_register_page_handler( website_t*, const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata );
 
 bool zimr_open_request_log();
 void zimr_log_request( connection_t* connection );

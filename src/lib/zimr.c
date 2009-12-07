@@ -26,12 +26,10 @@ static int reqlogfd = -1;
 
 typedef struct {
 	char page_type[ 10 ];
-	void (*page_handler)( connection_t*, const char*, void* );
+	void (*handler)( connection_t*, const char*, void* );
 	void* udata;
 } page_handler_t;
 
-static int page_handler_count = 0;
-static page_handler_t page_handlers[ 100 ];
 static list_t loaded_modules;
 
 // module function definitions //////////////////
@@ -256,6 +254,7 @@ website_t* zimr_website_create( char* url ) {
 	memset( website_data->connections, 0, sizeof( website_data->connections ) );
 	list_init( &website_data->default_pages );
 	list_init( &website_data->ignored_files );
+	list_init( &website_data->page_handlers );
 	zimr_website_insert_default_page( website, "default.html", 0 );
 	zimr_website_insert_ignored_file( website, "zimr.cnf" );
 	zimr_website_insert_ignored_file( website, "zimr.log" );
@@ -271,8 +270,10 @@ void zimr_website_destroy( website_t* website ) {
 	if ( website_data->pubdir )
 		free( website_data->pubdir );
 
+	// TODO: free memory before destroying
 	list_destroy( &website_data->default_pages );
 	list_destroy( &website_data->ignored_files );
+	list_destroy( &website_data->page_handlers );
 
 	free( website_data );
 	website_remove( website );
@@ -597,22 +598,21 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 	// search for a page handler by file extension
 	ptr = strrchr( full_filepath, '.' );
 
-	i = page_handler_count;
 	if ( ptr != NULL && ptr[ 1 ] != '\0' ) {
 		ptr++; // skip over "."
 
-		for ( i = 0; i < page_handler_count; i++ ) {
-			if ( strcmp( page_handlers[ i ].page_type, ptr ) == 0 ) {
-				page_handlers[ i ].page_handler( connection, full_filepath, page_handlers[ i ].udata );
-				break;
+		for ( i = 0 ; i < list_size( &website_data->page_handlers ); i++ ) {
+			page_handler_t* page_handler = list_get_at( &website_data->page_handlers, i );
+			if ( strcmp( page_handler->page_type, ptr ) == 0 ) {
+				page_handler->handler( connection, full_filepath, page_handler->udata );
+				return;
 			}
 		}
 
 	}
 
-	// check if a page handler was found, if not use the default.
-	if ( i == page_handler_count )
-		zimr_connection_default_page_handler( connection, full_filepath );
+	// if you have made it this far, use the default page handler.
+	zimr_connection_default_page_handler( connection, full_filepath );
 
 }
 
@@ -825,11 +825,16 @@ char* zimr_website_get_pubdir( website_t* website ) {
 	return website_data->pubdir;
 }
 
-void zimr_register_page_handler( const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata ) {
-	strcpy( page_handlers[ page_handler_count ].page_type, page_type );
-	page_handlers[ page_handler_count ].page_handler = page_handler;
-	page_handlers[ page_handler_count ].udata = udata;
-	page_handler_count++;
+void zimr_website_register_page_handler( website_t* website, const char* page_type,
+										 void (*handler)( connection_t*, const char*, void* ), void* udata ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
+	page_handler_t* page_handler = (page_handler_t*) malloc( sizeof( page_handler_t ) );
+
+	strcpy( page_handler->page_type, page_type );
+	page_handler->handler = handler;
+	page_handler->udata = udata;
+
+	list_append( &website_data->page_handlers, page_handler );
 }
 
 void zimr_website_insert_default_page( website_t* website, const char* default_page, int pos ) {
@@ -843,7 +848,7 @@ void zimr_website_insert_default_page( website_t* website, const char* default_p
 	else if ( pos < 0 )
 		pos = 0;
 
-	list_insert_at( &website_data->default_pages, default_page, pos );
+	list_insert_at( &website_data->default_pages, strdup( default_page ), pos );
 }
 
 void zimr_website_insert_ignored_file( website_t* website, const char* ignored_file ) {
