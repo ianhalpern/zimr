@@ -229,6 +229,21 @@ static PyObject* pyzimr_params_keys( pyzimr_params_t* self ) {
 	return keys;
 }
 
+static PyObject* pyzimr_params_items( pyzimr_params_t* self ) {
+	PyObject* items = PyTuple_New( list_size( (list_t*)self->_params ) );
+
+	int i;
+	for ( i = 0; i < list_size( (list_t*)self->_params ); i++ ) {
+		param_t* param = list_get_at( (list_t*)self->_params, i );
+		PyObject* key_val = PyTuple_New( 2 );
+		PyTuple_SetItem( key_val, 0, PyString_FromString( param->name ) );
+		PyTuple_SetItem( key_val, 1, PyString_FromString( param->value ) );
+		PyTuple_SetItem( items, i, key_val );
+	}
+
+	return items;
+}
+
 static int pyzimr_params__maplen__( pyzimr_params_t* self ) {
 	return list_size( self->_params );
 }
@@ -254,6 +269,7 @@ static PyMappingMethods pyzimr_params_as_map = {
 
 static PyMethodDef pyzimr_params_methods[] = {
 	{ "keys", (PyCFunction) pyzimr_params_keys, METH_NOARGS, "set the response status" },
+	{ "items", (PyCFunction) pyzimr_params_items, METH_NOARGS, "set the response status" },
 	{ NULL }  /* Sentinel */
 };
 
@@ -360,6 +376,10 @@ static PyObject* pyzimr_request_get_post_body( pyzimr_request_t* self, void* clo
 	return PyString_FromString( self->_request->post_body );
 }
 
+static PyObject* pyzimr_request_get_method( pyzimr_request_t* self, void* closure ) {
+	return PyString_FromString( HTTP_TYPE( self->_request->type ) );
+}
+
 static PyMemberDef pyzimr_request_members[] = {
 	{ "params", T_OBJECT_EX, offsetof( pyzimr_request_t, params ), RO, "params object for the request" },
 	{ "headers", T_OBJECT_EX, offsetof( pyzimr_request_t, headers ), RO, "params object for the request" },
@@ -382,6 +402,12 @@ static PyGetSetDef pyzimr_request_getseters[] = {
 	{
 	  "post_body",
 	  (getter) pyzimr_request_get_post_body,
+	  0,//(setter) pypdora_response_set_public_directory,
+	  "the body of a post request", NULL
+	},
+	{
+	  "method",
+	  (getter) pyzimr_request_get_method,
 	  0,//(setter) pypdora_response_set_public_directory,
 	  "the body of a post request", NULL
 	},
