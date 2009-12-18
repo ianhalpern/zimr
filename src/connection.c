@@ -116,6 +116,11 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 		strcpy( urlbuf, connection->request.url + 3 );
 		strcpy( connection->request.url, urlbuf );
 	}
+
+	if ( connection->request.url[ 0 ] == '/' ) {
+		strcpy( urlbuf, connection->request.url + 1 );
+		strcpy( connection->request.url, urlbuf );
+	}
 	////////////////////////////////////////
 
 	// parse qstring params ////////////////
