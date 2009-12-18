@@ -22,7 +22,7 @@
 
 #include "urldecoder.h"
 
-char* urlcodes[ 256 ] = {
+char* urlcodes[] = {
 "",   // %00
 "",   // %01
 "",   // %02
@@ -291,7 +291,7 @@ char* url_decode( char* raw_url, char* buffer, int url_len ) {
 	char hex[ 3 ];
 	unsigned int i;
 
-	*buffer = '\0';
+	*buffer = 0;
 
 	while ( ( ptr = strchr( url_ptr, '%' ) ) ) {
 		strncat( buffer, url_ptr, ptr - url_ptr );

@@ -36,6 +36,17 @@ typedef struct {
 	headers_t* _headers;
 } pyzimr_headers_t;
 
+static PyObject* pyzimr_headers_keys( pyzimr_headers_t* self ) {
+	PyObject* keys = PyTuple_New( self->_headers->num );
+
+	int i;
+	for ( i = 0; i < self->_headers->num; i++ ) {
+		PyTuple_SetItem( keys, i, PyString_FromString( self->_headers->list[ i ].name ) );
+	}
+
+	return keys;
+}
+
 static int pyzimr_headers__maplen__( pyzimr_headers_t* self ) {
 	return list_size( (list_t*)self->_headers );
 }
@@ -57,6 +68,11 @@ static PyMappingMethods pyzimr_headers_as_map = {
 	(inquiry)       pyzimr_headers__maplen__, /*mp_length*/
 	(binaryfunc)    pyzimr_headers__mapget__, /*mp_subscript*/
 	(objobjargproc) pyzimr_headers__mapset__, /*mp_ass_subscript*/
+};
+
+static PyMethodDef pyzimr_headers_methods[] = {
+	{ "keys", (PyCFunction) pyzimr_headers_keys, METH_NOARGS, "set the response status" },
+	{ NULL }  /* Sentinel */
 };
 
 static PyTypeObject pyzimr_headers_type = {
@@ -88,7 +104,7 @@ static PyTypeObject pyzimr_headers_type = {
 	0,		               /* tp_weaklistoffset */
 	0,		               /* tp_iter */
 	0,		               /* tp_iternext */
-	0,             /* tp_methods */
+	pyzimr_headers_methods,             /* tp_methods */
 	0,             /* tp_members */
 	0,           /* tp_getset */
 	0,                         /* tp_base */

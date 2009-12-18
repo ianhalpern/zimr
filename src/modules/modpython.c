@@ -35,6 +35,10 @@ void modzimr_init() {
 	PyList_Insert( sys_path, 0, local_path );
 	Py_DECREF( local_path );
 
+	char argv[][ 1 ] = { { "" } };
+
+	PySys_SetArgv( 0, (char**) argv );
+
 	/*if ( !PyRun_SimpleString(
 		"import zimr\n"
 		"from zimr.page_handlers import psp\n"

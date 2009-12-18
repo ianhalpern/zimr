@@ -549,7 +549,7 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 
 	// if the filepath is relative to the specified public directory, initialize
 	// the filepath with the public directory.
-	if ( use_pubdir )
+	if ( use_pubdir && filepath[ 0 ] != '/' )
 		strcpy( full_filepath, website_data->pubdir );
 
 	strcat( full_filepath, filepath );

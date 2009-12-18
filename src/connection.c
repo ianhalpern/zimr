@@ -23,7 +23,7 @@
 #include "connection.h"
 
 // Reference: http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
-const char httpstatus[ ][ 40 ] = {
+const char httpstatus[][ 40 ] = {
 "100 Continue",
 "101 Switching Protocols",
 "200 OK",

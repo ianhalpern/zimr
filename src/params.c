@@ -49,7 +49,8 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 			break;
 
 		len = ptr - raw;
-		name = (char*) malloc( len );
+
+		name = (char*) malloc( len + 1 );
 		url_decode( raw, name, len );
 		raw = ptr + 1;
 
