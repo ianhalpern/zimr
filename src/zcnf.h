@@ -88,7 +88,7 @@ typedef struct {
 
 // zimr state structs
 typedef struct zcnf_state_app {
-	char* dir;
+	char* path;
 	list_t args;
 	pid_t pid;
 } zcnf_state_app_t;

@@ -46,7 +46,7 @@
 #define INWRIT 0x02
 #define FILEREAD 0x03
 
-#define DAEMON_NAME "zimr-application"
+#define DAEMON_NAME ZM_APP_EXEC
 #define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
 
 typedef struct {

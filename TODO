@@ -1,4 +1,3 @@
-*add zimr.cnf attributes to zimr-app command line
 *add "zimr init" command which will be a quick wizard to create a zimr.cnf file
 *found bug that crashes zimr-proxy; if bad packets get sent from libzimr, or instance sending data on a connection twice...like if you send a page handler then also call the default page handler afterwards.
 *make a local modules directory where users can add or remove modules locally
@@ -35,7 +34,8 @@
 
 < Milestone v0.1.x >
 
-*make proxy config file
+x*add zimr.cnf attributes to zimr-app command line
+x*make proxy config file
 
 < Milestone v0.1.7 >
 
