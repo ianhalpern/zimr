@@ -23,6 +23,7 @@
 #ifndef _ZM_ZIMR_H
 #define _ZM_ZIMR_H
 
+#include <sys/types.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <syslog.h>
@@ -32,6 +33,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <dlfcn.h>
+#include <regex.h>
 
 #include "website.h"
 #include "zsocket.h"
@@ -68,7 +70,7 @@ typedef struct website_data {
 	void  (*connection_handler)( connection_t* connection );
 	int   conn_tries;
 	list_t default_pages;
-	list_t ignored_files;
+	list_t ignored_regexs;
 	list_t page_handlers;
 	char* redirect_url;
 	conn_data_t* connections[ FD_SETSIZE ];
@@ -106,7 +108,7 @@ void  zimr_website_set_proxy( website_t* website, char* ip, int port );
 void  zimr_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t* ) );
 void  zimr_website_unset_connection_handler( website_t* website );
 void  zimr_website_insert_default_page( website_t* website, const char* default_page, int pos );
-void  zimr_website_insert_ignored_file( website_t* website, const char* ignored_file );
+void  zimr_website_insert_ignored_regex( website_t* website, const char* ignored_regex );
 
 void zimr_connection_send_status( connection_t* connection );
 void zimr_connection_send_headers( connection_t* connection );

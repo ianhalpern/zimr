@@ -1,4 +1,4 @@
-*update ignore_files to be absolute/relative paths
+*adding file sorting to directory view
 *python module: make public directory main directory
 *add ping/timeout functionality
 *add "zimr init" command which will be a quick wizard to create a zimr.cnf file
@@ -38,6 +38,7 @@
 
 < Milestone v0.2.0 >
 
+x*update ignore_files to be regex patterns
 x*add zimr.cnf attributes to zimr-app command line
 x*make proxy config file
 x*bug: going to a directory without the backslash which is inside a subdirectory sends an invalid redirect. example: http://zimr.org/style/graphics

@@ -126,6 +126,10 @@ int zimr_cnf_load( char* cnf_path ) {
 				zimr_website_load_module( website, module, module_cnf->argc, module_cnf->argv );
 			}
 
+			for ( i = 0; i < list_size( &website_cnf->ignore ); i++ ) {
+				zimr_website_insert_ignored_regex( website, list_get_at( &website_cnf->ignore, i ) );
+			}
+
 			zimr_website_enable( website );
 		}
 		website_cnf = website_cnf->next;
@@ -234,6 +238,13 @@ void zimr_unload_module( module_t* module ) {
 	free( module );
 }
 
+int ignored_regex_check( const char* path, regex_t* ignored_regex ) {
+	regmatch_t result;
+	if ( regexec( ignored_regex, path, 1, &result, 0 ) == 0 )
+		return 0;
+	return 1;
+}
+
 website_t* zimr_website_create( char* url ) {
 	website_t* website;
 	website_data_t* website_data;
@@ -254,14 +265,14 @@ website_t* zimr_website_create( char* url ) {
 	website_data->proxy.port = ZM_PROXY_DEFAULT_PORT;
 	memset( website_data->connections, 0, sizeof( website_data->connections ) );
 	list_init( &website_data->default_pages );
-	list_init( &website_data->ignored_files );
+	list_init( &website_data->ignored_regexs );
 	list_init( &website_data->page_handlers );
 
-	list_attributes_comparator( &website_data->ignored_files, (element_comparator) strcmp );
+	list_attributes_comparator( &website_data->ignored_regexs, (element_comparator) ignored_regex_check );
 
 	zimr_website_insert_default_page( website, "default.html", 0 );
-	zimr_website_insert_ignored_file( website, "zimr.cnf" );
-	zimr_website_insert_ignored_file( website, "zimr.log" );
+	zimr_website_insert_ignored_regex( website, "^zimr\\.cnf$" );
+	zimr_website_insert_ignored_regex( website, "^zimr\\.log$" );
 
 	return website;
 }
@@ -276,7 +287,7 @@ void zimr_website_destroy( website_t* website ) {
 
 	// TODO: free memory before destroying
 	list_destroy( &website_data->default_pages );
-	list_destroy( &website_data->ignored_files );
+	list_destroy( &website_data->ignored_regexs );
 	list_destroy( &website_data->page_handlers );
 
 	free( website_data );
@@ -589,14 +600,10 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 	}
 
 	// check if file is ignored
-	ptr = strrchr( full_filepath, '/' );
-	if ( ptr ) {
-		ptr++; // skip over '/'
-		if ( list_contains( &website_data->ignored_files, ptr ) ) {
-			// Does not exist.
-			zimr_connection_send_error( connection, 404 );
-			return;
-		}
+	if ( list_contains( &website_data->ignored_regexs, filepath ) ) {
+		// Does not exist.
+		zimr_connection_send_error( connection, 404 );
+		return;
 	}
 
 	// search for a page handler by file extension
@@ -687,13 +694,17 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 			continue;
 		}
 
+		char externpath[ strlen( connection->request.url ) + strlen( dp->d_name ) + 1 ];
+		strcpy( externpath, connection->request.url );
+		strcat( externpath, dp->d_name );
+
+		if ( list_contains( &website_data->ignored_regexs, externpath ) )
+			continue;
+
 		if ( S_ISDIR( file_stat.st_mode ) ) {
 			files[ num ] = (char*) malloc( strlen( dp->d_name ) * 2 + sizeof( html_dir_fmt ) + 1 );
 			sprintf( files[ num ], html_dir_fmt, dp->d_name, dp->d_name );
 		} else {
-			if ( list_contains( &website_data->ignored_files, dp->d_name ) )
-				continue;
-
 			files[ num ] = (char*) malloc( strlen( dp->d_name ) * 2 + sizeof( html_file_fmt ) + 1 );
 			sprintf( files[ num ], html_file_fmt, dp->d_name, dp->d_name );
 		}
@@ -858,9 +869,16 @@ void zimr_website_insert_default_page( website_t* website, const char* default_p
 	list_insert_at( &website_data->default_pages, strdup( default_page ), pos );
 }
 
-void zimr_website_insert_ignored_file( website_t* website, const char* ignored_file ) {
+void zimr_website_insert_ignored_regex( website_t* website, const char* ignored_regex ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
-	list_append( &website_data->ignored_files, ignored_file );
+	regex_t* regex = (regex_t*) malloc( sizeof( regex_t ) );
+	memset( regex, 0, sizeof( regex_t ) );
+	puts( ignored_regex );
+	int err_no;
+	if ( ( err_no = regcomp( regex, ignored_regex, 0 ) ) !=0 ) /* Compile the regex */
+		regfree( regex );
+	else
+		list_append( &website_data->ignored_regexs, regex );
 }
 
 bool zimr_open_request_log() {

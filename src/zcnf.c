@@ -111,6 +111,7 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 		website->pubdir = NULL;
 		website->redirect_url = NULL;
 		list_init( &website->modules );
+		list_init( &website->ignore );
 
 		for ( j = 0; j < website_node->data.mapping.pairs.top - website_node->data.mapping.pairs.start; j++ ) {
 			yaml_node_t* attr_key = yaml_document_get_node( document, website_node->data.mapping.pairs.start[ j ].key );
@@ -141,6 +142,21 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 				if ( attr_val->type != YAML_SCALAR_NODE )
 					continue;
 				website->redirect_url = strdup( (char*) attr_val->data.scalar.value );
+			}
+
+			// ignore
+			else if ( strcmp( "ignore", (char*) attr_key->data.scalar.value ) == 0 ) {
+				if ( !attr_val || attr_val->type != YAML_SEQUENCE_NODE )
+					continue;
+
+				for ( k = 0; k < attr_val->data.sequence.items.top - attr_val->data.sequence.items.start; k++ ) {
+					yaml_node_t* ignore_node = yaml_document_get_node( document, attr_val->data.sequence.items.start[ k ] );
+
+					if ( ignore_node->type != YAML_SCALAR_NODE )
+						continue;
+
+					list_append( &website->ignore, strdup( (char*) ignore_node->data.scalar.value ) );
+				}
 			}
 
 			// modules
@@ -585,6 +601,10 @@ void zcnf_app_free( zcnf_app_t* cnf ) {
 			free( module );
 		}
 		list_destroy( &website->modules );
+		while( list_size( &website->ignore ) ) {
+			free( list_fetch( &website->ignore ) );
+		}
+		list_destroy( &website->ignore );
 		cnf->website_node = website->next;
 		free( website );
 	}
