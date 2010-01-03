@@ -22,7 +22,7 @@
 
 #include "params.h"
 
-list_t params_create( ) {
+list_t params_create() {
 	list_t params;
 	list_init( &params );
 	return params;
@@ -38,7 +38,7 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 		char* value;
 
 		// name
-		ptr = strstr( raw, "=" );
+		ptr = strchr( raw, '=' );
 
 		if ( !ptr ) {
 			break;
@@ -51,17 +51,17 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 		len = ptr - raw;
 
 		name = (char*) malloc( len + 1 );
-		url_decode( raw, name, len );
+		url_decode( name, raw, len );
 		raw = ptr + 1;
 
 		// value
-		ptr = strstr( raw, "&" );
+		ptr = strchr( raw, '&' );
 		if ( !ptr || ptr - raw > size ) ptr = raw + size;
 
 		len = ptr - raw;
 
 		value = (char*) malloc( len + 1 );
-		url_decode( raw, value, len );
+		url_decode( value, raw, len );
 
 		size -= ptr - raw;
 		raw = ptr;

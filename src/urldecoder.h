@@ -28,6 +28,6 @@
 
 #include "general.h"
 
-char* url_decode( char* url, char* buffer, int url_len );
+char* url_decode( char*, char*, int url_len );
 
 #endif

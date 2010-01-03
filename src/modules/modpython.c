@@ -53,10 +53,6 @@ void modzimr_destroy() {
 }
 
 void modzimr_website_init( website_t* website, int argc, char* argv[] ) {
-	int i;
-	for ( i = 0; i < argc; i++ )
-		puts( argv[ i ] );
-
 	char* filename;
 	FILE* fd;
 
@@ -73,9 +69,26 @@ void modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 		}
 	}
 
-	//TODO: Look for memleaks, errors, etc
-	PyObject* zimr_module     = PyImport_ImportModule( "zimr" );
-	PyObject* website_type    = PyObject_GetAttrString( zimr_module, "website" );
+	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
+	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
+	  * func1_ret = NULL,* func2_ret = NULL;
+
+	if (
+	  !( zimr_module     = PyImport_ImportModule( "zimr" ) ) ||
+	  !( website_type    = PyObject_GetAttrString( zimr_module, "website" ) ) ||
+	  !( website_obj     = PyObject_CallFunction( website_type, "s", website->url ) ) ||
+	  !( psp_module      = PyImport_ImportModule( "zimr.page_handlers.psp" ) ) ||
+	  !( psp_render_func = PyObject_GetAttrString( psp_module, "render" ) ) ||
+	  !( register_page_handler = PyObject_GetAttrString( website_obj, "registerPageHandler" ) ) ||
+	  !( func1_ret       = PyObject_CallFunction( register_page_handler, "sO", "psp", psp_render_func ) ) ||
+	  !( insert_default_page = PyObject_GetAttrString( website_obj, "insertDefaultPage" ) ) ||
+	  !( func2_ret       = PyObject_CallFunction( insert_default_page, "s", "default.psp" ) )
+	) {
+		goto quit;
+	}
+
+	/*
+	 website_type    = PyObject_GetAttrString( zimr_module, "website" );
 	PyObject* website_obj     = PyObject_CallFunction( website_type, "s", website->url );
 
 	PyObject* psp_module      = PyImport_ImportModule( "zimr.page_handlers.psp" );
@@ -84,15 +97,14 @@ void modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	PyObject_CallFunction( website_register_page_handler_func, "sO", "psp", psp_render_func );
 	PyObject* website_insert_default_page_func = PyObject_GetAttrString( website_obj, "insertDefaultPage" );
 	PyObject_CallFunction( website_insert_default_page_func, "s", "default.psp" );
-
-	if ( !fd ) return;
+	*/
+	if ( !fd ) goto quit;
 
 	PyObject* main_module = PyImport_AddModule( "__main__" );
 	PyObject* main_dict = PyModule_GetDict( main_module );
 
 	if ( !PyRun_File( fd, filename, Py_file_input, main_dict, main_dict ) ) {
-		PyErr_Print();
-		return;
+		goto quit;
 	}
 
 	if ( PyObject_HasAttrString( main_module, "connection_handler" ) ) {
@@ -101,4 +113,17 @@ void modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 		Py_DECREF( connection_handler );
 	}
 
+quit:
+	//Py_XDECREF( website_obj );
+	Py_XDECREF( zimr_module );
+	Py_XDECREF( psp_module );
+	Py_XDECREF( website_type );
+	Py_XDECREF( psp_render_func );
+	Py_XDECREF( register_page_handler );
+	Py_XDECREF( insert_default_page );
+	Py_XDECREF( func1_ret );
+	Py_XDECREF( func2_ret );
+
+	if ( PyErr_Occurred() )
+		PyErr_Print();
 }

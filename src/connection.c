@@ -67,7 +67,7 @@ const char httpstatus[][ 40 ] = {
 
 connection_t* connection_create( website_t* website, int sockfd, char* raw, size_t size ) {
 	connection_t* connection = (connection_t*) malloc( sizeof( connection_t ) );
-	char* ptr,* tmp,* start = raw, urlbuf[ sizeof( connection->request.url ) ];
+	char* ptr,* tmp,* start = raw, urlbuf[ sizeof( connection->request.full_url ) ];
 
 	connection->website = website;
 	connection->sockfd  = sockfd;
@@ -100,26 +100,25 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	  && !( ptr = strnstr( raw, " ", ( tmp - raw ) ) ) )
 		goto fail;
 
-	url_decode( raw, urlbuf, ptr - raw );
+	url_decode( urlbuf, raw, ptr - raw );
+	normalize( connection->request.full_url, urlbuf );
+
+	while ( startswith( connection->request.full_url, "../" ) ) {
+		strcpy( urlbuf, connection->request.full_url + 3 );
+		strcpy( connection->request.full_url, urlbuf );
+	}
 
 	// Skip over websites leading url.
 	// if website is "example.com/test/" and url is "/test/hi" "/test" gets removed
-	tmp = strstr( connection->website->url, "/" );
-	if ( tmp )
-		tmp = &urlbuf[ ( connection->website->url + strlen( connection->website->url ) ) - tmp ];
+	connection->request.url = strchr( connection->website->url, '/' );
+	if ( connection->request.url )
+		connection->request.url = &connection->request.full_url[
+		  ( connection->website->url + strlen( connection->website->url ) ) - connection->request.url ];
 	else
-		tmp = urlbuf;
+		connection->request.url = connection->request.full_url;
 
-	normalize( connection->request.url, tmp );
-
-	while ( startswith( connection->request.url, "../" ) ) {
-		strcpy( urlbuf, connection->request.url + 3 );
-		strcpy( connection->request.url, urlbuf );
-	}
-
-	if ( connection->request.url[ 0 ] == '/' ) {
-		strcpy( urlbuf, connection->request.url + 1 );
-		strcpy( connection->request.url, urlbuf );
+	if ( *connection->request.url == '/' ) {
+		connection->request.url++;
 	}
 	////////////////////////////////////////
 
@@ -127,7 +126,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	tmp = strstr( raw, HTTP_HDR_ENDL );
 	if ( ptr[ 0 ] == '?' ) {
 		raw = ptr + 1;
-		if ( !( ptr = strnstr( ptr, " ", tmp - ptr ) ) )
+		if ( !( ptr = strnstr( raw, " ", tmp - raw ) ) )
 			goto fail;
 		params_parse_qs( &connection->request.params, raw, ptr - raw );
 	}

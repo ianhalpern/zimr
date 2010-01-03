@@ -32,6 +32,7 @@ void sigquit() {
 }
 
 int main( int argc, char* argv[] ) {
+
 	zimr_init();
 
 	signal( SIGTERM, sigquit );

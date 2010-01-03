@@ -1,6 +1,10 @@
+*update ignore_files to be absolute/relative paths
+*python module: make public directory main directory
+*add ping/timeout functionality
 *add "zimr init" command which will be a quick wizard to create a zimr.cnf file
 *found bug that crashes zimr-proxy; if bad packets get sent from libzimr, or instance sending data on a connection twice...like if you send a page handler then also call the default page handler afterwards.
-*make a local modules directory where users can add or remove modules locally
+*extend module api
+*bug: if comp goes into suspend and is connected to an external proxy, neither side can reconnect
 *update pyzimr cookies type to accept expires, path, etc.
 *add a flag to the ~/.zimr.state file that shows whether or not a app is paused
 *add multiple architecure compilation to makefile (x86,x86-64)
@@ -32,10 +36,13 @@
 *add support for UPnP to open ports in router
 *update zcnf.o error checking
 
-< Milestone v0.1.x >
+< Milestone v0.2.0 >
 
 x*add zimr.cnf attributes to zimr-app command line
 x*make proxy config file
+x*bug: going to a directory without the backslash which is inside a subdirectory sends an invalid redirect. example: http://zimr.org/style/graphics
+x*ignored files still show up in html directory list
+x*make a local modules directory where users can add or remove modules locally
 
 < Milestone v0.1.7 >
 

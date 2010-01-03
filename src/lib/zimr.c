@@ -60,6 +60,7 @@ bool zimr_init() {
 #endif
 
 	// call any needed library init functions
+	assert( userdir_init( getuid() ) );
 	website_init();
 	zsocket_init();
 	msg_switch_init( INREAD, INWRIT );
@@ -255,6 +256,9 @@ website_t* zimr_website_create( char* url ) {
 	list_init( &website_data->default_pages );
 	list_init( &website_data->ignored_files );
 	list_init( &website_data->page_handlers );
+
+	list_attributes_comparator( &website_data->ignored_files, (element_comparator) strcmp );
+
 	zimr_website_insert_default_page( website, "default.html", 0 );
 	zimr_website_insert_ignored_file( website, "zimr.cnf" );
 	zimr_website_insert_ignored_file( website, "zimr.log" );
@@ -561,10 +565,12 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 	}
 
 	if ( S_ISDIR( file_stat.st_mode ) ) {
+		if ( connection->request.full_url[ strlen( connection->request.full_url ) - 1 ] != '/' ) {
+			if ( ( ptr = strrchr( connection->request.full_url, '/' ) ) ) ptr++;
+			else ptr = connection->request.full_url;
 
-		if ( full_filepath[ strlen( full_filepath ) - 1 ] != '/' ) {
-			char buf[ strlen( filepath ) + 1 ];
-			sprintf( buf, "%s/", filepath );
+			char buf[ strlen( ptr ) + 1 ];
+			sprintf( buf, "%s/", ptr );
 			zimr_connection_send_redirect( connection, buf );
 			return;
 		}
@@ -586,12 +592,10 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 	ptr = strrchr( full_filepath, '/' );
 	if ( ptr ) {
 		ptr++; // skip over '/'
-		for ( i = 0; i < list_size( &website_data->ignored_files ); i++ ) {
-			if ( strcmp( list_get_at( &website_data->ignored_files, i ), ptr ) == 0 ) {
-				// Does not exist.
-				zimr_connection_send_error( connection, 404 );
-				return;
-			}
+		if ( list_contains( &website_data->ignored_files, ptr ) ) {
+			// Does not exist.
+			zimr_connection_send_error( connection, 404 );
+			return;
 		}
 	}
 
@@ -687,6 +691,9 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 			files[ num ] = (char*) malloc( strlen( dp->d_name ) * 2 + sizeof( html_dir_fmt ) + 1 );
 			sprintf( files[ num ], html_dir_fmt, dp->d_name, dp->d_name );
 		} else {
+			if ( list_contains( &website_data->ignored_files, dp->d_name ) )
+				continue;
+
 			files[ num ] = (char*) malloc( strlen( dp->d_name ) * 2 + sizeof( html_file_fmt ) + 1 );
 			sprintf( files[ num ], html_file_fmt, dp->d_name, dp->d_name );
 		}

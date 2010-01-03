@@ -41,6 +41,7 @@ zimr help
 #include "zfildes.h"
 #include "zcnf.h"
 #include "simclist.h"
+#include "userdir.h"
 
 #define START   0x1
 #define PAUSE    0x2
@@ -131,8 +132,8 @@ bool run_commands( command_t* command, int argc, char* argv[ ] ) {
 
 // Functions ////////////////////////////
 
-pid_t application_exec( uid_t uid, char* path, list_t* args ) {
-	pid_t pid = fork();
+pid_t application_exec( uid_t uid, char* path, list_t* args, bool nofork ) {
+	pid_t pid = !nofork ? fork() : 0;
 	char dir[ PATH_MAX ],* ptr;
 
 	if ( pid == 0 ) {
@@ -153,8 +154,12 @@ pid_t application_exec( uid_t uid, char* path, list_t* args ) {
 		setuid( uid );
 		setgid( uid );
 
+		char buf[ 256 ];
+		expand_tilde( ZM_USR_MODULE_DIR, buf, sizeof( buf ), getuid() );
+		setenv( "LD_LIBRARY_PATH", buf, 1 );
+
 		execvp( argv[ 0 ], argv );
-		puts( "error" );
+		puts( "application_exec(): execvp() error" );
 	} else if ( pid == (pid_t) -1 ) {
 		// still in parent, but there is no child
 		puts( "parent error: no child" );
@@ -176,6 +181,7 @@ bool application_function( uid_t uid, char* cnf_path, list_t* args, char type ) 
 	if ( CMDSTR( type ) )
 		printf( " * %s %s...", CMDSTR( type ), cnf_path ); fflush( stdout );
 
+	userdir_init( uid );
 	zcnf_state_t* state = zcnf_state_load( uid );
 
 	if ( !state ) {
@@ -211,7 +217,7 @@ bool application_function( uid_t uid, char* cnf_path, list_t* args, char type ) 
 		pid_t pid;
 		switch ( type ) {
 			case START:
-				if ( ( pid = application_exec( state->uid, cnf_path, args ) ) == -1 ) {
+				if ( ( pid = application_exec( state->uid, cnf_path, args, false ) ) == -1 ) {
 					retval = false;
 					printf( "failed\n" );
 					goto quit;
@@ -228,7 +234,7 @@ bool application_function( uid_t uid, char* cnf_path, list_t* args, char type ) 
 				break;
 			case RESTART:
 				if ( application_kill( app->pid )
-				  && ( pid = application_exec( state->uid, app->path, &app->args ) ) == -1 ) {
+				  && ( pid = application_exec( state->uid, app->path, &app->args, false ) ) == -1 ) {
 					retval = false;
 					printf( "failed\n" );
 					goto quit;
@@ -317,7 +323,7 @@ bool state_all_function( char type ) {
 
 ///////////////////////////////////////////////////////
 
-void application_start_cmd( int optc, char* optv[ ] ) {
+void application_start_cmd( int optc, char* optv[] ) {
 	char cnf_path[ PATH_MAX ] = "";
 	getcwd( cnf_path, sizeof( cnf_path ) );
 	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
@@ -325,25 +331,31 @@ void application_start_cmd( int optc, char* optv[ ] ) {
 	list_t args;
 	list_init( &args );
 
+	bool nostate = false;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( !i )
-			realpath( optv[ i ], cnf_path );
-		else if ( strcmp( optv[ i ], "-a" ) == 0 ) {
+		if ( strcmp( optv[ i ], "-a" ) == 0 ) {
 			while ( ++i < optc ) {
-				if ( strcmp( optv[ i ], "-dir" ) == 0 ) {
+				if ( strcmp( optv[ i ], "-no-state" ) == 0 ) {
 					i--;
 					break;
 				}
 				list_append( &args, optv[ i ] );
 			}
+		} else if ( strcmp( optv[ i ], "-no-state" ) == 0 ) {
+			nostate = true;
+		} else if ( !i ) {
+			realpath( optv[ i ], cnf_path );
 		} else {
 			print_usage();
 			return;
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, &args, START ) )
+	if ( nostate )
+		application_exec( getuid(), cnf_path, &args, true );
+
+	else if ( !application_function( getuid(), cnf_path, &args, START ) )
 		exit( EXIT_FAILURE );
 
 	list_destroy( &args );
@@ -565,7 +577,7 @@ int main( int argc, char* argv[ ] ) {
 	};
 
 	command_t zimr_commands[ ] = {
-		{ "start",   "Start a zimr application. [ <config path>, -a [...] ]", &start_commands, &application_start_cmd },
+		{ "start",   "Start a zimr application. [ <config path>, -a [...], -no-state ]", &start_commands, &application_start_cmd },
 		{ "pause",   "Stop a zimr application. [ <config path> ]", &pause_commands, &application_stop_cmd },
 		{ "restart", "Restart a zimr application. [ <config path> ]", &restart_commands, &application_restart_cmd },
 		{ "remove",  "Remove a zimr application. [ <config path> ]", &remove_commands, &application_remove_cmd },

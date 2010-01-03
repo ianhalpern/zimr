@@ -281,7 +281,7 @@ char* urlcodes[] = {
 "ÿ",  // %FF
 };
 
-char* url_decode( char* raw_url, char* buffer, int url_len ) {
+char* url_decode( char* buffer, char* raw_url, int url_len ) {
 	char url[ url_len + 1 ],* url_ptr;
 	memset( url, 0, sizeof( url ) );
 	strncpy( url, raw_url, url_len );
@@ -306,7 +306,7 @@ char* url_decode( char* raw_url, char* buffer, int url_len ) {
 		strcat( buffer, urlcodes[ i ] );
 		url_ptr = ptr + 2;
 	}
-
 	strcat( buffer, url_ptr );
+
 	return buffer;
 }

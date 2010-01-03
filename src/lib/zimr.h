@@ -38,6 +38,7 @@
 #include "msg_switch.h"
 #include "zfildes.h"
 #include "connection.h"
+#include "userdir.h"
 #include "mime.h"
 #include "zcnf.h"
 #include "zerr.h"
