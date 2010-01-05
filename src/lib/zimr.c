@@ -873,7 +873,7 @@ void zimr_website_insert_ignored_regex( website_t* website, const char* ignored_
 	website_data_t* website_data = (website_data_t*) website->udata;
 	regex_t* regex = (regex_t*) malloc( sizeof( regex_t ) );
 	memset( regex, 0, sizeof( regex_t ) );
-	puts( ignored_regex );
+
 	int err_no;
 	if ( ( err_no = regcomp( regex, ignored_regex, 0 ) ) !=0 ) /* Compile the regex */
 		regfree( regex );

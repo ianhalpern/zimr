@@ -17,7 +17,7 @@ def render( path, connection=None ):
 		template = Template( filename=path, module_directory='psp_cache/', lookup=lookup )
 	except OSError:
 		return "error 1"
-	except mako_exceptions.SyntaxException:
+	except ( mako_exceptions.SyntaxException, mako_exceptions.CompileException ):
 		connection.response.setStatus( 500 )
 		if connection: connection.response.setHeader( "Content-Type", "text/plain" )
 		return mako_exceptions.text_error_template().render()
