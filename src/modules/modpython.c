@@ -26,8 +26,16 @@
 
 #include "zimr.h"
 
+static PyThreadState* _save;
+
 void modzimr_init() {
 	Py_Initialize();
+
+	// initialize thread support
+	PyEval_InitThreads();
+//	PyEval_ReleaseLock();
+
+	PyGILState_STATE gstate = PyGILState_Ensure();
 
 	PyObject* local_path = PyString_FromString( "" );
 	PyObject* sys_path   = PySys_GetObject( "path" );
@@ -46,9 +54,23 @@ void modzimr_init() {
 	) ) {
 		PyErr_Print();
 	}*/
+
+	PyGILState_Release( gstate );
+//	PyEval_ReleaseLock();
+//	Py_UNBLOCK_THREADS
+}
+
+void modzimr_start_loop() {
+	_save = PyEval_SaveThread();
+}
+
+void modzimr_end_loop() {
+	PyEval_RestoreThread(_save);
 }
 
 void modzimr_destroy() {
+//	Py_BLOCK_THREADS
+//	PyEval_AcquireLock();
 	Py_Finalize();
 }
 
@@ -68,6 +90,10 @@ void modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 			return;
 		}
 	}
+
+	PyGILState_STATE gstate = PyGILState_Ensure();
+//	PyEval_AcquireLock();
+//	Py_BLOCK_THREADS
 
 	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
 	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
@@ -126,4 +152,8 @@ quit:
 
 	if ( PyErr_Occurred() )
 		PyErr_Print();
+
+//	PyEval_ReleaseLock();
+	PyGILState_Release( gstate );
+//	Py_UNBLOCK_THREADS
 }

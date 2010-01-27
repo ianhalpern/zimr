@@ -1,6 +1,8 @@
 *adding file sorting to directory view
 *python module: make public directory main directory
+*python module: look further into threading and locks for the python functions called from c, make sure PyGIL functions are used correctly
 *add ping/timeout functionality
+*make "zimr restart" smart enough to keep the old instance alive until all connections die but the new connections get routed to the new instance
 *add "zimr init" command which will be a quick wizard to create a zimr.cnf file
 *found bug that crashes zimr-proxy; if bad packets get sent from libzimr, or instance sending data on a connection twice...like if you send a page handler then also call the default page handler afterwards.
 *extend module api

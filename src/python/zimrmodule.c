@@ -25,6 +25,7 @@
 
 #include "zimr.h"
 
+PyThreadState* _save = NULL;
 static PyObject* m;
 static void pyzimr_page_handler( connection_t* connection, const char* filepath, void* udata );
 
@@ -735,6 +736,11 @@ typedef struct {
 } pyzimr_website_t;
 
 static void pyzimr_website_connection_handler( connection_t* _connection ) {
+//	if ( _save ) {
+//		Py_BLOCK_THREADS
+//	}
+	PyGILState_STATE gstate = PyGILState_Ensure();
+//	PyEval_AcquireLock();
 
 	pyzimr_website_t* website = (pyzimr_website_t*) ( (website_data_t*) _connection->website->udata )->udata;
 
@@ -777,6 +783,9 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 		PyErr_PrintEx( 0 );
 	}
 
+//	PyEval_ReleaseLock();
+	PyGILState_Release( gstate );
+//	Py_UNBLOCK_THREADS
 }
 
 static void pyzimr_website_dealloc( pyzimr_website_t* self ) {
@@ -988,7 +997,9 @@ static PyObject* pyzimr_version() {
 }
 
 static PyObject* pyzimr_start() {
+	Py_BEGIN_ALLOW_THREADS
 	zimr_start();
+	Py_END_ALLOW_THREADS
 	Py_RETURN_NONE;
 }
 
@@ -1005,6 +1016,12 @@ static PyObject* pyzimr_default_connection_handler( PyObject* self, PyObject* ar
 }
 
 static void pyzimr_page_handler( connection_t* connection, const char* filepath, void* udata ) {
+	PyGILState_STATE gstate = PyGILState_Ensure();
+//	PyEval_AcquireLock();
+//	if ( _save ) {
+//		Py_BLOCK_THREADS
+//	}
+
 	PyObject* page_handler = udata;
 	PyObject* result;
 	PyObject* connection_obj = connection->udata;
@@ -1028,6 +1045,9 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 		zimr_connection_send_error( connection, 500 );
 	}
 
+//	PyEval_ReleaseLock();
+	PyGILState_Release( gstate );
+//	Py_UNBLOCK_THREADS
 }
 
 static PyMethodDef pyzimr_methods[] = {

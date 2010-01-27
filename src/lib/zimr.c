@@ -34,6 +34,8 @@ static list_t loaded_modules;
 
 // module function definitions //////////////////
 static void (*modzimr_init)();
+static void (*modzimr_start_loop)();
+static void (*modzimr_end_loop)();
 static void (*modzimr_destroy)();
 static int  (*modzimr_website_init)( website_t*, int, char** );
 /////////////////////////////////////////////////
@@ -145,6 +147,12 @@ void zimr_start() {
 	website_t* website;
 	website_data_t* website_data;
 
+	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
+		module_t* module = list_get_at( &loaded_modules, i );
+		*(void**) (&modzimr_start_loop) = dlsym( module->handle, "modzimr_start_loop" );
+		if ( modzimr_start_loop ) (*modzimr_start_loop)();
+	}
+
 	// TODO: also check to see if there are any enabled websites.
 	if ( !list_size( &websites ) )
 		syslog( LOG_WARNING, "zimr_start() failed: No websites created" );
@@ -181,6 +189,11 @@ void zimr_start() {
 
 	} while ( list_size( &websites ) && zfd_select( timeout ) );
 
+	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
+		module_t* module = list_get_at( &loaded_modules, i );
+		*(void**) (&modzimr_end_loop) = dlsym( module->handle, "modzimr_end_loop" );
+		if ( modzimr_end_loop ) (*modzimr_end_loop)();
+	}
 }
 
 module_t* zimr_load_module( const char* module_name ) {

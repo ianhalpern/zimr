@@ -1,0 +1,6 @@
+./tests/*
+./zimr
+./zimr-app
+./zimr-proxy
+./zimr.log
+./test_website
