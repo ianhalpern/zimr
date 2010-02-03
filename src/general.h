@@ -48,6 +48,7 @@ bool stopproc( pid_t pid );
 char* strnstr( const char *s, const char *find, size_t slen);
 char* strtolower( char* s );
 void* memdup( const void* src, size_t len );
+char* chomp(char *s);
 
 #endif
 

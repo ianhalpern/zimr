@@ -69,6 +69,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	connection_t* connection = (connection_t*) malloc( sizeof( connection_t ) );
 	char* ptr,* tmp,* start = raw, urlbuf[ sizeof( connection->request.full_url ) ];
 
+	connection->status = CONN_STATUS_RECEIVED;
 	connection->website = website;
 	connection->sockfd  = sockfd;
 	connection->udata   = NULL;

@@ -72,6 +72,7 @@ typedef struct website_data {
 	list_t default_pages;
 	list_t ignored_regexs;
 	list_t page_handlers;
+	list_t module_data;
 	char* redirect_url;
 	conn_data_t* connections[ FD_SETSIZE ];
 	void* udata;
@@ -81,6 +82,11 @@ typedef struct {
 	char name[ ZM_MODULE_NAME_MAX_LEN ];
 	void* handle;
 } module_t;
+
+typedef struct {
+	void* udata;
+	module_t* module;
+} module_website_data_t;
 
 const char* zimr_version();
 const char* zimr_build_date();

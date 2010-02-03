@@ -74,7 +74,7 @@ void modzimr_destroy() {
 	Py_Finalize();
 }
 
-void modzimr_website_init( website_t* website, int argc, char* argv[] ) {
+void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	char* filename;
 	FILE* fd;
 
@@ -156,4 +156,6 @@ quit:
 //	PyEval_ReleaseLock();
 	PyGILState_Release( gstate );
 //	Py_UNBLOCK_THREADS
+
+	return NULL;
 }

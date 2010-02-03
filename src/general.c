@@ -232,6 +232,15 @@ void* memdup( const void* src, size_t len ) {
 	return dst;
 }
 
+char* chomp(char *s) {
+	char* p = s;
+	while(*p && *p != '\n' && *p != '\r') p++;
+
+	*p = 0;
+	return s;
+}
+
+
 /*
 bool mkdir_p(const char *dir) {
 

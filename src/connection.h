@@ -31,6 +31,11 @@
 #include "cookies.h"
 #include "urldecoder.h"
 
+#define CONN_STATUS_RECEIVED     0x1
+#define CONN_STATUS_SENT_STATUS  0x2
+#define CONN_STATUS_SENT_HEADERS 0x4
+#define CONN_STATUS_SENT         0x8
+
 typedef struct {
 	char type;
 	char full_url[ PATH_MAX ];
@@ -47,6 +52,7 @@ typedef struct {
 
 typedef struct {
 	int sockfd;
+	int status;
 	struct in_addr ip;
 	char hostname[ 128 ];
 	char http_version[ 4 ];

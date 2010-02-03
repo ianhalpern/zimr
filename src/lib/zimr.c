@@ -33,11 +33,13 @@ typedef struct {
 static list_t loaded_modules;
 
 // module function definitions //////////////////
-static void (*modzimr_init)();
-static void (*modzimr_start_loop)();
-static void (*modzimr_end_loop)();
-static void (*modzimr_destroy)();
-static int  (*modzimr_website_init)( website_t*, int, char** );
+static void  (*modzimr_init)();
+static void  (*modzimr_start_loop)();
+static void  (*modzimr_end_loop)();
+static void  (*modzimr_destroy)();
+static void* (*modzimr_website_init)( website_t*, int, char** );
+static void  (*modzimr_website_destroy)( website_t*, void* );
+static void  (*modzimr_connection_new)( connection_t*, void* );
 /////////////////////////////////////////////////
 
 void command_response_handler( msg_switch_t* msg_switch, msg_packet_resp_t* resp );
@@ -280,6 +282,7 @@ website_t* zimr_website_create( char* url ) {
 	list_init( &website_data->default_pages );
 	list_init( &website_data->ignored_regexs );
 	list_init( &website_data->page_handlers );
+	list_init( &website_data->module_data );
 
 	list_attributes_comparator( &website_data->ignored_regexs, (element_comparator) ignored_regex_check );
 
@@ -294,6 +297,15 @@ void zimr_website_destroy( website_t* website ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	zimr_website_disable( website );
+
+	while ( list_size( &website_data->module_data ) ) {
+		module_website_data_t* module_data = list_fetch( &website_data->module_data );
+		*(void **)(&modzimr_website_destroy) = dlsym( module_data->module->handle, "modzimr_website_destroy" );
+		if ( modzimr_website_destroy ) (*modzimr_website_destroy)( website, module_data->udata );
+		free( module_data );
+	}
+	list_destroy( &website_data->module_data );
+
 
 	if ( website_data->pubdir )
 		free( website_data->pubdir );
@@ -356,6 +368,7 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 
 	switch ( event.type ) {
 		case MSG_EVT_SENT:
+			//FL_SET( connection->status, CONN_STATUS_SENT );
 		case MSG_RECV_EVT_KILL:
 			if ( event.data.msgid >= 0 ) {
 				cleanup_connection( website_data, event.data.msgid );
@@ -494,6 +507,14 @@ bool zimr_connection_handler( website_t* website, msg_packet_t* packet ) {
 		headers_set_header( &conn_data->connection->response.headers, "Date", "" );
 		headers_set_header( &conn_data->connection->response.headers, "Server", "" );
 
+		int i = 0;
+		for ( i = 0; i < list_size( &website_data->module_data ); i++ ) {
+			module_website_data_t* module_data = list_get_at( &website_data->module_data, i );
+			*(void **)(&modzimr_connection_new) = dlsym( module_data->module->handle, "modzimr_connection_new" );
+			if ( modzimr_connection_new ) (*modzimr_connection_new)( conn_data->connection, module_data->udata );
+			if ( FL_ISSET( conn_data->connection->status, CONN_STATUS_SENT_HEADERS ) ) return true;
+		}
+
 		if ( website_data->redirect_url ) {
 			char buf[ strlen( website_data->redirect_url ) + strlen( conn_data->connection->request.url ) + 8 ];
 			sprintf( buf, "http://%s%s", website_data->redirect_url, conn_data->connection->request.url );
@@ -521,6 +542,8 @@ void zimr_connection_send_status( connection_t* connection ) {
 	);
 
 	msg_push_data( website_data->msg_switch, connection->sockfd, status_line, strlen( status_line ) );
+
+	FL_SET( connection->status, CONN_STATUS_SENT_STATUS );
 }
 
 void zimr_connection_send_headers( connection_t* connection ) {
@@ -546,6 +569,8 @@ void zimr_connection_send_headers( connection_t* connection ) {
 	free( headers );
 
 	zimr_log_request( connection );
+
+	FL_SET( connection->status, CONN_STATUS_SENT_HEADERS );
 }
 
 void zimr_connection_send( connection_t* connection, void* message, int size ) {
@@ -566,6 +591,8 @@ void zimr_connection_send( connection_t* connection, void* message, int size ) {
 
 	msg_push_data( website_data->msg_switch, connection->sockfd, (void*) message, size );
 	msg_end( website_data->msg_switch, connection->sockfd );
+
+	FL_SET( connection->status, CONN_STATUS_SENT );
 }
 
 void zimr_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir ) {
@@ -662,6 +689,8 @@ void zimr_connection_send_error( connection_t* connection, short code ) {
 	msg_push_data( website_data->msg_switch, connection->sockfd,
 	  (void*) error_msg_buf, strlen( error_msg_buf ) );
 	msg_end( website_data->msg_switch, connection->sockfd );
+
+	FL_SET( connection->status, CONN_STATUS_SENT );
 }
 
 void zimr_connection_send_redirect( connection_t* connection, char* url ) {
@@ -675,6 +704,8 @@ void zimr_connection_send_redirect( connection_t* connection, char* url ) {
 	zimr_connection_send_headers( connection );
 
 	msg_end( website_data->msg_switch, connection->sockfd );
+
+	FL_SET( connection->status, CONN_STATUS_SENT );
 }
 
 void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
@@ -754,6 +785,8 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 	msg_push_data( website_data->msg_switch, connection->sockfd, html_footer, strlen( html_footer ) );
 
 	msg_end( website_data->msg_switch, connection->sockfd );
+
+	FL_SET( connection->status, CONN_STATUS_SENT );
 }
 
 void zimr_connection_default_page_handler( connection_t* connection, char* filepath ) {
@@ -805,16 +838,23 @@ void zimr_file_handler( int fd, connection_t* connection ) {
 	else {
 		if ( n == -1 )
 			msg_kill( website_data->msg_switch, connection->sockfd );
-		else
+		else {
 			msg_end( website_data->msg_switch, connection->sockfd );
+			FL_SET( connection->status, CONN_STATUS_SENT );
+		}
 
 		cleanup_fileread( website_data, connection->sockfd );
 	}
 }
 
 void zimr_website_load_module( website_t* website, module_t* module, int argc, char* argv[] ) {
+	website_data_t* website_data = website->udata;
+	module_website_data_t* module_data = malloc( sizeof( module_website_data_t ) );
+	list_append( &website_data->module_data, module_data );
+	module_data->module = module;
 	*(void **)(&modzimr_website_init) = dlsym( module->handle, "modzimr_website_init" );
-	if ( modzimr_website_init ) (*modzimr_website_init)( website, argc, argv );
+	if ( modzimr_website_init ) module_data->udata = (*modzimr_website_init)( website, argc, argv );
+	else module_data->udata = NULL;
 }
 
 void zimr_website_set_redirect( website_t* website, char* redirect_url ) {
