@@ -23,6 +23,8 @@
 #include <crypt.h>
 #include "zimr.h"
 
+time_t htpasswd_mtime;
+
 typedef struct {
 	char name[ 64 ];
 	char passwd[ 64 ];
@@ -71,6 +73,8 @@ bool read_htpasswd_file() {
 	int i = 0;
 	memset( &auth_users[ i ], 0, sizeof( auth_users[ i ] ) );
 
+	puts( "reading htpasswd file" );
+
 	if ( ( fp = fopen( ".htpasswd", "r" ) ) == NULL ) {
 		fprintf( stderr, "Authentication Module: could not open .htpasswd file.\n" );
 		return false;
@@ -88,8 +92,22 @@ bool read_htpasswd_file() {
 	return true;
 }
 
+bool htpasswd_file_was_modified() {
+	struct stat statbuf;
+	if ( stat( ".htpasswd", &statbuf ) == -1 )
+		return false;
+
+	if ( htpasswd_mtime == statbuf.st_mtime )
+		return false;
+
+	htpasswd_mtime = statbuf.st_mtime;
+
+	return true;
+}
+
 void modzimr_init() {
-	read_htpasswd_file();
+	memset( &htpasswd_mtime, 0, sizeof( htpasswd_mtime ) );
+	memset( &auth_users[ 0 ], 0, sizeof( auth_users[ 0 ] ) );
 }
 
 void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
@@ -104,6 +122,11 @@ void modzimr_connection_new( connection_t* connection, void* udata ) {
 
 	if ( auth_header ) {
 
+		if ( !startswith( auth_header->value, "Basic " ) ) {
+			fprintf( stderr, "Authentication Module: incorrect basic authorization format.\n" );
+			goto not_auth;
+		}
+
 		base64_decode( buf, auth_header->value + ( sizeof( "Basic " ) - 1 ) );
 		char* ptr = strchr( buf, ':' );
 
@@ -112,11 +135,19 @@ void modzimr_connection_new( connection_t* connection, void* udata ) {
 		*ptr = 0;
 		ptr++;
 
-		int i;
-		for ( i = 0; *(bool*)&auth_users[ i ]; i++ ) {
-			if ( strcmp( auth_users[ i ].name, buf ) == 0
-			 && strcmp( auth_users[ i ].passwd, crypt( ptr, auth_users[ i ].salt ) ) == 0 )
-				return;
+		int j;
+		for ( j = 0; j < 2; j++ ) {
+			int i;
+			for ( i = 0; *(bool*)&auth_users[ i ]; i++ ) {
+				if ( strcmp( auth_users[ i ].name, buf ) == 0
+				 && strcmp( auth_users[ i ].passwd, crypt( ptr, auth_users[ i ].salt ) ) == 0 )
+					return;
+			}
+
+			if ( j == 1 || !htpasswd_file_was_modified() )
+				goto not_auth;
+
+			read_htpasswd_file();
 		}
 
 	}
