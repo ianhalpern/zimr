@@ -34,16 +34,17 @@
 
 typedef struct website {
 	char* url;
+	char* full_url;
 	int sockfd;
 	void* udata;
 } website_t;
 
 list_t websites;
 
-void website_init( );
+void website_init();
 website_t* website_add ( int, char* );
 void website_remove( website_t* );
-website_t* website_get_by_url( char* url );
+website_t* website_get_by_full_url( char* url );
 website_t* website_get_by_sockfd( int );
 website_t* website_find_by_url( char* url );
 

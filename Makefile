@@ -86,13 +86,13 @@ install:
 #################
 
 zimr: $(EXEC_DEPENDS) zsocket.o zfildes.o zerr.o zcnf.o general.o simclist.o userdir.o
-	$(EXEC_COMPILE) -lyaml
+	$(EXEC_COMPILE) -lyaml -lssl
 
 zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zerr.o zcnf.o
-	$(EXEC_COMPILE) -lyaml
+	$(EXEC_COMPILE) -lyaml -lssl
 
 zimr-app: $(EXEC_DEPENDS) libzimr.so
-	$(EXEC_COMPILE) $(LDZIMR)
+	$(EXEC_COMPILE) $(LDZIMR) -lssl
 
 ##### SHARED OBJS #####
 

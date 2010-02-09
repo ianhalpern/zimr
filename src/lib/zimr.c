@@ -335,7 +335,7 @@ void command_response_handler( msg_switch_t* msg_switch, msg_packet_resp_t* resp
 					break;
 				case MSG_PACK_RESP_FAIL:
 					// WS_START_CMD failed...close socket
-					zsocket_close( website->sockfd );
+					zclose( website->sockfd );
 					website->sockfd = -1;
 					website_data->conn_tries = ZM_NUM_PROXY_DEATH_RETRIES - 1; // we do not want to retry
 					break;
@@ -423,7 +423,7 @@ bool zimr_website_enable( website_t* website ) {
 	}
 
 	website_data->status = WS_STATUS_ENABLING;
-	website->sockfd = zsocket( inet_addr( website_data->proxy.ip ), website_data->proxy.port, ZSOCK_CONNECT );
+	website->sockfd = zsocket( inet_addr( website_data->proxy.ip ), website_data->proxy.port, ZSOCK_CONNECT, false );
 
 	if ( website->sockfd == -1 ) {
 		zerr( ZMERR_ZSOCK_CONN );
@@ -434,7 +434,7 @@ bool zimr_website_enable( website_t* website ) {
 
 	// send website enable command
 	msg_new( website_data->msg_switch, ZM_CMD_WS_START );
-	msg_push_data( website_data->msg_switch, ZM_CMD_WS_START, website->url, strlen( website->url ) );
+	msg_push_data( website_data->msg_switch, ZM_CMD_WS_START, website->full_url, strlen( website->full_url ) );
 	msg_end( website_data->msg_switch, ZM_CMD_WS_START );
 
 	return true;
@@ -459,7 +459,7 @@ void zimr_website_disable( website_t* website ) {
 		}
 
 		msg_switch_destroy( website_data->msg_switch );
-		zsocket_close( website->sockfd );
+		zclose( website->sockfd );
 		website->sockfd = -1;
 	}
 

@@ -198,7 +198,7 @@ int main( int argc, char* argv[ ] ) {
 	memset( connections, 0, sizeof( connections ) );
 
 	for ( i = 0; i < proxy_cnf->n; i++ ) {
-		int sockfd = zsocket( inet_addr( proxy_cnf->proxies[ i ].ip ), proxy_cnf->proxies[ i ].port, ZSOCK_LISTEN );
+		int sockfd = zsocket( inet_addr( proxy_cnf->proxies[ i ].ip ), proxy_cnf->proxies[ i ].port, ZSOCK_LISTEN, false );
 		if ( sockfd == -1 ) {
 			ret = EXIT_FAILURE;
 			fprintf( stderr, "Proxy failed on %s:%d\n", proxy_cnf->proxies[ i ].ip, proxy_cnf->proxies[ i ].port );
@@ -282,23 +282,27 @@ char* get_url_from_http_header( char* raw, char* url, int size ) {
 }
 
 int get_port_from_url( char* url ) {
-	char* ptr1,* ptr2;
+	char* ptr1,* ptr2,* ptr3;
 	char port_str[ 6 ];
-
+	puts( url );
 	memset( port_str, 0, sizeof( port_str ) );
 
-	ptr1 = strstr( url, ":" );
-	ptr2 = strstr( url, "/" );
+	ptr1 = strstr( url, ":" ) + 1;
+	ptr2 = strstr( ptr1, ":" );
+	ptr3 = strstr( ptr1 + 2, "/" );
 
-	if ( !ptr2 )
-		ptr2 = url + strlen( url );
-
-	if ( !ptr1 || ptr2 < ptr1 )
+	if ( !ptr2 ) {
+		if ( startswith( url, "https://" ) )
+			return HTTPS_DEFAULT_PORT;
 		return HTTP_DEFAULT_PORT;
+	}
 
-	ptr1++;
+	if ( !ptr3 )
+		ptr3 = ptr1 + strlen( ptr1 );
 
-	strncpy( port_str, ptr1, ptr2 - ptr1 );
+	ptr2++;
+
+	strncpy( port_str, ptr2, ptr3 - ptr2 );
 	return atoi( port_str );
 }
 
@@ -320,10 +324,10 @@ int remove_website( msg_switch_t* msg_switch ) {
 	}
 
 	if ( website_data->exlisnfd != -1 ) {
-		if ( zsocket_get_by_sockfd( website_data->exlisnfd )->n_open == 1 ) {
+		if ( zsocket_get_by_sockfd( website_data->exlisnfd )->listen.n_open == 1 ) {
 			zfd_clr( website_data->exlisnfd, EXLISN );
 		}
-		zsocket_close( website_data->exlisnfd );
+		zclose( website_data->exlisnfd );
 	}
 
 	msg_switch_destroy( website_data->msg_switch );
@@ -338,7 +342,7 @@ bool start_website( char* url, msg_switch_t* msg_switch ) {
 	website_t* website;
 	website_data_t* website_data;
 
-	if ( ( website = website_get_by_url( url ) ) ) {
+	if ( ( website = website_get_by_full_url( url ) ) ) {
 		syslog( LOG_WARNING, "start_website: tried to add website \"%s\" that already exists", url );
 		return false;
 	}
@@ -348,12 +352,12 @@ bool start_website( char* url, msg_switch_t* msg_switch ) {
 		return false;
 	}
 
-	syslog( LOG_INFO, "website: starting \"http://%s\"", website->url );
+	syslog( LOG_INFO, "website: starting \"%s\" on %d", website->full_url, get_port_from_url( website->full_url ) );
 
 	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
 	website->udata = website_data;
 
-	website_data->exlisnfd = zsocket( INADDR_ANY, get_port_from_url( website->url ), ZSOCK_LISTEN );
+	website_data->exlisnfd = zsocket( INADDR_ANY, get_port_from_url( website->full_url ), ZSOCK_LISTEN, startswith( website->full_url, "https://" ) );
 	website_data->msg_switch = msg_switch;
 
 	if ( website_data->exlisnfd == -1 ) {
@@ -414,7 +418,7 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 			zfd_set( event.data.msgid, EXREAD, NULL );
 			break;
 		case MSG_SWITCH_EVT_IO_FAILED:
-			close( msg_switch->sockfd );
+			zclose( msg_switch->sockfd );
 			if ( website_get_by_sockfd( msg_switch->sockfd ) )
 				remove_website( msg_switch );
 			break;
@@ -431,7 +435,7 @@ void inlisn( int sockfd, void* udata ) {
 	int insockfd;
 
 	// Connection request on original socket.
-	if ( ( insockfd = accept( sockfd, (struct sockaddr*) &cli_addr, &cli_len ) ) < 0 ) {
+	if ( ( insockfd = zaccept( sockfd, &cli_addr, &cli_len ) ) < 0 ) {
 		syslog( LOG_ERR, "inlisn: accept() failed: %s", strerror( errno ) );
 		return;
 	}
@@ -446,7 +450,7 @@ void exlisn( int sockfd, void* udata ) {
 	int newsockfd;
 
 	// Connection request on original socket.
-	if ( ( newsockfd = accept( sockfd, (struct sockaddr*) &cli_addr, &cli_len ) ) < 0 ) {
+	if ( ( newsockfd = zaccept( sockfd, &cli_addr, &cli_len ) ) < 0 ) {
 		syslog( LOG_ERR, "exlisn: accept() failed: %s", strerror( errno ) );
 		return;
 	}
@@ -471,7 +475,7 @@ void cleanup_connection( int sockfd ) {
 
 	zfd_clr( sockfd, EXREAD );
 	zfd_clr( sockfd, EXWRIT );
-	close( sockfd );
+	zclose( sockfd );
 
 	if ( conn_data->pending_packet )
 		fprintf( stderr, "cleanup_connection(): conn_dat->pending_packet is not null!" );
@@ -486,7 +490,7 @@ void exread( int sockfd, void* udata ) {
 	website_t* website;
 
 	// TODO: wait for entire header before looking up website
-	if ( ( len = read( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
+	if ( ( len = zread( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
 cleanup:
 		// cleanup
 		website = website_get_by_sockfd( conn_data->website_sockfd );
@@ -607,7 +611,7 @@ void exwrit( int sockfd, void* udata ) {
 
 	zfd_clr( sockfd, EXWRIT );
 
-	n = write( sockfd, packet->data, packet->size );
+	n = zwrite( sockfd, packet->data, packet->size );
 
 	if ( n != packet->size ) {
 		if ( n == -1 )

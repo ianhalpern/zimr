@@ -73,8 +73,6 @@ bool read_htpasswd_file() {
 	int i = 0;
 	memset( &auth_users[ i ], 0, sizeof( auth_users[ i ] ) );
 
-	puts( "reading htpasswd file" );
-
 	if ( ( fp = fopen( ".htpasswd", "r" ) ) == NULL ) {
 		fprintf( stderr, "Authentication Module: could not open .htpasswd file.\n" );
 		return false;

@@ -24,7 +24,7 @@
 
 static bool initialized = false;
 
-void website_init( ) {
+void website_init() {
 	assert( !initialized );
 	initialized = true;
 	list_init( &websites );
@@ -36,7 +36,19 @@ website_t* website_add( int sockfd, char* url ) {
 	website_t* w = (website_t*) malloc( sizeof( website_t ) );
 
 	w->sockfd = sockfd;
-	w->url = strdup( url );
+
+	if ( startswith( url, "https://" ) ) {
+		w->full_url = strdup( url );
+		w->url = w->full_url + 8;
+	} else if ( startswith( url, "http://" ) ) {
+		w->full_url = strdup( url );
+		w->url = w->full_url + 7;
+	} else {
+		w->full_url = malloc( 8 + strlen( url ) );
+		strcpy( w->full_url, "http://" );
+		strcat( w->full_url, url );
+		w->url = w->full_url + 7;
+	}
 
 	list_append( &websites, w );
 
@@ -50,17 +62,17 @@ void website_remove( website_t* w ) {
 	if ( i >=0 )
 		list_delete_at( &websites, i );
 
-	free( w->url );
+	free( w->full_url );
 	free( w );
 }
 
-website_t* website_get_by_url( char* url ) {
+website_t* website_get_by_full_url( char* full_url ) {
 	assert( initialized );
 
 	int i;
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		website_t* w = list_get_at( &websites, i );
-		if ( strcmp( url, w->url ) == 0 ) return w;
+		if ( strcmp( full_url, w->full_url ) == 0 ) return w;
 	}
 
 	return NULL;
