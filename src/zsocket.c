@@ -18,6 +18,8 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
+ *  ssl api reference: http://h71000.www7.hp.com/doc/83final/ba554_90007/ch05s04.html
+ *  ssl ca reference: https://help.ubuntu.com/community/OpenSSL
  */
 
 #include "zsocket.h"

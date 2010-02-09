@@ -87,7 +87,7 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 		filename = argv[ 0 ];
 		if ( !( fd = fopen( filename, "r" ) ) ) {
 			fprintf( stderr, "%s: modpython could not open file %s.\n", strerror( errno ), filename );
-			return;
+			return NULL;
 		}
 	}
 
@@ -102,7 +102,7 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	if (
 	  !( zimr_module     = PyImport_ImportModule( "zimr" ) ) ||
 	  !( website_type    = PyObject_GetAttrString( zimr_module, "website" ) ) ||
-	  !( website_obj     = PyObject_CallFunction( website_type, "s", website->url ) ) ||
+	  !( website_obj     = PyObject_CallFunction( website_type, "s", website->full_url ) ) ||
 	  !( psp_module      = PyImport_ImportModule( "zimr.page_handlers.psp" ) ) ||
 	  !( psp_render_func = PyObject_GetAttrString( psp_module, "render" ) ) ||
 	  !( register_page_handler = PyObject_GetAttrString( website_obj, "registerPageHandler" ) ) ||

@@ -70,7 +70,7 @@ typedef union {
 zsocket_t* zsockets[ FD_SETSIZE ];
 
 void zsocket_init();
-int zsocket( in_addr_t addr, int portno, int type, bool ssl );
+int  zsocket( in_addr_t addr, int portno, int type, bool ssl );
 void zclose( int zsockfd );
 int  zaccept( int zsockfd, struct sockaddr_in* cli_addr, unsigned int* cli_len );
 int  zread( int zsockfd, char* buffer, size_t buffer_size );

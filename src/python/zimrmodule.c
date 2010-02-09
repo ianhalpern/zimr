@@ -808,8 +808,8 @@ static int pyzimr_website_init( pyzimr_website_t* self, PyObject* args, PyObject
 
 	PyArg_ParseTupleAndKeywords( args, kwargs, "s", kwlist, &url );
 
-	//if ( !( self->_website = website_get_by_url( url ) ) )
-	self->_website = zimr_website_create( url );
+	if ( !( self->_website = website_get_by_full_url( url ) ) )
+		self->_website = zimr_website_create( url );
 
 	( (website_data_t*) self->_website->udata )->udata = self;
 
