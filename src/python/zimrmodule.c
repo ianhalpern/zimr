@@ -867,6 +867,10 @@ static PyObject* pyzimr_website_get_url( pyzimr_website_t* self, void* closure )
 	return PyString_FromString( self->_website->url );
 }
 
+static PyObject* pyzimr_website_get_protocol( pyzimr_website_t* self, void* closure ) {
+	return PyString_FromString( website_protocol( self->_website ) );
+}
+
 static PyObject* pyzimr_website_get_public_directory( pyzimr_website_t* self, void* closure ) {
 	if ( !zimr_website_get_pubdir( self->_website ) ) Py_RETURN_NONE;
 	return PyString_FromString( zimr_website_get_pubdir( self->_website ) );
@@ -931,6 +935,12 @@ static PyGetSetDef pyzimr_website_getseters[] = {
 	  (getter) pyzimr_website_get_url,
 	  0,//(setter) pypdora_response_set_public_directory,
 	  "the requested url", NULL
+	},
+	{
+	  "protocol",
+	  (getter) pyzimr_website_get_protocol,
+	  0,//(setter) pypdora_response_set_public_directory,
+	  "the websites protocol", NULL
 	},
 	{
 	  "public_directory",

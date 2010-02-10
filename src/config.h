@@ -78,9 +78,6 @@
 
 /****** http config *******/
 
-#define HTTP  0x1
-#define HTTPS 0x2
-
 #define HTTP_POST "POST"
 #define HTTP_GET  "GET"
 

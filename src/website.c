@@ -109,3 +109,9 @@ website_t* website_get_by_sockfd( int sockfd ) {
 
 	return NULL;
 }
+
+const char* website_protocol( website_t* w ) {
+	if ( startswith( w->full_url, "https://" ) )
+		return "https://";
+	return "http://";
+}
