@@ -204,6 +204,7 @@ int zaccept( int sockfd, struct sockaddr_in* cli_addr, unsigned int* cli_len ) {
 	p->connect.sockfd = newsockfd;
 	p->connect.addr = cli_addr->sin_addr.s_addr;
 	p->connect.portno = zs->connect.portno;
+	p->connect.ssl = NULL;
 
 	if ( zs->listen.ssl_ctx ) {
 		if ( !( p->connect.ssl = SSL_new( zs->listen.ssl_ctx ) ) ) {
