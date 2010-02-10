@@ -73,7 +73,7 @@ int zsocket( in_addr_t addr, int portno, int type, bool ssl ) {
 		/* Load the server certificate into the SSL_CTX structure */
 		/* Load the private-key corresponding to the server certificate */
 		if ( !p->listen.ssl_ctx
-		  || SSL_CTX_use_certificate_file( p->listen.ssl_ctx, RSA_SERVER_CERT, SSL_FILETYPE_PEM ) <= 0
+		  || SSL_CTX_use_certificate_chain_file( p->listen.ssl_ctx, RSA_SERVER_CERT ) <= 0
 		  || SSL_CTX_use_PrivateKey_file( p->listen.ssl_ctx, RSA_SERVER_KEY, SSL_FILETYPE_PEM ) <= 0 ) {
 			ERR_print_errors_fp( stderr );
 			free( p );
