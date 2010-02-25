@@ -345,10 +345,10 @@ void command_response_handler( msg_switch_t* msg_switch, msg_packet_resp_t* resp
 }
 
 void cleanup_fileread( website_data_t* website_data, int sockfd ) {
-	if ( website_data->connections[ sockfd ]->filereadfd != -1 ) {
-		zfd_clr( website_data->connections[ sockfd ]->filereadfd, FILEREAD );
-		close( website_data->connections[ sockfd ]->filereadfd );
-		website_data->connections[ sockfd ]->filereadfd = -1;
+	if ( website_data->connections[ sockfd ]->fileread_data.fd != -1 ) {
+		zfd_clr( website_data->connections[ sockfd ]->fileread_data.fd, FILEREAD );
+		close( website_data->connections[ sockfd ]->fileread_data.fd );
+		website_data->connections[ sockfd ]->fileread_data.fd = -1;
 		//printf( "[%d] closing filereadfd %d\n", sockfd, website_data->connections[ sockfd ]->filereadfd );
 	}
 }
@@ -390,13 +390,13 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 			}
 			break;
 		case MSG_EVT_BUF_FULL:
-			if ( event.data.msgid >= 0 && website_data->connections[ event.data.msgid ]->filereadfd != -1 ) {
-				zfd_clr( website_data->connections[ event.data.msgid ]->filereadfd, FILEREAD );
+			if ( event.data.msgid >= 0 && website_data->connections[ event.data.msgid ]->fileread_data.fd != -1 ) {
+				zfd_clr( website_data->connections[ event.data.msgid ]->fileread_data.fd, FILEREAD );
 			}
 			break;
 		case MSG_EVT_BUF_EMPTY:
-			if ( website_data->connections[ event.data.msgid ]->filereadfd != -1 ) {
-				zfd_reset( website_data->connections[ event.data.msgid ]->filereadfd, FILEREAD );
+			if ( website_data->connections[ event.data.msgid ]->fileread_data.fd != -1 ) {
+				zfd_reset( website_data->connections[ event.data.msgid ]->fileread_data.fd, FILEREAD );
 			}
 			break;
 		case MSG_SWITCH_EVT_IO_FAILED:
@@ -479,7 +479,7 @@ bool zimr_connection_handler( website_t* website, msg_packet_t* packet ) {
 		website_data->connections[ msgid ] = (conn_data_t*) malloc( sizeof( conn_data_t ) );
 		website_data->connections[ msgid ]->data = strdup( "" );
 		website_data->connections[ msgid ]->size = 0;
-		website_data->connections[ msgid ]->filereadfd = -1;
+		website_data->connections[ msgid ]->fileread_data.fd = -1;
 	}
 
 	conn_data = website_data->connections[ msgid ];
@@ -790,7 +790,7 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 }
 
 void zimr_connection_default_page_handler( connection_t* connection, char* filepath ) {
-	int fd = -1;
+	int fd = -1, range_start = 0, range_end = 0;
 	struct stat file_stat;
 	char sizebuf[ 32 ];
 
@@ -808,6 +808,7 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 		zimr_connection_send_error( connection, 404 );
 		return;
 	}
+	range_end = (int) file_stat.st_size;
 
 	website_data_t* website_data = connection->website->udata;
 	msg_new( website_data->msg_switch, connection->sockfd );
@@ -815,23 +816,47 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 	if ( !headers_get_header( &connection->response.headers, "Content-Type" ) )
 		headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( filepath ) );
 
-	sprintf( sizebuf, "%d", (int) file_stat.st_size );
+	if ( !headers_get_header( &connection->response.headers, "Accept-Ranges" ) )
+		headers_set_header( &connection->response.headers, "Accept-Ranges", "bytes" );
+
+	header_t* range;
+	if ( ( range = headers_get_header( &connection->request.headers, "Range" ) ) ) {
+		int tmp_start, tmp_end;
+		if ( headers_header_range_parse( range, &tmp_start, &tmp_end ) )
+			if ( tmp_start < tmp_end && tmp_end <= range_end ) {
+				range_start = tmp_start;
+				range_end = tmp_end;
+			}
+	}
+
+	if ( range_start )
+		lseek( fd, range_start, SEEK_SET );
+
+	sprintf( sizebuf, "%d", range_end - range_start );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
 	zimr_connection_send_status( connection );
 	zimr_connection_send_headers( connection );
 
 	//printf( "[%d] opening filereadfd %d\n", connection->sockfd, fd );
-	website_data->connections[ connection->sockfd ]->filereadfd = fd;
+	website_data->connections[ connection->sockfd ]->fileread_data.fd = fd;
+	website_data->connections[ connection->sockfd ]->fileread_data.range_start = range_start;
+	website_data->connections[ connection->sockfd ]->fileread_data.range_end = range_end;
+
 	zfd_set( fd, FILEREAD, connection );
 }
 
 void zimr_file_handler( int fd, connection_t* connection ) {
 	website_data_t* website_data = connection->website->udata;
+	fileread_data_t* fileread_data = &website_data->connections[ connection->sockfd ]->fileread_data;
 	int n;
 	char buffer[ 2048 ];
 
-	if ( ( n = read( fd, buffer, sizeof( buffer ) ) ) > 0 ) {
+	if ( lseek( fd, 0, SEEK_CUR ) + sizeof( buffer ) > fileread_data->range_end )
+		n = sizeof( buffer ) - ( ( lseek( fd, 0, SEEK_CUR ) + sizeof( buffer ) ) - fileread_data->range_end );
+	else n = sizeof( buffer );
+
+	if ( ( n = read( fd, buffer, n ) ) > 0 ) {
 		msg_push_data( website_data->msg_switch, connection->sockfd, buffer, n );
 	}
 

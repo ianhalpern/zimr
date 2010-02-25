@@ -53,10 +53,16 @@
 #define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
 
 typedef struct {
+	int fd;
+	int range_start;
+	int range_end;
+} fileread_data_t;
+
+typedef struct {
 	int size;
 	char* data;
 	connection_t* connection;
-	int filereadfd;
+	fileread_data_t fileread_data;
 } conn_data_t;
 
 typedef struct website_data {
