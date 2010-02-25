@@ -822,11 +822,14 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 	header_t* range;
 	if ( ( range = headers_get_header( &connection->request.headers, "Range" ) ) ) {
 		int tmp_start, tmp_end;
-		if ( headers_header_range_parse( range, &tmp_start, &tmp_end ) )
-			if ( tmp_start < tmp_end && tmp_end <= range_end ) {
-				range_start = tmp_start;
-				range_end = tmp_end;
-			}
+		headers_header_range_parse( range, &tmp_start, &tmp_end );
+
+		if ( tmp_end == -1 ) tmp_end = range_end - tmp_start;
+
+		if ( tmp_start < tmp_end && tmp_end <= range_end ) {
+			range_start = tmp_start;
+			range_end = tmp_end;
+		}
 	}
 
 	if ( range_start )

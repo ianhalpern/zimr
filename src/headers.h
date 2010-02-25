@@ -41,6 +41,6 @@ headers_t headers_parse( char* raw );
 char* headers_to_string( headers_t* headers, char* headers_str );
 void headers_set_header( headers_t* headers, char* name, char* value );
 header_t* headers_get_header( headers_t* headers, char* name );
-bool headers_header_range_parse( header_t* header, int* range_start, int* range_end );
+void headers_header_range_parse( header_t* header, int* range_start, int* range_end );
 
 #endif

@@ -106,12 +106,19 @@ header_t* headers_get_header( headers_t* headers, char* orig_name ) {
 	return NULL;
 }
 
-bool headers_header_range_parse( header_t* header, int* range_start, int* range_end ) {
+void headers_header_range_parse( header_t* header, int* range_start, int* range_end ) {
+	*range_start = 0; *range_end = -1;
+	puts( header->value );
+
 	char* ptr1,* ptr2;
-	if ( !( ptr1 = strstr( header->value, "bytes=" ) ) ) return false;
+	if ( !( ptr1 = strstr( header->value, "bytes=" ) ) ) return;
 	ptr1 += 6;
-	if ( !( ptr2 = strchr( ptr1, '-' ) ) ) return false;
-	*range_start = strtol( ptr1, &ptr2, 10 );
-	*range_end = atoi( ptr2 + 1 );
-	return true;
+	if ( !( ptr2 = strchr( ptr1, '-' ) ) ) return;
+
+	if ( ptr2 - ptr1 )
+		*range_start = strtol( ptr1, &ptr2, 10 );
+
+	ptr2++;
+	if ( *ptr2 )
+		*range_end = atoi( ptr2 );
 }
