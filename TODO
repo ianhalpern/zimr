@@ -1,3 +1,5 @@
+* use getpwent - http://www.kernel.org/doc/man-pages/online/pages/man3/getpwent.3.html
+*implement the OPTIONS method, a alternate to GET or POST
 *adding file sorting to directory view
 *python module: make public directory main directory
 *python module: look further into threading and locks for the python functions called from c, make sure PyGIL functions are used correctly

@@ -23,7 +23,7 @@ EXECS       = zimr-proxy zimr-app zimr
 TEST_EXECS  = test-strnstr test-client test-server
 SHARED_OBJS = libzimr.so
 PYMOD_OBJS  = zimr.so
-MODULE_NAMES= modpython modtest modauthorization
+MODULE_NAMES= modpython modtest modauth
 
 MODULES := $(addsuffix .so, $(addprefix modules/, $(MODULE_NAMES) ) )
 
