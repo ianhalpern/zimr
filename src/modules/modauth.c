@@ -121,9 +121,7 @@ static int pam_userpass_conv( int num_msg, const struct pam_message **msg,
 	}
 
 	return PAM_SUCCESS;
-
 }
-
 
 bool read_htpasswd_file( const char* htpasswd_filename ) {
 	char buf[ 256 ];

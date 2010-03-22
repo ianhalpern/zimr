@@ -57,6 +57,7 @@ typedef struct {
 	int website_sockfd;
 	int request_type;
 	int postlen;
+	int is_https;
 	msg_packet_t* pending_packet;
 } conn_data_t;
 
@@ -366,7 +367,7 @@ bool start_website( char* url, msg_switch_t* msg_switch ) {
 		return false;
 	}
 
-	zfd_set( website_data->exlisnfd, EXLISN, NULL );
+	zfd_set( website_data->exlisnfd, EXLISN, (void*)startswith( website->full_url, "https://" ) );
 	return true;
 }
 
@@ -444,6 +445,7 @@ void inlisn( int sockfd, void* udata ) {
 }
 
 void exlisn( int sockfd, void* udata ) {
+	int is_https = (int) udata;
 	conn_data_t* conn_data;
 	struct sockaddr_in cli_addr;
 	unsigned int cli_len = sizeof( cli_addr );
@@ -464,6 +466,7 @@ void exlisn( int sockfd, void* udata ) {
 	conn_data->request_type = 0;
 	conn_data->postlen = 0;
 	conn_data->pending_packet = NULL;
+	conn_data->is_https = is_https;
 
 	connections[ newsockfd ] = conn_data;
 
@@ -525,7 +528,7 @@ cleanup:
 			  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "" );
 			goto cleanup;
 		}
-		if ( !( website = website_find_by_url( urlbuf ) ) ) {
+		if ( !( website = website_find( urlbuf, conn_data->is_https ? "https://" : "http://" ) ) ) {
 			syslog( LOG_WARNING, "exread: no website to service request: %s %s %s",
 			  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
 			goto cleanup;

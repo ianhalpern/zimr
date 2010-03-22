@@ -46,6 +46,6 @@ website_t* website_add ( int, char* );
 void website_remove( website_t* );
 website_t* website_get_by_full_url( char* url );
 website_t* website_get_by_sockfd( int );
-website_t* website_find_by_url( char* url );
+website_t* website_find( char* url, char* protocol );
 const char* website_protocol( website_t* );
 #endif

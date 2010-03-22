@@ -78,8 +78,10 @@ website_t* website_get_by_full_url( char* full_url ) {
 	return NULL;
 }
 
-website_t* website_find_by_url( char* url ) {
+website_t* website_find( char* url, char* protocol ) {
 	assert( initialized );
+
+	if ( !protocol ) protocol = "http://";
 
 	int len = 0;
 	int found = -1;
@@ -87,7 +89,7 @@ website_t* website_find_by_url( char* url ) {
 	int i;
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		website_t* w = list_get_at( &websites, i );
-		if ( startswith( url, w->url ) && strlen( w->url ) > len ) {
+		if ( startswith( url, w->url ) && strlen( w->url ) > len && startswith( w->full_url, protocol ) ) {
 			len = strlen( w->url );
 			found = i;
 		}
