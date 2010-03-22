@@ -68,7 +68,7 @@ int zsocket( in_addr_t addr, int portno, int type, bool ssl ) {
 	}
 
 	if ( type == ZSOCK_LISTEN && ssl ) {
-		SSL_METHOD* meth = SSLv3_method();
+		SSL_METHOD* meth = SSLv23_method();
 		p->listen.ssl_ctx = SSL_CTX_new( meth );
 		/* Load the server certificate into the SSL_CTX structure */
 		/* Load the private-key corresponding to the server certificate */
