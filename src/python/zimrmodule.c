@@ -573,13 +573,21 @@ static void pyzimr_connection_dealloc( pyzimr_connection_t* self ) {
 }
 
 static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* args ) {
-	const char* message;
+	PyObject* message;
+	const void* message_ptr;
+	Py_ssize_t message_len;
 
-	if ( !PyArg_ParseTuple( args, "s", &message ) ) {
+	if ( !PyArg_ParseTuple( args, "O", &message ) ) {
 		PyErr_SetString( PyExc_TypeError, "message paramater must be passed" );
 		return NULL;
 	}
-	zimr_connection_send( self->_connection, (void*) message, strlen( message ) );
+
+	if ( PyObject_AsReadBuffer( message, &message_ptr, &message_len ) ) {
+		PyErr_SetString( PyExc_TypeError, "invalid message paramater" );
+		return NULL;
+	}
+
+	zimr_connection_send( self->_connection, message_ptr, message_len );
 
 	Py_RETURN_NONE;
 }
