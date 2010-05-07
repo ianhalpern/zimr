@@ -32,6 +32,7 @@ time_t htpasswd_mtime;
 
 typedef struct {
 	char type;
+	char url[ PATH_MAX ];
 	char args[5][128];
 } auth_info_t;
 
@@ -166,9 +167,9 @@ void modzimr_init() {
 
 void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	auth_info_t* auth_info = malloc( sizeof( auth_info_t ) );
+	memset( auth_info, 0, sizeof( auth_info ) );
 
 	auth_info->type = AUTH_HTPASSWD;;
-	auth_info->args[0][0] = '\0';
 
 	if ( argc ) {
 		if ( strcmp( argv[0], "htpasswd" ) == 0 ) auth_info->type = AUTH_HTPASSWD;
@@ -178,18 +179,20 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	switch( auth_info->type ) {
 
 		case AUTH_HTPASSWD:
-			if ( argc >=2 ) strcpy( auth_info->args[0], argv[1] );
+			if ( argc >= 2 ) strcpy( auth_info->args[0], argv[1] );
 			else strcpy( auth_info->args[0], ".htpasswd" );
 			//zimr_website_insert_ignored_regex( website, ".*\\.htpasswd$" );
 			zimr_website_insert_ignored_regex( website, auth_info->args[0] );
 			break;
 
 		case AUTH_PAM:
-			if ( argc >=2 ) strcpy( auth_info->args[0], argv[1] );
+			if ( argc >= 2 ) strcpy( auth_info->args[0], argv[1] );
 			else strcpy( auth_info->args[0], "login" );
 			break;
 
 	}
+
+	if ( argc >= 3 ) strcpy( auth_info->url, argv[2] );
 
 	return auth_info;
 }
@@ -242,7 +245,7 @@ void modzimr_connection_new( connection_t* connection, void* udata ) {
 				userpass.user = user;
 				userpass.pass = pass;
 
-				if (pam_start( auth_info->args[0], user, &conv, &pamh ) != PAM_SUCCESS )
+				if ( pam_start( auth_info->args[0], user, &conv, &pamh ) != PAM_SUCCESS )
 					goto not_auth;
 
 				if ( ( status = pam_authenticate( pamh, 0 ) ) != PAM_SUCCESS ) {
@@ -265,6 +268,8 @@ void modzimr_connection_new( connection_t* connection, void* udata ) {
 	}
 
 not_auth:
-	headers_set_header( &connection->response.headers, "WWW-Authenticate", "Basic realm=\"Secure Area\"" );
-	zimr_connection_send_error( connection, 401 );
+	if ( !auth_info->url || startswith( connection->request.url, auth_info->url ) ) {
+		headers_set_header( &connection->response.headers, "WWW-Authenticate", "Basic realm=\"Secure Area\"" );
+		zimr_connection_send_error( connection, 401 );
+	}
 }

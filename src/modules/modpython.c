@@ -113,6 +113,8 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 		goto quit;
 	}
 
+	zimr_website_insert_ignored_regex( website, "psp_cache" );
+
 	/*
 	 website_type    = PyObject_GetAttrString( zimr_module, "website" );
 	PyObject* website_obj     = PyObject_CallFunction( website_type, "s", website->url );

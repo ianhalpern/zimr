@@ -1,2 +1,2 @@
-modules/modauth.so: MODULE_CC_ARGS=-lcrypt -lpam
+modules/modauth.so: MODULE_CC_ARGS=-lcrypt #-lpam
 

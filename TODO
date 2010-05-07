@@ -1,5 +1,6 @@
-* use getpwent - http://www.kernel.org/doc/man-pages/online/pages/man3/getpwent.3.html
-*implement the OPTIONS method, a alternate to GET or POST
+*add non regex ignore functionality
+*use getpwent - http://www.kernel.org/doc/man-pages/online/pages/man3/getpwent.3.html
+*implement the OPTIONS and HEADERS method, alternates to GET or POST
 *adding file sorting to directory view
 *python module: make public directory main directory
 *python module: look further into threading and locks for the python functions called from c, make sure PyGIL functions are used correctly
@@ -48,6 +49,7 @@ x*make proxy config file
 x*bug: going to a directory without the backslash which is inside a subdirectory sends an invalid redirect. example: http://zimr.org/style/graphics
 x*ignored files still show up in html directory list
 x*make a local modules directory where users can add or remove modules locally
+x*make sure psp_cache gets ignored
 
 < Milestone v0.1.7 >
 
