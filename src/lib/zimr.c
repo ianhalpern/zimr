@@ -889,7 +889,7 @@ void zimr_website_load_module( website_t* website, module_t* module, int argc, c
 void zimr_website_set_redirect( website_t* website, char* redirect_url ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	if ( website_data->redirect_url ) free( website_data->redirect_url );
-	if ( !startswith( redirect_url, "http://" ) && !startswith( "https://" ) ) {
+	if ( !startswith( redirect_url, "http://" ) && !startswith( redirect_url, "https://" ) ) {
 		website_data->redirect_url = malloc( 8 + strlen( redirect_url ) );
 		strcpy( website_data->redirect_url, "http://" );
 		strcat( website_data->redirect_url, redirect_url );
@@ -989,7 +989,7 @@ void zimr_log_request( connection_t* connection ) {
 	header_t* header = headers_get_header( &connection->request.headers, "User-Agent" );
 	header_t* referer = headers_get_header( &connection->request.headers, "Referer" );
 
-	sprintf( buffer, "%s, %s, %s, %s, %s/%s, %d, %s, %s\n",
+	sprintf( buffer, "%s, %s, %s, %s, %s%s, %d, %s, %s\n",
 		now_str,
 		inet_ntoa( connection->ip ),
 		connection->hostname,

@@ -62,15 +62,11 @@ void wait_for_kill( ) {
 }
 
 int startswith( const char* s1, const char* s2 ) {
-	size_t size;
 	int i;
 
-	size = strlen( s2 );
-
 	//if( size > strlen( s1 ) ) return 0;
-
-	for ( i = 0; i < size; i++ )
-		if ( *(s1 + i) != *(s2 + i) )
+	for ( i = 0; *(s2 + i); i++ )
+		if ( *(s1 + i) != *(s2 + i) || !*(s1 + i) )
 			return 0;
 
 	return 1;
