@@ -517,7 +517,7 @@ bool zimr_connection_handler( website_t* website, msg_packet_t* packet ) {
 
 		if ( website_data->redirect_url ) {
 			char buf[ strlen( website_data->redirect_url ) + strlen( conn_data->connection->request.url ) + 8 ];
-			sprintf( buf, "http://%s%s", website_data->redirect_url, conn_data->connection->request.url );
+			sprintf( buf, "%s%s", website_data->redirect_url, conn_data->connection->request.url );
 			zimr_connection_send_redirect( conn_data->connection, buf );
 		}
 
@@ -889,7 +889,12 @@ void zimr_website_load_module( website_t* website, module_t* module, int argc, c
 void zimr_website_set_redirect( website_t* website, char* redirect_url ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	if ( website_data->redirect_url ) free( website_data->redirect_url );
-	website_data->redirect_url = strdup( redirect_url );
+	if ( !startswith( redirect_url, "http://" ) && !startswith( "https://" ) ) {
+		website_data->redirect_url = malloc( 8 + strlen( redirect_url ) );
+		strcpy( website_data->redirect_url, "http://" );
+		strcat( website_data->redirect_url, redirect_url );
+	} else
+		website_data->redirect_url = strdup( redirect_url );
 }
 
 void zimr_website_set_proxy( website_t* website, char* ip, int port ) {
