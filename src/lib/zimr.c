@@ -984,12 +984,12 @@ void zimr_log_request( connection_t* connection ) {
 	header_t* header = headers_get_header( &connection->request.headers, "User-Agent" );
 	header_t* referer = headers_get_header( &connection->request.headers, "Referer" );
 
-	sprintf( buffer, "%s, %s, %s, %s, http://%s/%s, %d, %s, %s\n",
+	sprintf( buffer, "%s, %s, %s, %s, %s/%s, %d, %s, %s\n",
 		now_str,
 		inet_ntoa( connection->ip ),
 		connection->hostname,
 		HTTP_TYPE( connection->request.type ),
-		connection->website->url,
+		connection->website->full_url,
 		connection->request.url,
 		connection->response.http_status,
 		header ? header->value : "",
