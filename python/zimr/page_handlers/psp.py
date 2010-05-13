@@ -1,8 +1,6 @@
 from mako.template  import Template
 from mako.lookup    import TemplateLookup
-from mako.runtime   import Context
 from mako           import exceptions as mako_exceptions
-from StringIO       import StringIO
 
 def render( path, connection=None ):
 	result = "";
@@ -11,7 +9,7 @@ def render( path, connection=None ):
 		lookup = TemplateLookup(
 			directories=['.'],
 			module_directory='psp_cache/',
-			output_encoding='utf-8',
+			input_encoding='utf-8',
 			encoding_errors='replace'
 		)
 		template = Template( filename=path, module_directory='psp_cache/', lookup=lookup )
@@ -22,17 +20,10 @@ def render( path, connection=None ):
 		if connection: connection.response.setHeader( "Content-Type", "text/plain" )
 		return mako_exceptions.text_error_template().render()
 
-	buf = StringIO()
-	ctx = Context( buf, connection=connection )
-
 	try:
 		#loadme and unload me are so the procs modules are in scope
-		template.render_context( ctx )
+		return template.render_unicode( connection=connection ).encode( 'utf-8', 'replace' )
 	except:
 		connection.response.setStatus( 500 )
 		if connection: connection.response.setHeader( "Content-Type", "text/plain" )
 		return mako_exceptions.text_error_template().render()
-
-	result = str( buf.getvalue() )
-
-	return str( buf.getvalue() )

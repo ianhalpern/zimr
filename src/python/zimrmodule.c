@@ -1043,17 +1043,20 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 	PyObject* page_handler = udata;
 	PyObject* result;
 	PyObject* connection_obj = connection->udata;
+	const void* result_ptr;
+	Py_ssize_t result_len;
+
 
 	if ( !connection_obj ) connection_obj = Py_None;
 
 	result = PyObject_CallFunction( page_handler, "sO", filepath, connection_obj );
 
 	if ( result != NULL ) {
-		if ( !PyString_Check( result ) ) {
+		if ( PyObject_AsReadBuffer( result, &result_ptr, &result_len ) ) {
 			PyErr_SetString( PyExc_TypeError, "result from page_handler invalid" );
 			return;
 		}
-		zimr_connection_send( connection, (void*) PyString_AsString( result ), strlen( PyString_AsString( result ) ) );
+		zimr_connection_send( connection, result_ptr, result_len );
 
 		Py_DECREF( result );
 	}
