@@ -1,4 +1,3 @@
-
 /*   Zimr - Next Generation Web Server
  *
  *+  Copyright (c) 2009 Ian Halpern
@@ -29,6 +28,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <fcntl.h>
+
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -38,12 +39,19 @@
 #include <openssl/err.h>
 
 #include "general.h"
-#include "zerr.h"
+#include "zfildes.h"
 
 #define ZSOCK_LISTEN   0x01
 #define ZSOCK_CONNECT  0x02
 //#define ZSOCK_ZLISTEN  0x03
 //#define ZSOCK_ZCONNECT 0x04
+
+#define ZACCEPT_W 0x20
+#define ZACCEPT_R 0x21
+#define ZWRITE 0x22
+#define ZREAD 0x23
+
+#define ZSOCK_HDLR (void (*)( int, int, void* ))
 
 #define RSA_SERVER_CERT "server.crt"
 #define RSA_SERVER_KEY  "server.key"
@@ -67,14 +75,31 @@ typedef union {
 	} connect;
 } zsocket_t;
 
+typedef struct {
+	char* buffer;
+	size_t buffer_size;
+	size_t buffer_used;
+	void (*oncomplete)( int, int, void*, size_t, void* );
+	void* udata;
+	bool fd_info_set;
+	fd_info_t fd_info;
+} zsock_rw_data_t;
+
+typedef struct {
+	struct sockaddr_in* cli_addr;
+	socklen_t* cli_len;
+	void (*oncomplete)( int, struct sockaddr_in *, unsigned int *, void* );
+	void* udata;
+} zsock_a_data_t;
+
 zsocket_t* zsockets[ FD_SETSIZE ];
 
 void zsocket_init();
 int  zsocket( in_addr_t addr, int portno, int type, bool ssl );
 void zclose( int zsockfd );
-int  zaccept( int zsockfd, struct sockaddr_in* cli_addr, unsigned int* cli_len );
-int  zread( int zsockfd, char* buffer, size_t buffer_size );
-int  zwrite( int zsockfd, const char* buffer, size_t buffer_size );
+void zaccept( int zsockfd, struct sockaddr_in*, socklen_t*, void (*oncomplete)( int, struct sockaddr_in *, socklen_t*, void* ), void* udata );
+void zread( int zsockfd, char* buffer, size_t buffer_size, void (*oncomplete)( int, int, void*, size_t, void* ), void* udata );
+void zwrite( int zsockfd, char* buffer, size_t buffer_size, void (*oncomplete)( int, int, void*, size_t, void* ), void* udata );
 zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno );
 zsocket_t* zsocket_get_by_sockfd( int sockfd );
 

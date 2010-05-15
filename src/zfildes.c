@@ -64,14 +64,27 @@ void zfd_clr( int fd, int type ) {
 		FD_CLR( fd, &active_write_fd_set );
 }
 
-bool zfd_isset( int fd, int type ) {
+bool zfd_type_isset( int fd, int type ) {
 	fd_type_t* fd_type = &fd_types[ type ];
 
-	if ( fd_type->io_type == ZFD_R )
-		return FD_ISSET( fd, &active_read_fd_set );
+	if ( fd_data[ fd ][ fd_type->io_type - 1 ].type == type ) {
+		if ( fd_type->io_type == ZFD_R )
+			return FD_ISSET( fd, &active_read_fd_set );
 
-	else if ( fd_type->io_type == ZFD_W )
-		return FD_ISSET( fd, &active_write_fd_set );
+		else if ( fd_type->io_type == ZFD_W )
+			return FD_ISSET( fd, &active_write_fd_set );
+	}
+
+	return false;
+}
+
+bool zfd_io_isset( int fd, int io_type ) {
+
+	if ( io_type == ZFD_R && FD_ISSET( fd, &active_read_fd_set ) )
+		return true;
+
+	if ( io_type == ZFD_W && FD_ISSET( fd, &active_write_fd_set ) )
+		return true;
 
 	return false;
 }
@@ -80,12 +93,16 @@ void* zfd_udata( int fd, int type ) {
 	return fd_data[ fd ][ fd_types[ type ].io_type - 1 ].udata;
 }
 
+fd_info_t zfd_info( int fd, int io_type ) {
+	return fd_data[ fd ][ io_type - 1 ];
+}
+
 void zfd_register_type( int type, unsigned char io_type, void (*handler)( int, void* ) ) {
 	fd_types[ type ].io_type = io_type;
 	fd_types[ type ].handler = handler;
 }
 
-void zfd_unblock( ) {
+void zfd_unblock() {
 	unblock = true;
 }
 
@@ -112,10 +129,10 @@ int zfd_select( int tv_sec ) {
 
 		if ( errno != EINTR ) /* select() was not interrupted. This is an
 								 unanticipated error. */
-			perror( "[error] zfd_start: select() failed" );
+			perror( "[error] zfd_select: select() failed" );
 
-		/* if interrupted we are trying to quit...return with error (false). */
-		else return 0;
+		/* if interrupted or select failed we are trying to quit...return with error (false). */
+		return 0;
 
 	}
 

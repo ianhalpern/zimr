@@ -4,3 +4,4 @@
 ./zimr-proxy
 ./zimr.log
 ./test_website
+./test-*

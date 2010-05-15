@@ -20,11 +20,6 @@
  *
  */
 
-#ifndef _ZM_PFILDES_H
-#define _ZM_PFILDES_H
-
-#define ZFD_TYPE_HDLR (void (*)( int, void* ))
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -32,28 +27,10 @@
 #include <errno.h>
 #include <stdbool.h>
 
-#define ZFD_R 0x01
-#define ZFD_W 0x02
+#include "zsocket.h"
 
-typedef struct {
-	int type;
-	void* udata;
-} fd_info_t;
-
-typedef struct {
-	unsigned char io_type;
-	void (*handler)( int fd, void* udata );
-} fd_type_t;
-
-void zfd_set( int fd, int type, void* udata );
-void zfd_reset( int fd, int type );
-void zfd_clr( int fd, int type );
-bool zfd_type_isset( int fd, int type );
-bool zfd_io_isset( int fd, int type );
-void zfd_register_type( int type, unsigned char io_type, void (*handler)( int, void* ) );
-void* zfd_udata( int fd, int type );
-fd_info_t zfd_info( int fd, int io_type );
-int zfd_select();
-void zfd_unblock();
-
-#endif
+int main( int argc, char **argv ) {
+	puts( "Hello World, I'm a client." );
+	zsocket_init();
+	return EXIT_SUCCESS;
+}

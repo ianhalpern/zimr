@@ -430,18 +430,24 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 	}
 }
 
+void inlisn_oncomplete( int fd, int ret, conn_data_t* conn_data ) {
+}
+
 void inlisn( int sockfd, void* udata ) {
 	struct sockaddr_in cli_addr;
 	unsigned int cli_len = sizeof( cli_addr );
 	int insockfd;
 
 	// Connection request on original socket.
-	if ( ( insockfd = zaccept( sockfd, &cli_addr, &cli_len ) ) < 0 ) {
+	if ( ( insockfd = zaccept( sockfd, &cli_addr, &cli_len, ZSOCK_HDLR inlisn_oncomplete, NULL ) ) < 0 ) {
 		syslog( LOG_ERR, "inlisn: accept() failed: %s", strerror( errno ) );
 		return;
 	}
 
 	msg_switch_new( insockfd, msg_event_handler );
+}
+
+void exlisn_oncomplete( int fd, int ret, conn_data_t* conn_data ) {
 }
 
 void exlisn( int sockfd, void* udata ) {
@@ -452,7 +458,7 @@ void exlisn( int sockfd, void* udata ) {
 	int newsockfd;
 
 	// Connection request on original socket.
-	if ( ( newsockfd = zaccept( sockfd, &cli_addr, &cli_len ) ) < 0 ) {
+	if ( ( newsockfd = zaccept( sockfd, &cli_addr, &cli_len, ZSOCK_HDLR exlisn_oncomplete, NULL ) ) < 0 ) {
 		syslog( LOG_ERR, "exlisn: accept() failed: %s", strerror( errno ) );
 		return;
 	}
@@ -486,6 +492,9 @@ void cleanup_connection( int sockfd ) {
 	connections[ sockfd ] = NULL;
 }
 
+void exread_oncomplete( int fd, int ret, void* udata ) {
+}
+
 void exread( int sockfd, void* udata ) {
 	char buffer[ PACK_DATA_SIZE ],* ptr;
 	int len;
@@ -493,7 +502,7 @@ void exread( int sockfd, void* udata ) {
 	website_t* website;
 
 	// TODO: wait for entire header before looking up website
-	if ( ( len = zread( sockfd, buffer, sizeof( buffer ) ) ) <= 0 ) {
+	if ( ( len = zread( sockfd, buffer, sizeof( buffer ), ZSOCK_HDLR exread_oncomplete, NULL ) ) <= 0 ) {
 cleanup:
 		// cleanup
 		website = website_get_by_sockfd( conn_data->website_sockfd );
@@ -603,20 +612,14 @@ cleanup:
 
 }
 
-void exwrit( int sockfd, void* udata ) {
-	conn_data_t* conn_data = connections[ sockfd ];
+void exwrit_oncomplete( int fd, int ret, msg_packet_t* packet ) {
+	conn_data_t* conn_data = connections[ fd ];
 	char status = MSG_PACK_RESP_OK;
 	website_t* website = website_get_by_sockfd( conn_data->website_sockfd );
 	website_data_t* website_data = website->udata;
 	int n;
-	msg_packet_t* packet = conn_data->pending_packet;
-	conn_data->pending_packet = NULL;
-
-	zfd_clr( sockfd, EXWRIT );
-
-	n = zwrite( sockfd, packet->data, packet->size );
-
-	if ( n != packet->size ) {
+	puts( "exwrit_complete" );
+	if ( ret >= 0 ) {
 		if ( n == -1 )
 			syslog( LOG_ERR, "exwrit: write failed: %s", strerror( errno ) );
 		status = MSG_PACK_RESP_FAIL;
@@ -625,6 +628,16 @@ void exwrit( int sockfd, void* udata ) {
 	msg_switch_send_pack_resp( website_data->msg_switch, packet, status );
 
 	free( packet );
+}
+
+void exwrit( int sockfd, void* udata ) {
+	conn_data_t* conn_data = connections[ sockfd ];
+	msg_packet_t* packet = conn_data->pending_packet;
+	conn_data->pending_packet = NULL;
+
+	zfd_clr( sockfd, EXWRIT );
+
+	int n = zwrite( sockfd, packet->data, packet->size, ZSOCK_HDLR exwrit_oncomplete, packet );
 }
 
 void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet ) {
