@@ -169,64 +169,59 @@ static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* i
 	msg_switch_event( msg_switch, MSG_SWITCH_EVT_IO_FAILED, &code, info );
 }
 
+static void msg_switch_read_complete( int fd, int ret, void* buff, size_t len, msg_switch_t* msg_switch );
+
 static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
-	int n;
 
-	if ( !msg_switch->read_data_type ) {
-		if ( ( n = read( sockfd, &msg_switch->read_data_type, sizeof( msg_switch->read_data_type ) ) ) != sizeof( msg_switch->read_data_type ) ) {
-			msg_switch_failed( msg_switch, 0, "msg_switch_read(): read type" );
-		}
-		return;
-	}
+	if ( !msg_switch->read_data_type )
+		zread( sockfd, &msg_switch->read_data_type, sizeof( msg_switch->read_data_type ), ZSOCK_HDLR msg_switch_read_complete, msg_switch );
+	else
+		zread( sockfd, (void*) &msg_switch->read_data, MSG_TYPE_GET_SIZE( msg_switch->read_data_type ),
+		  ZSOCK_HDLR msg_switch_read_complete, msg_switch );
 
-	n = read( sockfd, (void*) &msg_switch->read_data + msg_switch->read_data_size,
-	  MSG_TYPE_GET_SIZE( msg_switch->read_data_type ) - msg_switch->read_data_size );
-
-	if ( n <= 0 ) {
-		msg_switch->read_data_type = 0;
-		msg_switch->read_data_size = 0;
-		if ( n == -1 )
-			perror( "msg_switch_read(): read data"  );
-		msg_switch_failed( msg_switch, n, "msg_switch_read(): read data" );
-		return;
-	}
-	//printf( "[%d] %04d: got response, status %d\n", resp.msgid, n_print++, resp.status );
-
-	msg_switch->read_data_size += n;
-
-	if ( msg_switch->read_data_size == MSG_TYPE_GET_SIZE( msg_switch->read_data_type ) ) {
-
-		switch( msg_switch->read_data_type ) {
-			case MSG_TYPE_RESP:
-				if ( msg_get( msg_switch, msg_switch->read_data.resp.msgid ) ) {
-
-					msg_switch_event( msg_switch, MSG_RECV_EVT_RESP, &msg_switch->read_data.resp );
-
-					msg_accept_resp( msg_switch, msg_switch->read_data.resp );
-				}
-				break;
-
-			case MSG_TYPE_PACK:
-				if ( !FL_ISSET( msg_switch->read_data.packet.flags, PACK_FL_KILL ) ) {
-					if ( FL_ISSET( msg_switch->read_data.packet.flags, PACK_FL_FIRST ) )
-						msg_switch_event( msg_switch, MSG_RECV_EVT_FIRST, msg_switch->read_data.packet.msgid );
-
-					msg_switch_event( msg_switch, MSG_RECV_EVT_PACK, &msg_switch->read_data.packet );
-
-				} else
-					msg_switch_event( msg_switch, MSG_RECV_EVT_KILL, msg_switch->read_data.packet.msgid );
-
-				break;
-		}
-
-		msg_switch->read_data_size = 0;
-		msg_switch->read_data_type = 0;
-	}
+	return;
 }
 
-static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
-	int n;
+static void msg_switch_read_complete( int fd, int ret, void* buff, size_t len, msg_switch_t* msg_switch ) {
+	if ( ret <= 0 ) {
+		msg_switch_failed( msg_switch, ret, "msg_switch_read_complete()" );
+		return;
+	}
 
+	if ( buff == &msg_switch->read_data_type ) {
+		msg_switch_read( fd, msg_switch );
+		return;
+	}
+
+	switch( msg_switch->read_data_type ) {
+		case MSG_TYPE_RESP:
+			if ( msg_get( msg_switch, msg_switch->read_data.resp.msgid ) ) {
+
+				msg_switch_event( msg_switch, MSG_RECV_EVT_RESP, &msg_switch->read_data.resp );
+
+				msg_accept_resp( msg_switch, msg_switch->read_data.resp );
+			}
+			break;
+
+		case MSG_TYPE_PACK:
+			if ( !FL_ISSET( msg_switch->read_data.packet.flags, PACK_FL_KILL ) ) {
+				if ( FL_ISSET( msg_switch->read_data.packet.flags, PACK_FL_FIRST ) )
+					msg_switch_event( msg_switch, MSG_RECV_EVT_FIRST, msg_switch->read_data.packet.msgid );
+
+				msg_switch_event( msg_switch, MSG_RECV_EVT_PACK, &msg_switch->read_data.packet );
+
+			} else
+				msg_switch_event( msg_switch, MSG_RECV_EVT_KILL, msg_switch->read_data.packet.msgid );
+
+			break;
+	}
+
+	msg_switch->read_data_type = 0;
+}
+
+static void msg_switch_writ_complete( int fd, int ret, void* buff, size_t len, msg_switch_t* msg_switch );
+
+static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
 	if ( !msg_switch->write_data_type ) {
 		// check if waiting to send returns
 		if ( msg_switch_has_pending_resps( msg_switch ) ) {
@@ -242,36 +237,28 @@ static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
 			//printf( "[%d] %04d: sending packet, flags %x\n", packet.msgid, n_print++, packet.flags );
 		}
 
-		msg_switch->write_data_size = MSG_TYPE_GET_SIZE( msg_switch->write_data_type );
-
-		if ( ( n = write( sockfd, &msg_switch->write_data_type, sizeof( msg_switch->write_data_type ) ) )
-		  != sizeof( msg_switch->write_data_type ) ) {
-			msg_switch_failed( msg_switch, 0, "msg_switch_writ(): write type" );
-		}
+		zwrite( sockfd, &msg_switch->write_data_type, sizeof( msg_switch->write_data_type ), ZSOCK_HDLR msg_switch_writ_complete, msg_switch );
 		return;
 	}
 
-	n = write( sockfd, (void*) &msg_switch->write_data + ( MSG_TYPE_GET_SIZE( msg_switch->write_data_type ) - msg_switch->write_data_size ),
-	  msg_switch->write_data_size );
+	zwrite( sockfd, (void*) &msg_switch->write_data, MSG_TYPE_GET_SIZE( msg_switch->write_data_type ), ZSOCK_HDLR msg_switch_writ_complete, msg_switch );
+}
 
-	if ( n <= 0 ) {
-		msg_switch->write_data_type = 0;
-		msg_switch->write_data_size = 0;
-		if ( n == -1 )
-			perror( "msg_switch_write(): write data"  );
-		msg_switch_failed( msg_switch, n, "msg_switch_writ(): write data" );
+static void msg_switch_writ_complete( int fd, int ret, void* buff, size_t len, msg_switch_t* msg_switch ) {
+	if ( ret <= 0 ) {
+		msg_switch_failed( msg_switch, ret, "msg_switch_writ_complete()" );
 		return;
 	}
 
-	msg_switch->write_data_size -= n;
-
-	if ( !msg_switch->write_data_size ) {
-		msg_switch->write_data_type = 0;
+	if ( buff == &msg_switch->write_data_type ) {
+		msg_switch_writ( fd, msg_switch );
+		return;
 	}
 
-	if ( !msg_switch->write_data_type && !msg_switch_is_pending( msg_switch ) ) {
-		zfd_clr( sockfd, writ_type );
-	}
+	msg_switch->write_data_type = 0;
+
+	if ( !msg_switch_is_pending( msg_switch ) )
+		zfd_clr( fd, writ_type );
 }
 
 static msg_packet_t* msg_packet_new( msg_switch_t* msg_switch, int msgid, int flags ) {
@@ -318,8 +305,6 @@ msg_switch_t* msg_switch_new(
 	msg_switch->sockfd = sockfd;
 	msg_switch->read_data_type = 0;
 	msg_switch->write_data_type = 0;
-	msg_switch->read_data_size = 0;
-	msg_switch->write_data_size = 0;
 	msg_switch->event_handler = event_handler;
 
 	zfd_set( msg_switch->sockfd, read_type, msg_switch );

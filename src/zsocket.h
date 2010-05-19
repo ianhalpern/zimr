@@ -46,15 +46,46 @@
 //#define ZSOCK_ZLISTEN  0x03
 //#define ZSOCK_ZCONNECT 0x04
 
-#define ZACCEPT_W 0x20
-#define ZACCEPT_R 0x21
-#define ZWRITE 0x22
-#define ZREAD 0x23
+#define ZACCEPT 0x20
+#define ZWRITE  0x22
+#define ZREAD   0x23
 
-#define ZSOCK_HDLR (void (*)( int, int, void* ))
+#define ZCONNECTED          0x001
+#define ZREAD_FROM_READ     0x002
+#define ZREAD_FROM_WRITE    0x004
+#define ZWRITE_FROM_WRITE   0x008
+#define ZWRITE_FROM_READ    0x010
+#define ZREAD_FROM_ACCEPT   0x020
+#define ZWRITE_FROM_ACCEPT  0x040
+#define ZREAD_READ          0x080
+
+#define ZSE_ACCEPT_ERR 0x1
+#define ZSE_ACCEPTED_CONNECTION 0x2
+#define ZSE_READ_DATA 0x3
+#define ZSE_WROTE_DATA 0x4
+
+#define ZSOCK_HDLR (void (*)( int, int, void*, size_t, void* ))
 
 #define RSA_SERVER_CERT "server.crt"
 #define RSA_SERVER_KEY  "server.key"
+
+typedef struct {
+	char* buffer;
+	size_t buffer_size;
+	size_t buffer_used;
+} zsock_rw_data_t;
+
+typedef struct {
+	int type;
+	union {
+		struct {
+			int fd;
+			in_addr_t addr;
+		} conn;
+		zsock_rw_data_t read;
+		zsock_rw_data_t write;
+	} data;
+} zsocket_event_t;
 
 typedef union {
 	char type;
@@ -63,6 +94,16 @@ typedef union {
 		int sockfd;
 		in_addr_t addr;
 		int portno;
+		unsigned int flags;
+		void (*event_hdlr)( int fd, zsocket_event_t event );
+	} general;
+	struct {
+		char type;
+		int sockfd;
+		in_addr_t addr;
+		int portno;
+		unsigned int flags;
+		void (*event_hdlr)( int fd, zsocket_event_t event );
 		int n_open;
 		SSL_CTX* ssl_ctx;
 	} listen;
@@ -71,35 +112,27 @@ typedef union {
 		int sockfd;
 		in_addr_t addr;
 		int portno;
+		unsigned int flags;
+		void (*event_hdlr)( int fd, zsocket_event_t event );
+		zsock_rw_data_t read;
+		zsock_rw_data_t write;
 		SSL* ssl;
 	} connect;
 } zsocket_t;
 
 typedef struct {
-	char* buffer;
-	size_t buffer_size;
-	size_t buffer_used;
-	void (*oncomplete)( int, int, void*, size_t, void* );
-	void* udata;
-	bool fd_info_set;
-	fd_info_t fd_info;
-} zsock_rw_data_t;
-
-typedef struct {
-	struct sockaddr_in* cli_addr;
-	socklen_t* cli_len;
-	void (*oncomplete)( int, struct sockaddr_in *, unsigned int *, void* );
-	void* udata;
+	struct sockaddr_in cli_addr;
+	socklen_t cli_len;
 } zsock_a_data_t;
 
 zsocket_t* zsockets[ FD_SETSIZE ];
 
 void zsocket_init();
-int  zsocket( in_addr_t addr, int portno, int type, bool ssl );
+int  zsocket( in_addr_t addr, int portno, int type, void (*zsocket_event_hdlr)( int fd, zsocket_event_t event ), bool ssl );
 void zclose( int zsockfd );
-void zaccept( int zsockfd, struct sockaddr_in*, socklen_t*, void (*oncomplete)( int, struct sockaddr_in *, socklen_t*, void* ), void* udata );
-void zread( int zsockfd, char* buffer, size_t buffer_size, void (*oncomplete)( int, int, void*, size_t, void* ), void* udata );
-void zwrite( int zsockfd, char* buffer, size_t buffer_size, void (*oncomplete)( int, int, void*, size_t, void* ), void* udata );
+void zaccept( int fd, bool toggle );
+void zread( int fd, bool toggle );
+void zwrite( int fd, const void* buf, size_t n );
 zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno );
 zsocket_t* zsocket_get_by_sockfd( int sockfd );
 

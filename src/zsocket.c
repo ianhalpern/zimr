@@ -18,34 +18,117 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Zimr.  If not, see <http://www.gnu.org/licenses/>
  *
- *  ssl api reference: http://h71000.www7.hp.com/doc/83final/ba554_90007/ch05s04.html
+ */
+
+/*  ssl api reference: http://h71000.www7.hp.com/doc/83final/ba554_90007/ch05s04.html
  *  ssl ca reference: https://help.ubuntu.com/community/OpenSSL
  */
 
 #include "zsocket.h"
 
 static bool initialized = false;
+static SSL_CTX* client_ctx;
+
+static void zsocket_fire_event( int fd, unsigned int type, ... );
 static int zsocket_new( in_addr_t addr, int portno, int type );
 
-void zaccepter( int fd, zsock_a_data_t* data );
-void zwriter( int fd, zsock_rw_data_t* data );
-void zreader( int fd, zsock_rw_data_t* data );
+static void _zaccept( int fd, void* udata );
+static void _zwrite(  int fd, void* udata );
+static void _zread(   int fd, void* udata );
+
+static void _zaccepter( int fd, void* udata );
+static void _zwriter(   int fd, void* udata );
+static void _zreader(   int fd, void* udata );
 
 void zsocket_init() {
 	assert( !initialized );
 	initialized = true;
+
 	SSL_library_init();
 	SSL_load_error_strings();
+
+	client_ctx = SSL_CTX_new( SSLv23_client_method() );
+	if ( client_ctx == NULL ) {
+		ERR_print_errors_fp(stderr);
+		abort();
+	}
+
 	memset( zsockets, 0, sizeof( zsockets ) );
 
-	zfd_register_type( ZACCEPT_R, ZFD_R, ZFD_TYPE_HDLR zaccepter );
-	zfd_register_type( ZACCEPT_W, ZFD_W, ZFD_TYPE_HDLR zaccepter );
-	zfd_register_type( ZWRITE, ZFD_W, ZFD_TYPE_HDLR zwriter );
-	zfd_register_type( ZREAD,  ZFD_R, ZFD_TYPE_HDLR zreader );
+	zfd_register_type( ZACCEPT, ZFD_R, ZFD_TYPE_HDLR _zaccept );
+	zfd_register_type( ZREAD,   ZFD_R, ZFD_TYPE_HDLR _zread );
+	zfd_register_type( ZWRITE,  ZFD_W, ZFD_TYPE_HDLR _zwrite );
+	//zfd_register_type( ZWRITE, ZFD_W, ZFD_TYPE_HDLR _zwrite );
+	//zfd_register_type( ZACCEPTER_R, ZFD_R, ZFD_TYPE_HDLR _zaccepter );
+	//zfd_register_type( ZACCEPTER_W, ZFD_W, ZFD_TYPE_HDLR _zaccepter );
+	//zfd_register_type( ZWRITER_W, ZFD_W, ZFD_TYPE_HDLR _zwriter );
+	//zfd_register_type( ZREADER_R,  ZFD_R, ZFD_TYPE_HDLR _zreader );
+	//zfd_register_type( ZREADER_W,  ZFD_W, ZFD_TYPE_HDLR _zreader );
 	//zfd_register_type( INLISN, ZFD_R, ZFD_TYPE_HDLR inlisn );
 }
 
-int zsocket( in_addr_t addr, int portno, int type, bool ssl ) {
+static zsocket_t* _zsocket_type_init( int fd, int type, in_addr_t addr, int portno,
+  void (*zsocket_event_hdlr)( int fd, zsocket_event_t event ), SSL_CTX* ssl_ctx ) {
+	zsocket_t* p;
+	p = (zsocket_t* ) malloc( sizeof( zsocket_t ) );
+	p->type = type;
+
+	p->general.sockfd = fd;
+	p->general.addr = addr;
+	p->general.portno = portno;
+	p->general.flags = 0;
+	p->general.event_hdlr = zsocket_event_hdlr;
+
+	if ( p->type == ZSOCK_LISTEN ) {
+		p->listen.n_open = 0;
+		p->listen.ssl_ctx = NULL;
+	} else {
+		p->connect.ssl = NULL;
+		p->connect.read.buffer = malloc( 2048 );
+		p->connect.read.buffer_size = 2048;
+		p->connect.read.buffer_used = 0;
+		p->connect.write.buffer = NULL;
+	}
+
+	if ( ssl_ctx ) {
+		if ( type == ZSOCK_LISTEN ) {
+			p->listen.ssl_ctx = ssl_ctx;
+			// Load the server certificate into the SSL_CTX structure
+			// Load the private-key corresponding to the server certificate
+			if ( !p->listen.ssl_ctx
+			  || SSL_CTX_use_certificate_chain_file( p->listen.ssl_ctx, RSA_SERVER_CERT ) <= 0
+			  || SSL_CTX_use_PrivateKey_file( p->listen.ssl_ctx, RSA_SERVER_KEY, SSL_FILETYPE_PEM ) <= 0 ) {
+				ERR_print_errors_fp( stderr );
+				free( p );
+				return NULL;
+			}
+
+			// Check if the server certificate and private-key matches
+			if ( !SSL_CTX_check_private_key( p->listen.ssl_ctx ) ) {
+				fprintf( stderr, "Private key does not match the certificate public key\n" );
+				free( p );
+				return NULL;
+			}
+
+			SSL_CTX_set_mode( p->listen.ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE );
+		} else {
+			p->connect.ssl = SSL_new( ssl_ctx );
+			//BIO *sbio = NULL;
+			//sbio = BIO_new_socket( sockfd, BIO_NOCLOSE );
+			//SSL_set_bio( p->connect.ssl, sbio, sbio );
+			SSL_set_fd( p->connect.ssl, fd );
+		}
+	}
+
+	if ( type == ZSOCK_LISTEN )
+		p->listen.n_open++;
+
+	zsockets[ fd ] = p;
+
+	return p;
+}
+
+int zsocket( in_addr_t addr, int portno, int type, void (*zsocket_event_hdlr)( int fd, zsocket_event_t event ), bool ssl ) {
 	assert( initialized );
 	zsocket_t* p;
 
@@ -61,49 +144,20 @@ int zsocket( in_addr_t addr, int portno, int type, bool ssl ) {
 	if ( sockfd == -1 )
 		return -1;
 
-	p = (zsocket_t* ) malloc( sizeof( zsocket_t ) );
-	p->type = type;
-
-	if ( p->type == ZSOCK_LISTEN ) {
-		p->listen.sockfd = sockfd;
-		p->listen.addr = addr;
-		p->listen.portno = portno;
-		p->listen.n_open = 0;
-		p->listen.ssl_ctx = NULL;
-	} else {
-		p->connect.sockfd = sockfd;
-		p->connect.addr = addr;
-		p->connect.portno = portno;
-		p->connect.ssl = NULL;
+	SSL_CTX* ssl_ctx = NULL;
+	if ( ssl ) {
+		if ( type == ZSOCK_LISTEN )
+			ssl_ctx = SSL_CTX_new( SSLv23_server_method() );
+		else
+			ssl_ctx = client_ctx;
 	}
 
-	if ( type == ZSOCK_LISTEN && ssl ) {
-		SSL_METHOD* meth = SSLv23_method();
-		p->listen.ssl_ctx = SSL_CTX_new( meth );
-		// Load the server certificate into the SSL_CTX structure
-		// Load the private-key corresponding to the server certificate
-		if ( !p->listen.ssl_ctx
-		  || SSL_CTX_use_certificate_chain_file( p->listen.ssl_ctx, RSA_SERVER_CERT ) <= 0
-		  || SSL_CTX_use_PrivateKey_file( p->listen.ssl_ctx, RSA_SERVER_KEY, SSL_FILETYPE_PEM ) <= 0 ) {
-			ERR_print_errors_fp( stderr );
-			free( p );
-			return -1;
-		}
-/*
-		// Check if the server certificate and private-key matches
-		if ( !SSL_CTX_check_private_key( p->listen.ssl_ctx ) ) {
-			fprintf( stderr, "Private key does not match the certificate public key\n" );
-			free( p );
-			return -1;
-		}*/
+	p = _zsocket_type_init( sockfd, type, addr, portno, zsocket_event_hdlr, ssl_ctx );
+	if ( p && type == ZSOCK_CONNECT ) {
+		FL_SET( p->general.flags, ZCONNECTED );
+		if ( ssl ) SSL_set_connect_state( p->connect.ssl );
 	}
-
-	if ( type == ZSOCK_LISTEN )
-		p->listen.n_open++;
-
-	zsockets[ sockfd ] = p;
-
-	return sockfd;
+	return p ? sockfd : -1;
 }
 
 static int zsocket_new( in_addr_t addr, int portno, int type ) {
@@ -115,7 +169,6 @@ static int zsocket_new( in_addr_t addr, int portno, int type ) {
 	if ( sockfd < 0 ) {
 		return -1;
 	}
-	fcntl( sockfd, F_SETFL, fcntl( sockfd, F_GETFL, 0 ) | O_NONBLOCK );
 
 	memset( &serv_addr, 0, sizeof( serv_addr ) );
 
@@ -143,37 +196,8 @@ static int zsocket_new( in_addr_t addr, int portno, int type ) {
 		return -1;
 	}
 
+	fcntl( sockfd, F_SETFL, fcntl( sockfd, F_GETFL, 0 ) | O_NONBLOCK );
 	return sockfd;
-}
-
-void zclose( int zs ) {
-	assert( initialized );
-
-	zsocket_t* p = zsockets[ zs ];
-
-	if ( p->type == ZSOCK_LISTEN ) {
-		p->listen.n_open--;
-
-		if ( p->listen.n_open > 0 )
-			return;
-	}
-
-	zsockets[ zs ] = NULL;
-
-	if ( p->type == ZSOCK_LISTEN ) {
-		if ( p->listen.ssl_ctx )
-			SSL_CTX_free( p->listen.ssl_ctx );
-		close( p->listen.sockfd );
-	} else if ( p->type == ZSOCK_CONNECT ) {
-		if ( p->connect.ssl )
-			SSL_shutdown( p->connect.ssl );
-		close( p->connect.sockfd );
-	}
-
-	if ( p->type == ZSOCK_CONNECT && p->connect.ssl )
-		SSL_free( p->connect.ssl );
-
-	free( p );
 }
 
 zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno ) {
@@ -199,190 +223,368 @@ zsocket_t* zsocket_get_by_sockfd( int sockfd ) {
 	return zsockets[ sockfd ];
 }
 
-void zaccept( int sockfd, struct sockaddr_in* cli_addr, socklen_t* cli_len,
-  void (*oncomplete)( int, struct sockaddr_in*, socklen_t*, void* ), void* udata ) {
+void zclose( int fd ) {
+	assert( initialized );
+
+	zsocket_t* p = zsockets[ fd ];
+
+	if ( p->type == ZSOCK_LISTEN ) {
+		p->listen.n_open--;
+
+		if ( p->listen.n_open > 0 )
+			return;
+	}
+
+	zsockets[ fd ] = NULL;
+
+	if ( p->type == ZSOCK_LISTEN ) {
+		if ( p->listen.ssl_ctx )
+			SSL_CTX_free( p->listen.ssl_ctx );
+		close( p->listen.sockfd );
+	} else if ( p->type == ZSOCK_CONNECT ) {
+		if ( p->connect.ssl )
+			SSL_shutdown( p->connect.ssl );
+		close( p->connect.sockfd );
+		free( p->connect.read.buffer );
+		if ( p->connect.write.buffer )
+			free( p->connect.write.buffer );
+	}
+
+	zfd_clr( fd, ZREAD );
+	zfd_clr( fd, ZWRITE );
+	zfd_clr( fd, ZACCEPT );
+
+	if ( p->type == ZSOCK_CONNECT && p->connect.ssl )
+		SSL_free( p->connect.ssl );
+
+	free( p );
+}
+
+static void _zsocket_update_fd_state( int fd, void* udata ) {
+	zsocket_t* zs;
+	if ( !( zs = zsocket_get_by_sockfd( fd ) ) ) return;
+	assert( zs->type == ZSOCK_CONNECT );
+
+	if ( FL_ISSET( zs->connect.flags, ZWRITE_FROM_READ ) || FL_ISSET( zs->connect.flags, ZWRITE_FROM_WRITE )
+	|| FL_ISSET( zs->connect.flags, ZWRITE_FROM_ACCEPT ) )
+		zfd_set( fd, ZWRITE, udata );
+	else
+		zfd_clr( fd, ZWRITE );
+
+	if ( FL_ISSET( zs->connect.flags, ZREAD_READ ) && !FL_ISSET( zs->connect.flags, ZREAD_FROM_WRITE ) )
+		FL_SET( zs->connect.flags, ZREAD_FROM_READ );
+
+	if ( FL_ISSET( zs->connect.flags, ZREAD_FROM_READ ) || FL_ISSET( zs->connect.flags, ZREAD_FROM_WRITE )
+	|| FL_ISSET( zs->connect.flags, ZREAD_FROM_ACCEPT ) )
+		zfd_set( fd, ZREAD, udata );
+	else
+		zfd_clr( fd, ZREAD );
+}
+
+static void _zread( int fd, void* udata ) {
+	zsocket_t* zs;
+	if ( !( zs = zsocket_get_by_sockfd( fd ) ) ) return;
+	assert( zs->type == ZSOCK_CONNECT );
+
+	if ( FL_ISSET( zs->connect.flags, ZCONNECTED ) ) {
+
+		if ( FL_ISSET( zs->connect.flags, ZREAD_FROM_READ ) ) {
+			// clear write_from_write, if read_from_write is not set clear fd select flag
+			FL_CLR( zs->connect.flags, ZREAD_FROM_READ );
+			_zreader( fd, udata );
+		}
+
+		if ( FL_ISSET( zs->connect.flags, ZREAD_FROM_WRITE ) ) {
+			// clear write_from_read, if read_from_read is not set and read is not set clear fd select flag
+			FL_CLR( zs->connect.flags, ZREAD_FROM_WRITE );
+			_zwriter( fd, udata );
+		}
+
+	} else {
+		FL_CLR( zs->connect.flags, ZREAD_FROM_ACCEPT );
+		_zaccepter( fd, udata );
+	}
+
+	_zsocket_update_fd_state( fd, udata );
+}
+
+static void _zwrite( int fd, void* udata ) {
+	zsocket_t* zs;
+	if ( !( zs = zsocket_get_by_sockfd( fd ) ) ) return;
+	assert( zs->type == ZSOCK_CONNECT );
+
+	if ( FL_ISSET( zs->connect.flags, ZCONNECTED ) ) {
+
+		if ( FL_ISSET( zs->connect.flags, ZWRITE_FROM_WRITE ) ) {
+			// clear write_from_write, if read_from_write is not set clear fd select flag
+			FL_CLR( zs->connect.flags, ZWRITE_FROM_WRITE );
+			_zwriter( fd, udata );
+		}
+
+		if ( FL_ISSET( zs->connect.flags, ZWRITE_FROM_READ ) ) {
+			// clear write_from_read, if read_from_read is not set and read is not set clear fd select flag
+			FL_CLR( zs->connect.flags, ZWRITE_FROM_READ );
+			_zreader( fd, udata );
+		}
+
+	} else {
+		FL_CLR( zs->connect.flags, ZWRITE_FROM_ACCEPT );
+		_zaccepter( fd, udata );
+	}
+
+	_zsocket_update_fd_state( fd, udata );
+}
+
+void zaccept( int fd, bool toggle ) {
+	zsocket_t* zs;
+	assert( zs = zsocket_get_by_sockfd( fd ) );
+	assert( zs->type == ZSOCK_LISTEN );
+
+	if ( toggle )
+		zfd_set( fd, ZACCEPT, NULL );
+	else
+		zfd_clr( fd, ZACCEPT );
+}
+
+static void _zaccept( int fd, void* udata ) {
 	int newsockfd;
-	printf( "accepting conn for %d\n", sockfd );
-	zsocket_t* zs = zsocket_get_by_sockfd( sockfd );
+	struct sockaddr_in cli_addr;
+	socklen_t cli_len = sizeof( struct sockaddr_in );
+
+	zsocket_t* zs = zsocket_get_by_sockfd( fd );
 	// Connection request on original socket.
-	if ( ( newsockfd = accept( sockfd, (struct sockaddr*)cli_addr, cli_len ) ) == -1 ) {
+	if ( ( newsockfd = accept( fd, (struct sockaddr*) &cli_addr, &cli_len ) ) == -1 ) {
 		perror( "error: accepting: 1" );
-		oncomplete( newsockfd, cli_addr, cli_len, udata );
+		zsocket_fire_event( fd, ZSE_ACCEPT_ERR, newsockfd );
 		return;
 	}
 
 	fcntl( newsockfd, F_SETFL, fcntl( newsockfd, F_GETFL, 0 ) | O_NONBLOCK );
 
-	zsocket_t* p = (zsocket_t* ) malloc( sizeof( zsocket_t ) );
-	p->type = ZSOCK_CONNECT;
-	p->connect.sockfd = newsockfd;
-	p->connect.addr = cli_addr->sin_addr.s_addr;
-	p->connect.portno = zs->connect.portno;
-	p->connect.ssl = NULL;
-	zsockets[ newsockfd ] = p;
+	if ( !_zsocket_type_init( newsockfd, ZSOCK_CONNECT, cli_addr.sin_addr.s_addr,
+	  zs->connect.portno, zs->connect.event_hdlr, zs->listen.ssl_ctx ) ) {
+		zsocket_fire_event( fd, ZSE_ACCEPT_ERR, -1 );
+		fprintf( stderr, "error: accepting: 2\n" );
+		return;
+	}
 
-	if ( zs->listen.ssl_ctx ) {
+	/*if ( zs->listen.ssl_ctx ) {
 		if ( !( p->connect.ssl = SSL_new( zs->listen.ssl_ctx ) ) ) {
 			p->connect.ssl = NULL;
 			zclose( newsockfd );
-			oncomplete( -1, cli_addr, cli_len, udata );
-			puts( "error: accepting: 2" );
+			zsocket_fire_event( fd, ZSE_ACCEPT_ERR, -1 );
+			fprintf( stderr, "error: accepting: 2\n" );
 			return;
 		}
 		SSL_set_fd( p->connect.ssl, newsockfd );
-	}
+	}*/
 
-	zsock_a_data_t* a = malloc( sizeof( zsock_a_data_t ) );
-	a->cli_addr = cli_addr;
-	a->cli_len = cli_len;
-	a->oncomplete = oncomplete;
-	a->udata = udata;
-
-	zaccepter( newsockfd, a );
+	int* origfd_ptr = memdup( &fd, sizeof( fd ) );
+	_zaccepter( newsockfd, origfd_ptr );
+	_zsocket_update_fd_state( newsockfd, origfd_ptr );
 }
 
-void zaccepter( int fd, zsock_a_data_t* a ) {
+static void _zaccepter( int fd, void* udata ) {
 	zsocket_t* zs = zsocket_get_by_sockfd( fd );
-	if ( zfd_type_isset( fd, ZACCEPT_R ) ) 
-		zfd_clr( fd, ZACCEPT_R );
-	if ( zfd_type_isset( fd, ZACCEPT_W ) )
-		zfd_clr( fd, ZACCEPT_W );
+	int origfd = *(int*) udata;
 	int n;
 	if ( zs->connect.ssl ) {
-		if ( ( n = SSL_accept( zs->connect.ssl ) ) == -1 ) {
+		n = SSL_accept( zs->connect.ssl );
+		if ( n < 0 ) {
 			int err = SSL_get_error( zs->connect.ssl, n );
-			printf( "%d err\n", err );
+			fprintf( stderr, "%d err\n", err );
 			switch ( err ) {
 				case SSL_ERROR_WANT_READ:
-					zfd_set( fd, ZACCEPT_R, a );
-					puts( "zaccepter: SSL WANT READ" );
+					FL_SET( zs->connect.flags, ZREAD_FROM_ACCEPT );
+					fprintf( stderr, "zaccepter: SSL WANT READ\n" );
 					return;
 				case SSL_ERROR_WANT_WRITE:
-					zfd_set( fd, ZACCEPT_W, a );
-					puts( "zaccepter: SSL WANT WRITE" );
+					FL_SET( zs->connect.flags, ZWRITE_FROM_ACCEPT );
+					fprintf( stderr, "zaccepter: SSL WANT WRITE\n" );
 					return;
 			}
 
 			ERR_print_errors_fp( stderr );
 			zclose( fd );
-			a->oncomplete( -1, a->cli_addr, a->cli_len, a->udata );
-			puts( "error: accepting: 3" );
-			return;
+			fd = -1;
+			fprintf( stderr, "error: accepting: 3\n" );
 		}
 	}
 
-	a->oncomplete( fd, a->cli_addr, a->cli_len, a->udata );
-	free( a );
-}
 
-void zread( int fd, char* buffer, size_t buffer_size, void (*oncomplete)( int, int, void*, size_t, void* ), void* udata ) {
-	zsock_rw_data_t* rw = malloc( sizeof( zsock_rw_data_t ) );
-	rw->buffer = buffer;
-	rw->buffer_size = buffer_size;
-	rw->buffer_used = 0;
-	rw->oncomplete = oncomplete;
-	rw->udata = udata;
-	rw->fd_info_set = false;
-
-	if ( zfd_io_isset( fd, ZFD_R ) ) {
-		rw->fd_info_set = true;
-		rw->fd_info = zfd_info( fd, ZFD_R );
-		zfd_clr( fd, rw->fd_info.type );
+	if ( fd == -1 )
+		zsocket_fire_event( origfd, ZSE_ACCEPT_ERR, fd );
+	else {
+		FL_SET( zs->connect.flags, ZCONNECTED );
+		zsocket_fire_event( origfd, ZSE_ACCEPTED_CONNECTION, fd, zs->connect.addr );
 	}
 
-	zreader( fd, rw );
+	free( udata );
 }
 
-void zreader( int fd, zsock_rw_data_t* rw ) {
+void zread( int fd, bool toggle ) {
+	zsocket_t* zs;
+	assert( zs = zsocket_get_by_sockfd( fd ) );
+	assert( zs->type == ZSOCK_CONNECT );
+
+	if ( toggle )
+		FL_SET( zs->connect.flags, ZREAD_READ );
+	else
+		FL_CLR( zs->connect.flags, ZREAD_READ );
+
+	_zsocket_update_fd_state( fd, NULL );
+}
+
+static void _zreader( int fd, void* udata ) {
 	zsocket_t* zs = zsocket_get_by_sockfd( fd );
+
 	int n;
 	if ( zs->connect.ssl ) {
-		n = SSL_read( zs->connect.ssl, rw->buffer + rw->buffer_used, rw->buffer_size - rw->buffer_used );
-		if ( n == -1 ) {
+		n = SSL_read( zs->connect.ssl, zs->connect.read.buffer + zs->connect.read.buffer_used,
+		  zs->connect.read.buffer_size - zs->connect.read.buffer_used );
+
+		if ( n < 0 ) {
 			int err = SSL_get_error( zs->connect.ssl, n );
 			switch ( err ) {
 				case SSL_ERROR_WANT_READ:
-					break;
+					FL_SET( zs->connect.flags, ZREAD_FROM_READ );
+					fprintf( stderr, "zreader: SSL WANT READ\n" );
+					return;
 				case SSL_ERROR_WANT_WRITE:
-					puts( "SSL WANT" );
-					break;
-				default:
-					ERR_print_errors_fp( stderr );
+					FL_SET( zs->connect.flags, ZREAD_FROM_WRITE );
+					fprintf( stderr, "zreader: SSL WANT WRITE\n" );
+					return;
 			}
+			ERR_print_errors_fp( stderr );
 		}
 	} else {
-		n = read( fd, rw->buffer + rw->buffer_used, rw->buffer_size - rw->buffer_used );
+		n = read( fd, zs->connect.read.buffer + zs->connect.read.buffer_used,
+		  zs->connect.read.buffer_size - zs->connect.read.buffer_used );
+
 		if ( n == -1 && errno == EAGAIN ) {
 			//puts( "EAGAIN: zreader" );
-			zfd_set( fd, ZREAD, rw );
+			FL_SET( zs->connect.flags, ZREAD_FROM_READ );
 			return;
 		}
-		rw->buffer_used += n;
 	}
 
-	if ( zfd_type_isset( fd, ZREAD ) )
-		zfd_clr( fd, ZREAD );
-	if ( rw->fd_info_set )
-		zfd_set( fd,rw->fd_info.type, rw->fd_info.udata );
-	rw->oncomplete( fd, n, rw->buffer, rw->buffer_size, rw->udata );
-	free( rw );
+	if ( n > 0 )
+		zs->connect.read.buffer_used += n;
+
+	//if ( rw->fd_info_set )
+	//	zfd_set( fd,rw->fd_info.type, rw->fd_info.udata );
+
+	zsocket_fire_event( fd, ZSE_READ_DATA,  n <= 0 ? n : zs->connect.read.buffer_used, zs->connect.read.buffer, zs->connect.read.buffer_size );
+	zs->connect.read.buffer_used = 0;
 }
 
-void zwrite( int fd, char* buffer, size_t buffer_size, void (*oncomplete)( int, int, void*, size_t, void* ), void* udata ) {
-	zsock_rw_data_t* rw = malloc( sizeof( zsock_rw_data_t ) );
-	rw->buffer = buffer;
-	rw->buffer_size = buffer_size;
-	rw->buffer_used = 0;
-	rw->oncomplete = oncomplete;
-	rw->udata = udata;
-	rw->fd_info_set = false;
+void zwrite( int fd, const void* buffer, size_t buffer_size ) {
+	zsocket_t* zs;
+	assert( zs = zsocket_get_by_sockfd( fd ) );
+	assert( zs->type == ZSOCK_CONNECT );
+	assert( !zs->connect.write.buffer );
 
-	if ( zfd_io_isset( fd, ZFD_W ) ) {
+	zs->connect.write.buffer = malloc( buffer_size );
+	memcpy( zs->connect.write.buffer, buffer, buffer_size );
+	zs->connect.write.buffer_size = buffer_size;
+	zs->connect.write.buffer_used = 0;
+	FL_SET( zs->connect.flags, ZWRITE_FROM_WRITE );
+	/*if ( zfd_io_isset( fd, ZFD_W ) ) {
 		rw->fd_info_set = true;
 		rw->fd_info = zfd_info( fd, ZFD_W );
 		zfd_clr( fd, rw->fd_info.type );
-	}
+	}*/
 
-	zwriter( fd, rw );
+	_zwrite( fd, NULL );
 }
 
-void zwriter( int fd, zsock_rw_data_t* rw ) {
+static void _zwriter( int fd, void* udata ) {
 	zsocket_t* zs = zsocket_get_by_sockfd( fd );
-	int n;
 
+	int n;
 	if ( zs->connect.ssl ) {
-		n = SSL_write( zs->connect.ssl, rw->buffer + rw->buffer_used, rw->buffer_size - rw->buffer_used );
-		if ( n == -1 ) {
+		n = SSL_write( zs->connect.ssl, zs->connect.write.buffer + zs->connect.write.buffer_used,
+		  zs->connect.write.buffer_size - zs->connect.write.buffer_used );
+
+		if ( n < 0 ) {
 			int err = SSL_get_error( zs->connect.ssl, n );
 			switch ( err ) {
-				//case SSL_ERROR_NONE:
 				case SSL_ERROR_WANT_READ:
+					FL_SET( zs->connect.flags, ZREAD_FROM_WRITE );
+					fprintf( stderr, "zwriter: SSL WANT READ\n" );
+					return;
 				case SSL_ERROR_WANT_WRITE:
-					puts( "zwrite SSL WANT" );
-					break;
-				default:
-					ERR_print_errors_fp( stderr );
+					FL_SET( zs->connect.flags, ZWRITE_FROM_WRITE );
+					fprintf( stderr, "zwriter: SSL WANT WRITE\n" );
+					return;
 			}
+			ERR_print_errors_fp( stderr );
 		}
 	} else {
-		n = write( fd, rw->buffer + rw->buffer_used, rw->buffer_size - rw->buffer_used );
+		n = write( fd, zs->connect.write.buffer + zs->connect.write.buffer_used,
+		  zs->connect.write.buffer_size - zs->connect.write.buffer_used );
+
 		if ( n == -1 && errno == EAGAIN ) {
-			puts( "EAGAIN: zwriter" );
-			zfd_set( fd, ZWRITE, rw );
-			return;
-		}
-		rw->buffer_used += n;
-		if ( n > 0 && rw->buffer_used < rw->buffer_size ) {
-			puts( "not full write: zwriter" );
-			zfd_set( fd, ZWRITE, rw );
+			fprintf( stderr, "EAGAIN: zwriter\n" );
+			FL_SET( zs->connect.flags, ZWRITE_FROM_WRITE );
 			return;
 		}
 	}
 
-	if ( zfd_type_isset( fd, ZWRITE ) )
-		zfd_clr( fd, ZWRITE );
-	if ( rw->fd_info_set )
-		zfd_set( fd, rw->fd_info.type, rw->fd_info.udata );
-	rw->oncomplete( fd, n, rw->buffer, rw->buffer_size, rw->udata );
-	free( rw );
+	if ( n > 0 ) {
+		zs->connect.write.buffer_used += n;
+		if ( zs->connect.write.buffer_used < zs->connect.write.buffer_size ) {
+			fprintf( stderr, "not full write: zwriter\n" );
+			FL_SET( zs->connect.flags, ZWRITE_FROM_WRITE );
+			return;
+		}
+	}
+
+	char* buf_ptr = zs->connect.write.buffer;
+	zs->connect.write.buffer = NULL;
+
+	zsocket_fire_event( fd, ZSE_WROTE_DATA, n <= 0 ? n : zs->connect.write.buffer_used, buf_ptr, zs->connect.write.buffer_size );
+	free( buf_ptr );
+
+}
+
+static void zsocket_fire_event( int fd, unsigned int type, ... ) {
+	zsocket_t* zs;
+	assert( zs = zsocket_get_by_sockfd( fd ) );
+	if ( !zs->general.event_hdlr ) return;
+
+	va_list ap;
+
+	zsocket_event_t event;
+	memset( &event, 0, sizeof( event ) );
+	event.type = type;
+
+	va_start( ap, type );
+	switch ( event.type ) {
+		case ZSE_ACCEPT_ERR:
+			event.data.conn.fd = va_arg( ap, int );
+			break;
+		case ZSE_ACCEPTED_CONNECTION:
+			event.data.conn.fd = va_arg( ap, int );
+			event.data.conn.addr = va_arg( ap, in_addr_t );
+			break;
+		case ZSE_READ_DATA:
+			event.data.read.buffer_used = va_arg( ap, size_t );
+			event.data.read.buffer = va_arg( ap, char* );
+			event.data.read.buffer_size = va_arg( ap, size_t );
+			break;
+		case ZSE_WROTE_DATA:
+			event.data.write.buffer_used = va_arg( ap, size_t );
+			event.data.write.buffer = va_arg( ap, char* );
+			event.data.write.buffer_size = va_arg( ap, size_t );
+			break;
+		default:
+			fprintf( stderr, "zsocket_fire_event: passed undefined event %d\n", event.type );
+			goto quit;
+	}
+
+	zs->general.event_hdlr( fd, event );
+
+quit:
+	va_end( ap );
 }

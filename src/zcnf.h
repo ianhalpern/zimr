@@ -61,7 +61,7 @@ websites:
 #include "general.h"
 
 typedef struct {
-	char ip[ 16 ];
+	char ip[16];
 	int port;
 } zcnf_proxy_t;
 

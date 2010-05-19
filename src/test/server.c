@@ -54,11 +54,11 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 			zfd_set( event.data.packet->msgid, EXWRIT, memdup( event.data.packet, sizeof( msg_packet_t ) ) );
 			break;
 		case MSG_EVT_BUF_FULL:
-			printf( "%d full\n", event.data.msgid );
+			//printf( "%d full\n", event.data.msgid );
 			zfd_clr( event.data.msgid, EXREAD );
 			break;
 		case MSG_EVT_BUF_EMPTY:
-			printf( "%d empty\n", event.data.msgid );
+			//printf( "%d empty\n", event.data.msgid );
 			zfd_set( event.data.msgid, EXREAD, NULL );
 			break;
 
@@ -70,45 +70,54 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 	}
 }
 
+void inlisn_complete( int fd, struct sockaddr_in* cli_addr, socklen_t* cli_len, void* udata ) {
+	if ( fd < 0 ) return;
+	puts( "client connected" );
+	msg_switch = msg_switch_new( fd, msg_event_handler );
+}
+
 void inlisn( int sockfd, void* udata ) {
-	struct sockaddr_in cli_addr;
-	unsigned int cli_len = sizeof( cli_addr );
-	int clientfd;
+	struct sockaddr_in* cli_addr = malloc( sizeof( struct sockaddr_in ) );
+	socklen_t* cli_len = malloc( sizeof( socklen_t ) );
+	*cli_len = sizeof( struct sockaddr_in );
 
 	// Connection request on original socket.
-	if ( ( clientfd = accept( sockfd, (struct sockaddr*) &cli_addr, &cli_len ) ) < 0 ) {
-		return;
-	}
+	zaccept( sockfd, cli_addr, cli_len, inlisn_complete, NULL );
+}
 
-	msg_switch = msg_switch_new( clientfd, msg_event_handler );
+void exlisn_complete( int fd, struct sockaddr_in* cli_addr, socklen_t* cli_len, void* udata ) {
+	if ( fd < 0 ) return;
+	printf( "%d: message start: exlisn()\n", fd );
+	msg_new( msg_switch, fd );
 }
 
 void exlisn( int sockfd, void* udata ) {
-	struct sockaddr_in cli_addr;
-	unsigned int cli_len = sizeof( cli_addr );
-	int newsockfd;
+	struct sockaddr_in* cli_addr = malloc( sizeof( struct sockaddr_in ) );
+	socklen_t* cli_len = malloc( sizeof( socklen_t ) );
+	*cli_len = sizeof( struct sockaddr_in );
 
 	// Connection request on original socket.
-	if ( ( newsockfd = accept( sockfd, (struct sockaddr*) &cli_addr, &cli_len ) ) < 0 ) {
-		return;
-	}
-
-	msg_new( msg_switch, newsockfd );
+	zaccept( sockfd, cli_addr, cli_len, exlisn_complete, NULL );
 }
 
-void exread( int sockfd, void* udata ) {
-	char buf[ 2048 ];
-	int n = read( sockfd, buf, sizeof( buf ) );
+void exread_complete( int sockfd, int ret, void* buf, size_t len, void* udata ) {
+	if ( ret <= 0 ) printf( "%d: message end: exread()\n", sockfd );
 
-	if ( n <= 0 ) puts( "exread message end" );
-
-	if ( n == 0 )
+	if ( ret == 0 )
 		msg_end( msg_switch, sockfd );
-	else if ( n == -1 )
+	else if ( ret == -1 )
 		msg_kill( msg_switch, sockfd );
 	else
 		// push onto queue for sockfd
-		msg_push_data( msg_switch, sockfd, buf, n );
+		msg_push_data( msg_switch, sockfd, buf, ret );
+
+	free( buf );
+}
+
+void exread( int sockfd, void* udata ) {
+	void* buf = malloc( 2048 );
+	zread( sockfd, buf, 2048, exread_complete, NULL );
+	//zfd_clr( sockfd, EXREAD );
 }
 
 void exwrit( int sockfd, msg_packet_t* packet ) {
@@ -135,9 +144,9 @@ int main( int argc, char* argv[ ] ) {
 	zfd_register_type( EXREAD, ZFD_R, ZFD_TYPE_HDLR exread );
 	zfd_register_type( EXWRIT, ZFD_W, ZFD_TYPE_HDLR exwrit );
 
-	int insockfd = zsocket( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT + 1, ZSOCK_LISTEN );
+	int insockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_LISTEN, false );
 
-	int exsockfd = zsocket( inet_addr( ZM_PROXY_ADDR ), 8080, ZSOCK_LISTEN );
+	int exsockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), 8080, ZSOCK_LISTEN, false );
 
 	zfd_set( insockfd, INLISN, NULL );
 	zfd_set( exsockfd, EXLISN, NULL );

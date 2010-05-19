@@ -20,7 +20,7 @@ OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  simclist.o msg_switch.o userdir.o
 
 EXECS       = zimr-proxy zimr-app zimr
-TEST_EXECS  = test-zsocket-client test-zsocket-server #test-strnstr test-client test-server
+TEST_EXECS  = test-zsocket-client test-zsocket-server test-strnstr test-client test-server
 SHARED_OBJS = libzimr.so
 PYMOD_OBJS  = zimr.so
 MODULE_NAMES= modpython modtest modauth
@@ -117,12 +117,12 @@ test-strnstr: $(TEST_DEPENDS) general.o
 	$(EXEC_COMPILE)
 
 test-client: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o simclist.o
-	$(EXEC_COMPILE)
+	$(EXEC_COMPILE) -lssl
 
 test-server: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o general.o simclist.o
-	$(EXEC_COMPILE)
+	$(EXEC_COMPILE) -lssl
 
-test-zsocket-client: $(TEST_DEPENDS) zsocket.o zfildes.o simclist.o
+test-zsocket-client: $(TEST_DEPENDS) zsocket.o zfildes.o simclist.o general.o
 	$(EXEC_COMPILE) -lssl
 
 test-zsocket-server: $(TEST_DEPENDS) zsocket.o zfildes.o general.o simclist.o

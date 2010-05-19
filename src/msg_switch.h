@@ -32,6 +32,7 @@
 
 #include "config.h"
 #include "simclist.h"
+#include "zsocket.h"
 #include "zfildes.h"
 
 #define MSG_STAT_NEW           0x1
@@ -114,14 +115,12 @@ typedef struct msg_switch {
 		msg_packet_t packet;
 		msg_packet_resp_t resp;
 	} read_data;
-	int  read_data_size;
 
 	int write_data_type;
 	union {
 		msg_packet_t packet;
 		msg_packet_resp_t resp;
 	} write_data;
-	int  write_data_size;
 
 	// events
 	void (*event_handler)( struct msg_switch*, msg_event_t event );

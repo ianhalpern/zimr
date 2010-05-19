@@ -38,10 +38,14 @@ bool packet_recvd( msg_packet_t* packet ) {
 	char filename[ 23 ];
 	sprintf( filename, "test-outputs/%d", packet->msgid );
 
-	if ( FL_ISSET( PACK_FL_FIRST, packet->flags ) )
+	if ( FL_ISSET( PACK_FL_FIRST, packet->flags ) ) {
 		fd = creat( filename, S_IRUSR | S_IWUSR | O_WRONLY );
-	else
+		printf( "%d: message start\n", packet->msgid );
+	} else
 		fd = open( filename, O_WRONLY | O_APPEND );
+
+	if ( FL_ISSET( PACK_FL_LAST, packet->flags ) )
+		printf( "%d: message end\n", packet->msgid );
 
 	if ( fd >= 0 ) {
 		write( fd, packet->data, packet->size );
@@ -83,11 +87,11 @@ int main( int argc, char* argv[ ] ) {
 	zsocket_init( );
 	msg_switch_init( INREAD, INWRIT );
 
-	int sockfd = zsocket( inet_addr( ZM_PROXY_ADDR ), ZM_PROXY_PORT + 1, ZSOCK_CONNECT );
-
+	int sockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_CONNECT, false );
+	puts( "connected to server" );
 	msg_switch = msg_switch_new( sockfd, msg_event_handler );
 
-	while( zfd_select( 0 ) );
+	while( zfd_select(0) );
 
 	return 0;
 }
