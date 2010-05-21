@@ -31,66 +31,62 @@
 #define INREAD 0x5
 #define INWRIT 0x6
 
-msg_switch_t* msg_switch;
+int sockfd;
 
 bool packet_recvd( msg_packet_t* packet ) {
 	int fd;
 	char filename[ 23 ];
-	sprintf( filename, "test-outputs/%d", packet->msgid );
+	sprintf( filename, "test-outputs/%d", packet->header.msgid );
 
-	if ( FL_ISSET( PACK_FL_FIRST, packet->flags ) ) {
+	if ( FL_ISSET( packet->header.flags, PACK_FL_FIRST ) ) {
 		fd = creat( filename, S_IRUSR | S_IWUSR | O_WRONLY );
-		printf( "%d: message start\n", packet->msgid );
+		printf( "%d: message start\n", packet->header.msgid );
 	} else
 		fd = open( filename, O_WRONLY | O_APPEND );
 
-	if ( FL_ISSET( PACK_FL_LAST, packet->flags ) )
-		printf( "%d: message end\n", packet->msgid );
+	if ( FL_ISSET( packet->header.flags, PACK_FL_LAST ) )
+		printf( "%d: message end\n", packet->header.msgid );
 
 	if ( fd >= 0 ) {
-		write( fd, packet->data, packet->size );
+		write( fd, packet->data, packet->header.size );
 		close( fd );
 	} else
 		return false;
 
+	msg_want_packet( sockfd, packet->header.msgid );
 	return true;
 }
 
 void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 	switch ( event.type ) {
-		case MSG_RECV_EVT_LAST:
-			// rename
-			break;
-		case MSG_RECV_EVT_KILL:
-			// remove
-			break;
-		case MSG_RECV_EVT_PACK:
-			if ( packet_recvd( event.data.packet ) )
-				msg_switch_send_pack_resp( msg_switch, event.data.packet, MSG_PACK_RESP_OK );
-			else
-				msg_switch_send_pack_resp( msg_switch, event.data.packet, MSG_PACK_RESP_FAIL );
-			break;
 		case MSG_EVT_NEW:
-		case MSG_EVT_DESTROY:
+			msg_want_packet( sockfd, event.data.msgid );
+			break;
+		case MSG_EVT_SENT:
 		case MSG_EVT_COMPLETE:
-		case MSG_RECV_EVT_RESP:
-		case MSG_EVT_BUF_FULL:
-		case MSG_EVT_BUF_EMPTY:
+		case MSG_EVT_DESTROY:
+		case MSG_EVT_SPACE_FULL:
+		case MSG_EVT_SPACE_AVAIL:
+			break;
+		case MSG_EVT_RECVD_PACKET:
+			if ( !packet_recvd( event.data.packet ) )
+				msg_kill( sockfd, event.data.packet->header.msgid );
+			break;
 		case MSG_SWITCH_EVT_NEW:
 		case MSG_SWITCH_EVT_DESTROY:
+			break;
 		case MSG_SWITCH_EVT_IO_FAILED:
+			msg_switch_destroy( sockfd );
 			break;
 	}
 }
 
-int main( int argc, char* argv[ ] ) {
-	zsocket_init( );
-	msg_switch_init( INREAD, INWRIT );
+int main( int argc, char* argv[] ) {
+	zsocket_init();
 
-	int sockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_CONNECT, false );
+	sockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_CONNECT, NULL, false );
 	puts( "connected to server" );
-	msg_switch = msg_switch_new( sockfd, msg_event_handler );
-
+	msg_switch_create( sockfd, msg_event_handler );
 	while( zfd_select(0) );
 
 	return 0;

@@ -35,64 +35,64 @@
 #include "zsocket.h"
 #include "zfildes.h"
 
-#define MSG_STAT_NEW           0x1
-#define MSG_STAT_WRITE_PACK    0x2
-#define MSG_STAT_PENDING_PACKS 0x4
-#define MSG_STAT_COMPLETE      0x8
-#define MSG_STAT_READ_RESP     0x10
+#define MSG_STAT_NEW                       0x001
+#define MSG_STAT_STARTED                   0x002
+#define MSG_STAT_COMPLETED                 0x004
+#define MSG_STAT_PACKET_AVAIL_TO_READ      0x008
+#define MSG_STAT_PACKET_AVAIL_TO_WRIT      0x010
+#define MSG_STAT_SPACE_AVAIL_FOR_READ      0x020
+#define MSG_STAT_SPACE_AVAIL_FOR_WRIT      0x040
+#define MSG_STAT_WAITING_FOR_RESP          0x080
+#define MSG_STAT_NEED_TO_SEND_RESP         0x100
+#define MSG_STAT_WANT_PACK                 0x200
 
-#define MSG_EVT_NEW        0x1
-#define MSG_EVT_DESTROY    0x2
-#define MSG_EVT_COMPLETE   0x3
-#define MSG_EVT_SENT       0x4
-#define MSG_EVT_BUF_FULL   0x5
-#define MSG_EVT_BUF_EMPTY  0x6
-
-#define MSG_RECV_EVT_KILL  0x20
-#define MSG_RECV_EVT_RESP  0x21
-#define MSG_RECV_EVT_PACK  0x22
-#define MSG_RECV_EVT_FIRST 0x23
-#define MSG_RECV_EVT_LAST  0x24
-
-#define MSG_SWITCH_EVT_NEW       0x40
-#define MSG_SWITCH_EVT_DESTROY   0x41
-#define MSG_SWITCH_EVT_IO_FAILED 0x42
+#define MSG_EVT_NEW                        0x1
+#define MSG_EVT_SENT                       0x2
+#define MSG_EVT_COMPLETE                   0x3
+#define MSG_EVT_DESTROY                    0x4
+#define MSG_EVT_SPACE_AVAIL                0x5
+#define MSG_EVT_SPACE_FULL                 0x6
+#define MSG_EVT_RECVD_PACKET               0x7
+#define MSG_SWITCH_EVT_NEW                 0x8
+#define MSG_SWITCH_EVT_DESTROY             0x9
+#define MSG_SWITCH_EVT_IO_FAILED           0xa
 
 #define PACK_FL_FIRST 0x1
 #define PACK_FL_LAST  0x2
-#define PACK_FL_KILL  0x4
 
 #define PACK_IS_FIRST(X) ( FL_ISSET( ( (msg_packet_t*)(X) )->flags, PACK_FL_FIRST ) )
 #define PACK_IS_LAST(X)  ( FL_ISSET( ( (msg_packet_t*)(X) )->flags, PACK_FL_LAST ) )
 
-#define MSG_PACK_RESP_OK   0x1
-#define MSG_PACK_RESP_FAIL 0x2
+#define MSG_RESP_OK   0x1
+#define MSG_RESP_FAIL 0x2
 
 #define MSG_TYPE_RESP 0x1
 #define MSG_TYPE_PACK 0x2
 
-#define MSG_TYPE_GET_SIZE(X) ( (X) == MSG_TYPE_PACK ? sizeof( msg_packet_t ) : sizeof( msg_packet_resp_t ) )
+#define MSG_TYPE_GET_SIZE(X) ( (X) == MSG_TYPE_PACK ? sizeof( msg_packet_t ) : sizeof( msg_resp_t ) )
 
 typedef struct {
 	int msgid;
 	char status;
-} msg_packet_resp_t;
+} msg_resp_t;
 
-/*
- * Remember, if you change msg_packet_t struct,
- * you MUST update the PACK_DATA_SIZE to reflect the change
- */
 typedef struct {
 	int msgid;
 	int size;
 	int flags;
+} msg_packet_header_t;
+
+typedef struct {
+	msg_packet_header_t header;
 	char data[ PACK_DATA_SIZE ];
 } msg_packet_t;
 
 typedef struct {
 	int msgid;
 	int status;
-	list_t queue;
+	msg_packet_t* incomplete_writ_packet;
+	list_t read_queue;
+	list_t writ_queue;
 } msg_t;
 
 typedef struct {
@@ -100,7 +100,6 @@ typedef struct {
 	union {
 		int msgid;
 		msg_packet_t* packet;
-		msg_packet_resp_t* resp;
 	} data;
 } msg_event_t;
 
@@ -110,46 +109,33 @@ typedef struct msg_switch {
 	list_t pending_msgs;
 	msg_t* msgs[ FD_SETSIZE * 2 ];
 
-	int read_data_type;
-	union {
-		msg_packet_t packet;
-		msg_packet_resp_t resp;
-	} read_data;
+	struct {
+		int type;
+		union {
+			msg_packet_t packet;
+			msg_resp_t resp;
+		} data;
+	} read;
+	int curr_read_size;
 
-	int write_data_type;
-	union {
-		msg_packet_t packet;
-		msg_packet_resp_t resp;
-	} write_data;
+	struct {
+		int type;
+		union {
+			msg_packet_t packet;
+			msg_resp_t resp;
+		} data;
+	} write;
 
 	// events
 	void (*event_handler)( struct msg_switch*, msg_event_t event );
 } msg_switch_t;
 
-void msg_switch_init( int read_type, int writ_type );
-
-msg_switch_t* msg_switch_new(
-	int sockfd,
-	void (*event_handler)( struct msg_switch*, msg_event_t event )
-);
-void msg_switch_destroy( msg_switch_t* msg_switch );
-bool msg_switch_has_pending_msgs( msg_switch_t* msg_switch );
-bool msg_switch_has_pending_resps( msg_switch_t* msg_switch );
-bool msg_switch_is_pending( msg_switch_t* msg_switch );
-void msg_switch_send_pack_resp( msg_switch_t* msg_switch, msg_packet_t* packet, char status );
-
-msg_packet_resp_t msg_switch_pop_resp( msg_switch_t* msg_switch );
-msg_packet_t msg_switch_pop_packet( msg_switch_t* msg_switch );
-
-void msg_new( msg_switch_t* msg_switch, int msgid );
-void msg_end( msg_switch_t* msg_switch, int msgid );
-void msg_kill( msg_switch_t* msg_switch, int msgid );
-bool msg_is_pending( msg_switch_t* msg_switch, int msgid );
-bool msg_is_complete( msg_switch_t* msg_switch, int msgid );
-bool msg_is_sent( msg_switch_t* msg_switch, int msgid );
-bool msg_exists( msg_switch_t* msg_switch, int msgid );
-
-void msg_accept_resp( msg_switch_t* msg_switch, msg_packet_resp_t resp );
-void msg_push_data( msg_switch_t* msg_switch, int msgid, void* data, int size );
+void msg_switch_create( int sockfd, void (*event_handler)( struct msg_switch*, msg_event_t event ) );
+void msg_switch_destroy( int sockfd );
+void msg_start( int sockfd, int msgid );
+void msg_end( int sockfd, int msgid );
+void msg_kill( int sockfd, int msgid );
+void msg_send( int sockfd, int msgid, void* data, int size );
+void msg_want_packet( int sockfd, int msgid );
 
 #endif

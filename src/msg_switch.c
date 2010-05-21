@@ -24,9 +24,17 @@
 
 static int n_print = 0;
 
-static bool initialized = false;
+static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, int status );
+static void msg_switch_event( msg_switch_t* msg_switch, int type, ... );
 
-static int read_type = 0, writ_type = 0;
+msg_switch_t* msg_switch_get_by_sockfd( int sockfd ) {
+	zsocket_t* zs = zsocket_get_by_sockfd( sockfd );
+	return (msg_switch_t*) zs->general.udata;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////
+// MSG functions ////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////
 
 static msg_t* msg_get( msg_switch_t* msg_switch, int msgid ) {
 	return msg_switch->msgs[ msgid + FD_SETSIZE ];
@@ -34,6 +42,559 @@ static msg_t* msg_get( msg_switch_t* msg_switch, int msgid ) {
 
 static void msg_set( msg_switch_t* msg_switch, int msgid, msg_t* msg ) {
 	msg_switch->msgs[ msgid + FD_SETSIZE ] = msg;
+}
+
+static bool msg_exists( msg_switch_t* msg_switch, int msgid ) {
+	return msg_get( msg_switch, msgid );
+}
+
+static bool msg_has_available_writ_packets( msg_switch_t* msg_switch, int msgid, int n ) {
+	msg_t* msg = msg_get( msg_switch, msgid );
+	return ( list_size( &msg->writ_queue ) >= n );
+}
+
+static bool msg_has_available_read_packets( msg_switch_t* msg_switch, int msgid, int n ) {
+	msg_t* msg = msg_get( msg_switch, msgid );
+	return ( list_size( &msg->read_queue ) >= n );
+}
+
+static void msg_create( msg_switch_t* msg_switch, int msgid ) {
+	msg_t* msg = (msg_t*) malloc( sizeof( msg_t ) );
+
+	msg->msgid = msgid;
+	msg->status = 0;
+	msg->incomplete_writ_packet = NULL;
+	list_init( &msg->read_queue );
+	list_init( &msg->writ_queue );
+
+	msg_set( msg_switch, msgid, msg );
+	msg_update_status( msg_switch, msgid, SET, MSG_STAT_NEW );
+}
+
+static void msg_destroy( msg_switch_t* msg_switch, int msgid ) {
+	msg_switch_event( msg_switch, MSG_EVT_DESTROY, msgid );
+
+	msg_t* msg = msg_get( msg_switch, msgid );
+
+	while ( list_size( &msg->writ_queue ) )
+		free( list_fetch( &msg->writ_queue ) );
+	list_destroy( &msg->writ_queue );
+
+	while ( list_size( &msg->read_queue ) )
+		free( list_fetch( &msg->read_queue ) );
+	list_destroy( &msg->read_queue );
+
+	if ( msg->incomplete_writ_packet )
+		free( msg->incomplete_writ_packet );
+
+	free( msg );
+	msg_set( msg_switch, msgid, NULL );
+}
+
+static void msg_send_resp( msg_switch_t* msg_switch, int msgid, char status ) {
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+	assert( status != MSG_RESP_OK || FL_ISSET( msg->status, MSG_STAT_NEED_TO_SEND_RESP ) );
+
+	msg_resp_t* resp = (msg_resp_t*) malloc( sizeof( msg_resp_t ) );
+	memset( resp, 0, sizeof( msg_resp_t ) ); // initializes all bytes including padded bytes
+
+	resp->msgid = msgid;
+	resp->status = status;
+
+	list_append( &msg_switch->pending_resps, resp );
+
+	msg_update_status( msg_switch, msgid, CLR, MSG_STAT_NEED_TO_SEND_RESP );
+
+	//printf( "ready to write resps\n" );
+	// add write to zfd and fire event
+	// TODO:
+	//zfd_set( msg_switch->sockfd, writ_type, msg_switch );
+
+	//if ( !msg_switch->write.type )
+	//	msg_switch_writ( msg_switch->sockfd );
+	//if ( FL_ISSET( packet->flags, PACK_FL_LAST ) )
+	//	msg_switch_event( msg_switch, MSG_RECV_EVT_LAST, packet->msgid );
+}
+
+static void msg_recv_resp( msg_switch_t* msg_switch, msg_resp_t resp ) {
+	if ( resp.status == MSG_RESP_FAIL ) {
+		msg_destroy( msg_switch, resp.msgid );
+		return;
+	}
+
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, resp.msgid ) );
+	assert( FL_ISSET( msg->status, MSG_STAT_WAITING_FOR_RESP ) );
+
+	msg_update_status( msg_switch, resp.msgid, CLR, MSG_STAT_WAITING_FOR_RESP );
+}
+
+static void msg_push_writ_packet( msg_switch_t* msg_switch, int msgid ) {
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+	assert( msg->incomplete_writ_packet );
+
+	list_append( &msg_get( msg_switch, msgid )->writ_queue, msg->incomplete_writ_packet );
+	msg->incomplete_writ_packet = NULL;
+
+	msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_PACKET_AVAIL_TO_WRIT );
+	if ( msg_has_available_writ_packets( msg_switch, msg->msgid, MSG_N_BUFF_PACKETS_ALLOWED ) )
+		msg_update_status( msg_switch, msg->msgid, CLR, MSG_STAT_SPACE_AVAIL_FOR_WRIT );
+}
+
+static msg_packet_t msg_pop_writ_packet( msg_switch_t* msg_switch, int msgid ) {
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+	assert( !FL_ISSET( msg->status, MSG_STAT_WAITING_FOR_RESP ) );
+
+	msg_packet_t packet = *(msg_packet_t*) list_get_at( &msg->writ_queue, 0 );
+	free( list_fetch( &msg->writ_queue ) );
+
+	msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_WAITING_FOR_RESP );
+
+	if ( !msg_has_available_writ_packets( msg_switch, msg->msgid, MSG_N_BUFF_PACKETS_ALLOWED ) )
+		msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_SPACE_AVAIL_FOR_WRIT );
+	if ( !msg_has_available_writ_packets( msg_switch, msg->msgid, 1 ) )
+		msg_update_status( msg_switch, msg->msgid, CLR, MSG_STAT_PACKET_AVAIL_TO_WRIT );
+
+	return packet;
+}
+
+static void msg_push_read_packet( msg_switch_t* msg_switch, int msgid, msg_packet_t* packet ) {
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+
+	list_append( &msg_get( msg_switch, msgid )->read_queue, memdup( packet, sizeof( msg_packet_t ) ) );
+
+	msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_PACKET_AVAIL_TO_READ );
+	if ( msg_has_available_read_packets( msg_switch, msg->msgid, MSG_N_BUFF_PACKETS_ALLOWED ) )
+		msg_update_status( msg_switch, msg->msgid, CLR, MSG_STAT_SPACE_AVAIL_FOR_READ );
+	msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_NEED_TO_SEND_RESP );
+}
+
+static msg_packet_t msg_pop_read_packet( msg_switch_t* msg_switch, int msgid ) {
+	msg_t* msg = msg_get( msg_switch, msgid );
+
+	msg_packet_t packet = *(msg_packet_t*) list_get_at( &msg->read_queue, 0 );
+	free( list_fetch( &msg->read_queue ) );
+
+	if ( !msg_has_available_read_packets( msg_switch, msg->msgid, MSG_N_BUFF_PACKETS_ALLOWED ) )
+		msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_SPACE_AVAIL_FOR_READ );
+	if ( !msg_has_available_read_packets( msg_switch, msg->msgid, 1 ) )
+		msg_update_status( msg_switch, msg->msgid, CLR, MSG_STAT_PACKET_AVAIL_TO_READ );
+
+	return packet;
+}
+
+static msg_packet_t* msg_packet_new( msg_switch_t* msg_switch, int msgid, int flags ) {
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+	if ( msg->incomplete_writ_packet )
+		msg_push_writ_packet( msg_switch, msgid );
+
+	msg_packet_t* packet = (msg_packet_t*) malloc( sizeof( msg_packet_t ) );
+
+	packet->header.msgid = msgid;
+	packet->header.size = 0;
+	packet->header.flags = flags;
+	msg->incomplete_writ_packet = packet;
+
+	msg_update_status( msg_switch, msgid, CLR, MSG_STAT_NEW );
+	return packet;
+}
+
+// External MSG functions /////////////////////////////////////////////////////////////
+
+void msg_start( int fd, int msgid ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+
+	if ( !msg_exists( msg_switch, msgid ) )
+		msg_create( msg_switch, msgid );
+
+	msg_update_status( msg_switch, msgid, SET, MSG_STAT_STARTED );
+}
+
+void msg_end( int fd, int msgid ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+	assert( !FL_ISSET( msg->status, MSG_STAT_COMPLETED ) );
+
+	msg_packet_t* packet = NULL;
+
+	if ( msg->incomplete_writ_packet )
+		packet = msg->incomplete_writ_packet;
+	else if ( !list_size( &msg->writ_queue ) )
+		packet = msg_packet_new( msg_switch, msgid,
+		  FL_ISSET( msg->status, MSG_STAT_NEW ) ? PACK_FL_FIRST : 0 );
+	else
+		packet = list_get_at( &msg->writ_queue, list_size( &msg->writ_queue ) - 1 );
+
+	memset( packet->data + packet->header.size, 0, sizeof( packet->data ) - packet->header.size );
+	FL_SET( packet->header.flags, PACK_FL_LAST );
+
+	if ( msg->incomplete_writ_packet ) msg_push_writ_packet( msg_switch, msgid );
+	msg_update_status( msg_switch, msgid, SET, MSG_STAT_COMPLETED );
+}
+
+void msg_kill( int fd, int msgid ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+
+	msg_send_resp( msg_switch, msgid, MSG_RESP_FAIL );
+
+	msg_destroy( msg_switch, msgid );
+}
+
+void msg_send( int fd, int msgid, void* data, int size ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+	assert( size );
+
+	//printf( "pushing %d bytes\n", size );
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+	assert( !FL_ISSET( msg->status, MSG_STAT_COMPLETED ) );
+
+	msg_packet_t* packet = NULL;
+
+	if ( !msg->incomplete_writ_packet )
+		packet = msg_packet_new( msg_switch, msgid,
+		  FL_ISSET( msg->status, MSG_STAT_NEW ) ? PACK_FL_FIRST : 0 );
+	else
+		packet = msg->incomplete_writ_packet;
+
+	int chunk = 0;
+	while ( size ) {
+
+		if ( packet->header.size == PACK_DATA_SIZE )
+			packet = msg_packet_new( msg_switch, msgid, 0 );
+
+		if ( size / ( PACK_DATA_SIZE - packet->header.size ) )
+			chunk = PACK_DATA_SIZE - packet->header.size;
+		else
+			chunk = size % ( PACK_DATA_SIZE - packet->header.size );
+
+		memcpy( packet->data + packet->header.size, data, chunk );
+
+		size -= chunk;
+		data += chunk;
+		packet->header.size += chunk;
+
+	}
+}
+
+void msg_want_packet( int fd, int msgid ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+
+	msg_update_status( msg_switch, msgid, SET, MSG_STAT_WANT_PACK );
+}
+
+/////////////////////////////////////////////////////////////////////////////////////
+// MSG_SWITCH functions /////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////
+
+static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* info ) {
+	printf( "msg_switch_failed(): %d %s\n", code, info );
+
+	msg_switch_event( msg_switch, MSG_SWITCH_EVT_IO_FAILED, &code, info );
+}
+
+static bool msg_switch_has_pending_msgs( msg_switch_t* msg_switch ) {
+	return list_size( &msg_switch->pending_msgs );
+}
+
+static bool msg_switch_has_pending_resps( msg_switch_t* msg_switch ) {
+	return list_size( &msg_switch->pending_resps );
+}
+
+static bool msg_switch_has_avail_writs( msg_switch_t* msg_switch ) {
+	if ( msg_switch_has_pending_msgs( msg_switch )
+	  || msg_switch_has_pending_resps( msg_switch ) )
+		return true;
+	return false;
+}
+
+static msg_packet_t msg_switch_pop_writ_packet( msg_switch_t* msg_switch ) {
+	msg_t* msg = list_fetch( &msg_switch->pending_msgs );
+	return msg_pop_writ_packet( msg_switch, msg->msgid );
+}
+
+static msg_resp_t msg_switch_pop_resp( msg_switch_t* msg_switch ) {
+	msg_resp_t resp = *(msg_resp_t*) list_get_at( &msg_switch->pending_resps, 0 );
+	free( list_fetch( &msg_switch->pending_resps ) );
+	return resp;
+}
+
+static void msg_switch_writ( int fd ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+	assert( !msg_switch->write.type );
+
+	// check if waiting to send returns
+	if ( msg_switch_has_pending_resps( msg_switch ) ) {
+		msg_switch->write.type = MSG_TYPE_RESP;
+		msg_switch->write.data.resp = msg_switch_pop_resp( msg_switch );
+		//printf( "[%d] %04d: sending read response, status %d\n", resp.msgid, n_print++, resp.status );
+	}
+
+	// pop from queue and write
+	else {
+		msg_switch->write.type = MSG_TYPE_PACK;
+		msg_switch->write.data.packet = msg_switch_pop_writ_packet( msg_switch );
+
+		//printf( "[%d] %04d: sending packet, flags %x\n", packet.msgid, n_print++, packet.flags );
+	}
+
+	zwrite( fd, (void*) &msg_switch->write, MSG_TYPE_GET_SIZE( msg_switch->write.type ) + sizeof( msg_switch->write.type ) );
+}
+
+static void msg_switch_onwrit( int fd, void* buff, size_t len ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+
+	if ( len <= 0 ) {
+		msg_switch_failed( msg_switch, len, "msg_switch_writ_complete()" );
+		return;
+	}
+
+	msg_switch->write.type = 0;
+
+	if ( msg_switch_has_avail_writs( msg_switch ) )
+		msg_switch_writ( msg_switch->sockfd );
+}
+
+static void msg_switch_onread( int fd, void* buff, size_t len ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+
+	if ( len <= 0 ) {
+		msg_switch_failed( msg_switch, len, "msg_switch_read_complete()" );
+		return;
+	}
+
+	while ( len > 0 ) {
+
+		if ( !msg_switch->read.type ) {
+			if ( sizeof( msg_switch->read.type ) > len )
+				msg_switch_failed( msg_switch, len, "msg_switch_read_complete()" );
+
+			memcpy( &msg_switch->read.type, buff, sizeof( msg_switch->read.type ) );
+			buff += sizeof( msg_switch->read.type );
+			len  -= sizeof( msg_switch->read.type );
+		}
+
+		assert( msg_switch->read.type == MSG_TYPE_RESP || msg_switch->read.type == MSG_TYPE_PACK );
+
+		int len_used = len < MSG_TYPE_GET_SIZE( msg_switch->read.type ) - msg_switch->curr_read_size ? len :
+		  MSG_TYPE_GET_SIZE( msg_switch->read.type ) - msg_switch->curr_read_size;
+
+		memcpy( ((void*) &msg_switch->read.data) + msg_switch->curr_read_size, buff, len_used );
+		msg_switch->curr_read_size += len_used;
+		buff += len_used;
+
+		if ( msg_switch->curr_read_size < MSG_TYPE_GET_SIZE( msg_switch->read.type ) )
+			return;
+
+		len -= len_used;
+
+		switch( msg_switch->read.type ) {
+			case MSG_TYPE_RESP:
+				if ( msg_get( msg_switch, msg_switch->read.data.resp.msgid ) )
+					msg_recv_resp( msg_switch, msg_switch->read.data.resp );
+				break;
+			case MSG_TYPE_PACK:
+				if ( !msg_exists( msg_switch, msg_switch->read.data.packet.header.msgid ) )
+					msg_create( msg_switch, msg_switch->read.data.packet.header.msgid );
+
+				msg_push_read_packet( msg_switch, msg_switch->read.data.packet.header.msgid, &msg_switch->read.data.packet );
+				break;
+		}
+
+		msg_switch->read.type = 0;
+		msg_switch->curr_read_size = 0;
+	}
+}
+
+
+static void msg_zsocket_event_hdlr( int fd, zsocket_event_t event ) {
+	switch ( event.type ) {
+		case ZSE_ACCEPT_ERR:
+		case ZSE_ACCEPTED_CONNECTION:
+			fprintf( stderr, "Should not be accepting on sock #%d\n", fd );
+			break;
+		case ZSE_READ_DATA:
+			msg_switch_onread( fd, event.data.read.buffer, event.data.read.buffer_used );
+			break;
+		case ZSE_WROTE_DATA:
+			//fprintf( stderr, "Wrote %d bytes of data\n", (int)event.data.write.buffer_used );
+			msg_switch_onwrit( fd, event.data.write.buffer, event.data.write.buffer_used );
+			break;
+	}
+}
+
+// External MSG functions /////////////////////////////////////////////////////////////
+
+void msg_switch_create( int fd, void (*event_handler)( struct msg_switch*, msg_event_t event ) ) {
+	assert( !msg_switch_get_by_sockfd( fd ) );
+
+	msg_switch_t* msg_switch = (msg_switch_t*) malloc( sizeof( msg_switch_t ) );
+	memset( msg_switch->msgs, 0, sizeof( msg_switch->msgs ) );
+	list_init( &msg_switch->pending_resps );
+	list_init( &msg_switch->pending_msgs );
+	msg_switch->sockfd = fd;
+	msg_switch->read.type = 0;
+	msg_switch->curr_read_size = 0;
+	msg_switch->write.type = 0;
+	msg_switch->event_handler = event_handler;
+
+	zsocket_set_event_hdlr( fd, msg_zsocket_event_hdlr );
+	zread( fd, true );
+
+	msg_switch_event( msg_switch, MSG_SWITCH_EVT_NEW );
+
+	zsocket_t* zs = zsocket_get_by_sockfd( fd );
+	zs->general.udata = msg_switch;
+}
+
+void msg_switch_destroy( int fd ) {
+	msg_switch_t* msg_switch;
+	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
+
+	msg_switch_event( msg_switch, MSG_SWITCH_EVT_DESTROY );
+
+	while ( list_size( &msg_switch->pending_resps ) )
+		free( list_fetch( &msg_switch->pending_resps ) );
+	list_destroy( &msg_switch->pending_resps );
+
+	//while ( list_fetch( &msg_switch->pending_msgs ) );
+	list_destroy( &msg_switch->pending_msgs );
+
+	int i;
+	for ( i = 0; i < FD_SETSIZE * 2; i++ ) {
+		if ( msg_switch->msgs[ i ] ) {
+			msg_destroy( msg_switch, i - FD_SETSIZE );
+		}
+	}
+
+	zread( fd, false );
+	//zclose( msg_switch->sockfd );
+	free( msg_switch );
+	zsocket_t* zs = zsocket_get_by_sockfd( fd );
+	zs->general.udata = NULL;
+}
+
+static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, int status ) {
+	msg_t* msg = msg_get( msg_switch, msgid );
+
+	if ( type == SET && !FL_ISSET( msg->status, status ) ) {
+		FL_SET( msg->status, status );
+
+		switch ( status ) {
+			case MSG_STAT_NEW:
+				msg_switch_event( msg_switch, MSG_EVT_NEW, msgid );
+				msg_update_status( msg_switch, msgid, SET, MSG_STAT_SPACE_AVAIL_FOR_READ );
+				break;
+
+			case MSG_STAT_STARTED:
+				msg_update_status( msg_switch, msgid, SET, MSG_STAT_SPACE_AVAIL_FOR_WRIT );
+				break;
+
+			case MSG_STAT_COMPLETED:
+				msg_switch_event( msg_switch, MSG_EVT_COMPLETE, msgid );
+				//if ( !FL_ISSET( msg->status, MSG_STAT_AVAIL_WRIT_PACKET )
+				//  && !FL_ISSET( msg->status, MSG_STAT_WAIT_FOR_RESP ) )
+				//	msg_destroy( msg_switch, msgid );
+				break;
+
+			case MSG_STAT_PACKET_AVAIL_TO_READ:
+			case MSG_STAT_WANT_PACK:
+				if ( FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ | MSG_STAT_WANT_PACK ) ) {
+					msg_update_status( msg_switch, msgid, CLR, MSG_STAT_WANT_PACK );
+					msg_packet_t packet = msg_pop_read_packet( msg_switch, msgid );
+					msg_switch_event( msg_switch, MSG_EVT_RECVD_PACKET, &packet );
+				}
+				break;
+
+			case MSG_STAT_PACKET_AVAIL_TO_WRIT:
+				if ( !FL_ISSET( msg->status, MSG_STAT_WAITING_FOR_RESP ) ) {
+					goto writit;
+				}
+				break;
+
+			case MSG_STAT_SPACE_AVAIL_FOR_READ:
+			case MSG_STAT_NEED_TO_SEND_RESP:
+				if ( FL_ISSET( msg->status, MSG_STAT_NEED_TO_SEND_RESP | MSG_STAT_SPACE_AVAIL_FOR_READ ) )
+					msg_send_resp( msg_switch, msgid, MSG_RESP_OK );
+				break;
+
+			case MSG_STAT_SPACE_AVAIL_FOR_WRIT:
+				if ( !FL_ISSET( msg->status, MSG_STAT_COMPLETED ) )
+					msg_switch_event( msg_switch, MSG_EVT_SPACE_AVAIL, msgid );
+				break;
+
+			case MSG_STAT_WAITING_FOR_RESP:
+				//msg_update_status( msg_switch, msgid, CLR, MSG_STAT_WRITE_PACK );
+				break;
+		}
+	}
+
+	else if ( type == CLR && FL_ISSET( msg->status, status ) ) {
+		FL_CLR( msg->status, status );
+
+		switch ( status ) {
+			case MSG_STAT_STARTED:
+			case MSG_STAT_COMPLETED:
+				abort(); // These should never be cleared
+
+			case MSG_STAT_NEW:
+				break;
+
+			case MSG_STAT_PACKET_AVAIL_TO_READ:
+				break;
+
+			case MSG_STAT_PACKET_AVAIL_TO_WRIT:
+				//if ( FL_ISSET( msg->status, MSG_STAT_COMPLETED )
+				// && !FL_ISSET( msg->status, MSG_STAT_WAIT_FOR_RESP ) )
+				//	msg_destroy( msg_switch, msgid );
+				break;
+
+			case MSG_STAT_SPACE_AVAIL_FOR_READ:
+				break;
+
+			case MSG_STAT_SPACE_AVAIL_FOR_WRIT:
+				msg_switch_event( msg_switch, MSG_EVT_SPACE_FULL, msgid );
+				break;
+
+			case MSG_STAT_WAITING_FOR_RESP:
+				if ( FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) ) {
+writit:
+					list_append( &msg_switch->pending_msgs, msg );
+					if ( !msg_switch->write.type )
+						msg_switch_writ( msg_switch->sockfd );
+					//msg_update_status( msg_switch, msgid, SET, MSG_STAT_WRITE_PACK );
+				}
+				//else if ( FL_ISSET( msg->status, MSG_STAT_COMPLETED ) ) {
+				//	msg_switch_event( msg_switch, MSG_EVT_SENT, msgid );
+				//	msg_destroy( msg_switch, msgid );
+				//}
+				break;
+
+			case MSG_STAT_NEED_TO_SEND_RESP:
+				if ( !msg_switch->write.type )
+					msg_switch_writ( msg_switch->sockfd );
+				break;
+
+			case MSG_STAT_WANT_PACK:
+				break;
+		}
+	}
+
 }
 
 static void msg_switch_event( msg_switch_t* msg_switch, int type, ... ) {
@@ -48,26 +609,22 @@ static void msg_switch_event( msg_switch_t* msg_switch, int type, ... ) {
 	va_start( ap, type );
 	switch ( event.type ) {
 		case MSG_EVT_NEW:
-		case MSG_EVT_DESTROY:
-		case MSG_EVT_COMPLETE:
 		case MSG_EVT_SENT:
-		case MSG_RECV_EVT_KILL:
-		case MSG_RECV_EVT_LAST:
-		case MSG_RECV_EVT_FIRST:
-		case MSG_EVT_BUF_FULL:
-		case MSG_EVT_BUF_EMPTY:
+		case MSG_EVT_COMPLETE:
+		case MSG_EVT_DESTROY:
+		case MSG_EVT_SPACE_FULL:
+		case MSG_EVT_SPACE_AVAIL:
 			event.data.msgid = va_arg( ap, int );
 			break;
-		case MSG_RECV_EVT_RESP:
-			event.data.resp = va_arg( ap, msg_packet_resp_t* );
-			break;
-		case MSG_RECV_EVT_PACK:
+		case MSG_EVT_RECVD_PACKET:
 			event.data.packet = va_arg( ap, msg_packet_t* );
 			break;
+		case MSG_SWITCH_EVT_IO_FAILED:
 		case MSG_SWITCH_EVT_NEW:
 		case MSG_SWITCH_EVT_DESTROY:
-		case MSG_SWITCH_EVT_IO_FAILED:
 			break;
+		//case MSG_EVT_KILL:
+		//	break;
 		default:
 			fprintf( stderr, "msg_switch_event: passed undefined event %d\n", event.type );
 			goto quit;
@@ -77,421 +634,4 @@ static void msg_switch_event( msg_switch_t* msg_switch, int type, ... ) {
 
 quit:
 	va_end( ap );
-}
-
-static void msg_destroy( msg_switch_t* msg_switch, int msgid ) {
-	msg_switch_event( msg_switch, MSG_EVT_DESTROY, msgid );
-
-	msg_t* msg = msg_get( msg_switch, msgid );
-	while ( list_size( &msg->queue ) )
-		free( list_fetch( &msg->queue ) );
-	list_destroy( &msg->queue );
-	free( msg );
-	msg_set( msg_switch, msgid, NULL );
-}
-
-static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, int status ) {
-	msg_t* msg = msg_get( msg_switch, msgid );
-
-	if ( type == SET && !FL_ISSET( msg->status, status ) ) {
-		FL_SET( msg->status, status );
-
-		switch ( status ) {
-			case MSG_STAT_NEW:
-				msg_switch_event( msg_switch, MSG_EVT_NEW, msgid );
-				break;
-
-			case MSG_STAT_WRITE_PACK:
-				list_append( &msg_switch->pending_msgs, msg );
-				zfd_set( msg_switch->sockfd, writ_type, msg_switch );
-				break;
-
-			case MSG_STAT_PENDING_PACKS:
-				msg_switch_event( msg_switch, MSG_EVT_BUF_FULL, msgid );
-				if ( !FL_ISSET( msg->status, MSG_STAT_READ_RESP ) )
-					msg_update_status( msg_switch, msgid, SET, MSG_STAT_WRITE_PACK );
-				break;
-
-			case MSG_STAT_READ_RESP:
-				msg_update_status( msg_switch, msgid, CLR, MSG_STAT_WRITE_PACK );
-				break;
-
-			case MSG_STAT_COMPLETE:
-				msg_switch_event( msg_switch, MSG_EVT_COMPLETE, msgid );
-				if ( !FL_ISSET( msg->status, MSG_STAT_PENDING_PACKS )
-				  && !FL_ISSET( msg->status, MSG_STAT_READ_RESP ) )
-					msg_destroy( msg_switch, msgid );
-				break;
-		}
-	}
-
-	else if ( type == CLR && FL_ISSET( msg->status, status ) ) {
-		FL_CLR( msg->status, status );
-
-		switch ( status ) {
-			case MSG_STAT_NEW:
-				break;
-
-			case MSG_STAT_WRITE_PACK:
-				break;
-
-			case MSG_STAT_PENDING_PACKS:
-				msg_update_status( msg_switch, msgid, CLR, MSG_STAT_WRITE_PACK );
-
-				if ( FL_ISSET( msg->status, MSG_STAT_COMPLETE )
-				 && !FL_ISSET( msg->status, MSG_STAT_READ_RESP ) )
-					msg_destroy( msg_switch, msgid );
-				else if ( !FL_ISSET( msg->status, MSG_STAT_COMPLETE ) )
-					msg_switch_event( msg_switch, MSG_EVT_BUF_EMPTY, msgid );
-				break;
-
-			case MSG_STAT_READ_RESP:
-				if ( FL_ISSET( msg->status, MSG_STAT_PENDING_PACKS ) )
-					msg_update_status( msg_switch, msgid, SET, MSG_STAT_WRITE_PACK );
-				else if ( FL_ISSET( msg->status, MSG_STAT_COMPLETE ) ) {
-					msg_switch_event( msg_switch, MSG_EVT_SENT, msgid );
-					msg_destroy( msg_switch, msgid );
-				}
-				break;
-
-			case MSG_STAT_COMPLETE:
-				break;
-		}
-	}
-
-}
-
-static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* info ) {
-	printf( "msg_switch_failed(): %d %s\n", code, info );
-	zfd_clr( msg_switch->sockfd, read_type );
-	zfd_clr( msg_switch->sockfd, writ_type );
-
-	msg_switch_event( msg_switch, MSG_SWITCH_EVT_IO_FAILED, &code, info );
-}
-
-static void msg_switch_read_complete( int fd, int ret, void* buff, size_t len, msg_switch_t* msg_switch );
-
-static void msg_switch_read( int sockfd, msg_switch_t* msg_switch ) {
-
-	if ( !msg_switch->read_data_type )
-		zread( sockfd, &msg_switch->read_data_type, sizeof( msg_switch->read_data_type ), ZSOCK_HDLR msg_switch_read_complete, msg_switch );
-	else
-		zread( sockfd, (void*) &msg_switch->read_data, MSG_TYPE_GET_SIZE( msg_switch->read_data_type ),
-		  ZSOCK_HDLR msg_switch_read_complete, msg_switch );
-
-	return;
-}
-
-static void msg_switch_read_complete( int fd, int ret, void* buff, size_t len, msg_switch_t* msg_switch ) {
-	if ( ret <= 0 ) {
-		msg_switch_failed( msg_switch, ret, "msg_switch_read_complete()" );
-		return;
-	}
-
-	if ( buff == &msg_switch->read_data_type ) {
-		msg_switch_read( fd, msg_switch );
-		return;
-	}
-
-	switch( msg_switch->read_data_type ) {
-		case MSG_TYPE_RESP:
-			if ( msg_get( msg_switch, msg_switch->read_data.resp.msgid ) ) {
-
-				msg_switch_event( msg_switch, MSG_RECV_EVT_RESP, &msg_switch->read_data.resp );
-
-				msg_accept_resp( msg_switch, msg_switch->read_data.resp );
-			}
-			break;
-
-		case MSG_TYPE_PACK:
-			if ( !FL_ISSET( msg_switch->read_data.packet.flags, PACK_FL_KILL ) ) {
-				if ( FL_ISSET( msg_switch->read_data.packet.flags, PACK_FL_FIRST ) )
-					msg_switch_event( msg_switch, MSG_RECV_EVT_FIRST, msg_switch->read_data.packet.msgid );
-
-				msg_switch_event( msg_switch, MSG_RECV_EVT_PACK, &msg_switch->read_data.packet );
-
-			} else
-				msg_switch_event( msg_switch, MSG_RECV_EVT_KILL, msg_switch->read_data.packet.msgid );
-
-			break;
-	}
-
-	msg_switch->read_data_type = 0;
-}
-
-static void msg_switch_writ_complete( int fd, int ret, void* buff, size_t len, msg_switch_t* msg_switch );
-
-static void msg_switch_writ( int sockfd, msg_switch_t* msg_switch ) {
-	if ( !msg_switch->write_data_type ) {
-		// check if waiting to send returns
-		if ( msg_switch_has_pending_resps( msg_switch ) ) {
-			msg_switch->write_data_type = MSG_TYPE_RESP;
-			msg_switch->write_data.resp = msg_switch_pop_resp( msg_switch );
-			//printf( "[%d] %04d: sending read response, status %d\n", resp.msgid, n_print++, resp.status );
-		}
-
-		// pop from queue and write
-		else {
-			msg_switch->write_data_type = MSG_TYPE_PACK;
-			msg_switch->write_data.packet = msg_switch_pop_packet( msg_switch );
-			//printf( "[%d] %04d: sending packet, flags %x\n", packet.msgid, n_print++, packet.flags );
-		}
-
-		zwrite( sockfd, &msg_switch->write_data_type, sizeof( msg_switch->write_data_type ), ZSOCK_HDLR msg_switch_writ_complete, msg_switch );
-		return;
-	}
-
-	zwrite( sockfd, (void*) &msg_switch->write_data, MSG_TYPE_GET_SIZE( msg_switch->write_data_type ), ZSOCK_HDLR msg_switch_writ_complete, msg_switch );
-}
-
-static void msg_switch_writ_complete( int fd, int ret, void* buff, size_t len, msg_switch_t* msg_switch ) {
-	if ( ret <= 0 ) {
-		msg_switch_failed( msg_switch, ret, "msg_switch_writ_complete()" );
-		return;
-	}
-
-	if ( buff == &msg_switch->write_data_type ) {
-		msg_switch_writ( fd, msg_switch );
-		return;
-	}
-
-	msg_switch->write_data_type = 0;
-
-	if ( !msg_switch_is_pending( msg_switch ) )
-		zfd_clr( fd, writ_type );
-}
-
-static msg_packet_t* msg_packet_new( msg_switch_t* msg_switch, int msgid, int flags ) {
-	msg_packet_t* packet = (msg_packet_t*) malloc( sizeof( msg_packet_t ) );
-
-	packet->msgid = msgid;
-	packet->size = 0;
-	packet->flags = flags;
-
-	list_append( &msg_get( msg_switch, msgid )->queue, packet );
-
-	msg_update_status( msg_switch, msgid, CLR, MSG_STAT_NEW );
-	return packet;
-}
-
-static bool msg_has_available_packets( msg_switch_t* msg_switch, int msgid ) {
-	msg_t* msg = msg_get( msg_switch, msgid );
-	return ( list_size( &msg->queue ) && ( ((msg_packet_t*)list_get_at( &msg->queue, 0 ))->size == PACK_DATA_SIZE
-	  || FL_ISSET(((msg_packet_t*)list_get_at( &msg->queue, 0 ))->flags, PACK_FL_LAST ) ) );
-}
-
-void msg_switch_init( int l_read_type, int l_writ_type ) {
-	assert( !initialized );
-
-	read_type = l_read_type;
-	writ_type = l_writ_type;
-
-	zfd_register_type( read_type, ZFD_R, ZFD_TYPE_HDLR msg_switch_read );
-	zfd_register_type( writ_type, ZFD_W, ZFD_TYPE_HDLR msg_switch_writ );
-
-	initialized = true;
-}
-
-msg_switch_t* msg_switch_new(
-	int sockfd,
-	void (*event_handler)( struct msg_switch*, msg_event_t event )
- ) {
-	assert( initialized );
-
-	msg_switch_t* msg_switch = (msg_switch_t*) malloc( sizeof( msg_switch_t ) );
-	memset( msg_switch->msgs, 0, sizeof( msg_switch->msgs ) );
-	list_init( &msg_switch->pending_resps );
-	list_init( &msg_switch->pending_msgs );
-	msg_switch->sockfd = sockfd;
-	msg_switch->read_data_type = 0;
-	msg_switch->write_data_type = 0;
-	msg_switch->event_handler = event_handler;
-
-	zfd_set( msg_switch->sockfd, read_type, msg_switch );
-
-	msg_switch_event( msg_switch, MSG_SWITCH_EVT_NEW );
-
-	return msg_switch;
-}
-
-void msg_switch_destroy( msg_switch_t* msg_switch ) {
-
-	msg_switch_event( msg_switch, MSG_SWITCH_EVT_DESTROY );
-
-	while ( list_size( &msg_switch->pending_resps ) )
-		free( list_fetch( &msg_switch->pending_resps ) );
-	list_destroy( &msg_switch->pending_resps );
-
-	while ( list_fetch( &msg_switch->pending_msgs ) );
-	list_destroy( &msg_switch->pending_msgs );
-
-	int i;
-	for ( i = 0; i < FD_SETSIZE * 2; i++ ) {
-		if ( msg_switch->msgs[ i ] ) {
-			msg_destroy( msg_switch, i - FD_SETSIZE );
-		}
-	}
-
-	zfd_clr( msg_switch->sockfd, read_type );
-	zfd_clr( msg_switch->sockfd, writ_type );
-	free( msg_switch );
-}
-
-void msg_switch_send_pack_resp( msg_switch_t* msg_switch, msg_packet_t* packet, char status ) {
-	msg_packet_resp_t* resp = (msg_packet_resp_t*) malloc( sizeof( msg_packet_resp_t ) );
-	memset( resp, 0, sizeof( msg_packet_resp_t ) ); // initializes all bytes including padded bytes
-
-	resp->msgid = packet->msgid;
-	resp->status = status;
-
-	list_append( &msg_switch->pending_resps, resp );
-	//printf( "ready to write resps\n" );
-	// add write to zfd and fire event
-	zfd_set( msg_switch->sockfd, writ_type, msg_switch );
-
-	if ( FL_ISSET( packet->flags, PACK_FL_LAST ) )
-		msg_switch_event( msg_switch, MSG_RECV_EVT_LAST, packet->msgid );
-}
-
-msg_packet_t msg_switch_pop_packet( msg_switch_t* msg_switch ) {
-	msg_t* msg = list_fetch( &msg_switch->pending_msgs );
-
-	msg_packet_t packet = *(msg_packet_t*) list_get_at( &msg->queue, 0 );
-	free( list_fetch( &msg->queue ) );
-
-	if ( !FL_ISSET( packet.flags, PACK_FL_KILL ) )
-		msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_READ_RESP );
-
-	if ( !msg_has_available_packets( msg_switch, msg->msgid ) )
-		msg_update_status( msg_switch, msg->msgid, CLR, MSG_STAT_PENDING_PACKS );
-
-	return packet;
-}
-
-msg_packet_resp_t msg_switch_pop_resp( msg_switch_t* msg_switch ) {
-	msg_packet_resp_t resp = *(msg_packet_resp_t*) list_get_at( &msg_switch->pending_resps, 0 );
-	free( list_fetch( &msg_switch->pending_resps ) );
-	return resp;
-}
-
-bool msg_switch_is_pending( msg_switch_t* msg_switch ) {
-	if ( msg_switch_has_pending_msgs( msg_switch )
-	  || msg_switch_has_pending_resps( msg_switch ) )
-		return true;
-	return false;
-}
-
-bool msg_switch_has_pending_msgs( msg_switch_t* msg_switch ) {
-	return list_size( &msg_switch->pending_msgs );
-}
-
-bool msg_switch_has_pending_resps( msg_switch_t* msg_switch ) {
-	return list_size( &msg_switch->pending_resps );
-}
-
-void msg_new( msg_switch_t* msg_switch, int msgid ) {
-	msg_t* msg = (msg_t*) malloc( sizeof( msg_t ) );
-
-	msg->msgid = msgid;
-	msg->status = 0;
-	list_init( &msg->queue );
-
-	msg_set( msg_switch, msgid, msg );
-
-	msg_update_status( msg_switch, msgid, SET, MSG_STAT_NEW );
-}
-
-void msg_end( msg_switch_t* msg_switch, int msgid ) {
-	msg_t* msg = msg_get( msg_switch, msgid );
-	msg_packet_t* packet = NULL;
-
-	assert( !FL_ISSET( msg->status, MSG_STAT_COMPLETE ) );
-
-	if ( !list_size( &msg->queue ) ) {
-		packet = msg_packet_new( msg_switch, msgid,
-		  FL_ISSET( msg->status, MSG_STAT_NEW ) ? PACK_FL_FIRST : 0 );
-	} else
-		packet = list_get_at( &msg->queue, list_size( &msg->queue ) - 1 );
-
-	memset( packet->data + packet->size, 0, sizeof( packet->data ) - packet->size );
-	FL_SET( packet->flags, PACK_FL_LAST );
-
-	msg_update_status( msg_switch, msgid, SET, MSG_STAT_PENDING_PACKS );
-	msg_update_status( msg_switch, msgid, SET, MSG_STAT_COMPLETE );
-}
-
-void msg_kill( msg_switch_t* msg_switch, int msgid ) {
-	msg_t* msg = msg_get( msg_switch, msgid );
-	msg_packet_t* packet = NULL;
-
-	if ( FL_ISSET( msg->status, MSG_STAT_NEW )
-	  || ( list_size( &msg->queue ) == 1
-		 && PACK_IS_FIRST( list_get_at( &msg->queue, 0 ) ) ) ) {
-		// Nothing has been sent yet
-		msg_destroy( msg_switch, msgid );
-	}
-
-	else {
-		while( list_size( &msg->queue ) )
-			free( list_fetch( &msg->queue ) );
-		packet = msg_packet_new( msg_switch, msgid, PACK_FL_LAST | PACK_FL_KILL );
-
-		msg_update_status( msg_switch, msgid, SET, MSG_STAT_PENDING_PACKS );
-		msg_update_status( msg_switch, msgid, SET, MSG_STAT_COMPLETE );
-	}
-}
-
-void msg_accept_resp( msg_switch_t* msg_switch, msg_packet_resp_t resp ) {
-	if ( resp.status == MSG_PACK_RESP_FAIL ) {
-		msg_destroy( msg_switch, resp.msgid );
-	}
-
-	else
-		msg_update_status( msg_switch, resp.msgid, CLR, MSG_STAT_READ_RESP );
-}
-
-void msg_push_data( msg_switch_t* msg_switch, int msgid, void* data, int size ) {
-	//printf( "pushing %d bytes\n", size );
-	msg_t* msg = msg_get( msg_switch, msgid );
-	msg_packet_t* packet = NULL;
-
-	if ( !list_size( &msg->queue ) ) {
-		packet = msg_packet_new( msg_switch, msgid,
-		  FL_ISSET( msg->status, MSG_STAT_NEW ) ? PACK_FL_FIRST : 0 );
-	} else
-		packet = list_get_at( &msg->queue, list_size( &msg->queue ) - 1 );
-
-	int chunk = 0;
-	while ( size ) {
-
-		if ( packet->size == PACK_DATA_SIZE )
-			packet = msg_packet_new( msg_switch, msgid, 0 );
-
-		if ( size / ( PACK_DATA_SIZE - packet->size ) )
-			chunk = PACK_DATA_SIZE - packet->size;
-		else
-			chunk = size % ( PACK_DATA_SIZE - packet->size );
-
-		memcpy( packet->data + packet->size, data, chunk );
-
-		size -= chunk;
-		data += chunk;
-		packet->size += chunk;
-
-	}
-
-	if ( msg_has_available_packets( msg_switch, msgid ) )
-		msg_update_status( msg_switch, msgid, SET, MSG_STAT_PENDING_PACKS );
-}
-
-bool msg_has_pending_packets( msg_switch_t* msg_switch, int msgid ) {
-	return FL_ISSET( msg_get( msg_switch, msgid )->status, MSG_STAT_PENDING_PACKS );
-}
-
-bool msg_is_complete( msg_switch_t* msg_switch, int msgid ) {
-	return FL_ISSET( msg_get( msg_switch, msgid )->status, MSG_STAT_COMPLETE );
-}
-
-bool msg_exists( msg_switch_t* msg_switch, int msgid ) {
-	return msg_get( msg_switch, msgid );
 }

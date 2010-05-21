@@ -96,6 +96,7 @@ typedef union {
 		int portno;
 		unsigned int flags;
 		void (*event_hdlr)( int fd, zsocket_event_t event );
+		void* udata;
 	} general;
 	struct {
 		char type;
@@ -104,6 +105,8 @@ typedef union {
 		int portno;
 		unsigned int flags;
 		void (*event_hdlr)( int fd, zsocket_event_t event );
+		void* udata;
+		////////////////////
 		int n_open;
 		SSL_CTX* ssl_ctx;
 	} listen;
@@ -114,6 +117,8 @@ typedef union {
 		int portno;
 		unsigned int flags;
 		void (*event_hdlr)( int fd, zsocket_event_t event );
+		void* udata;
+		////////////////////
 		zsock_rw_data_t read;
 		zsock_rw_data_t write;
 		SSL* ssl;
@@ -135,5 +140,6 @@ void zread( int fd, bool toggle );
 void zwrite( int fd, const void* buf, size_t n );
 zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno );
 zsocket_t* zsocket_get_by_sockfd( int sockfd );
+void zsocket_set_event_hdlr( int fd,  void (*zsocket_event_hdlr)( int fd, zsocket_event_t event ) );
 
 #endif

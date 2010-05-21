@@ -116,7 +116,7 @@ $(MODULES): $(MOD_DEPENDS)
 test-strnstr: $(TEST_DEPENDS) general.o
 	$(EXEC_COMPILE)
 
-test-client: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o simclist.o
+test-client: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o general.o simclist.o
 	$(EXEC_COMPILE) -lssl
 
 test-server: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o general.o simclist.o

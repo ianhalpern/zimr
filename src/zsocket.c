@@ -78,6 +78,7 @@ static zsocket_t* _zsocket_type_init( int fd, int type, in_addr_t addr, int port
 	p->general.portno = portno;
 	p->general.flags = 0;
 	p->general.event_hdlr = zsocket_event_hdlr;
+	p->general.udata = NULL;
 
 	if ( p->type == ZSOCK_LISTEN ) {
 		p->listen.n_open = 0;
@@ -221,6 +222,12 @@ zsocket_t* zsocket_get_by_sockfd( int sockfd ) {
 	assert( initialized );
 
 	return zsockets[ sockfd ];
+}
+
+void zsocket_set_event_hdlr( int fd,  void (*zsocket_event_hdlr)( int fd, zsocket_event_t event ) ) {
+	zsocket_t* zs;
+	assert( zs = zsocket_get_by_sockfd( fd ) );
+	zs->general.event_hdlr = zsocket_event_hdlr;
 }
 
 void zclose( int fd ) {

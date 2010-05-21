@@ -27,7 +27,7 @@
 
 #define ZIMR_WEBSITE "http://Zimr.org"
 
-#define FL_ISSET( flags, flag ) ( (flags) & (flag) )
+#define FL_ISSET( flags, flag ) ( ( (flags) & (flag) ) == (flag) )
 #define FL_SET( flags, flag ) ( (flags) |= (flag) )
 #define FL_CLR( flags, flag ) ( (flags) ^= (flags)&(flag) )
 
@@ -66,7 +66,8 @@
 
 /****** msg_switch config *******/
 
-#define PACK_DATA_SIZE ( 8 * 1024 - sizeof( int ) * 3 )
+#define MSG_N_BUFF_PACKETS_ALLOWED 2
+#define PACK_DATA_SIZE ( 8 * 1024 - sizeof( msg_packet_header_t ) )
 
 /**************************/
 
