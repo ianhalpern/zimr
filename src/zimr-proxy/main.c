@@ -34,7 +34,6 @@
 #include "website.h"
 #include "zsocket.h"
 #include "daemon.h"
-#include "zerr.h"
 #include "zcnf.h"
 
 #define DAEMON_NAME "zimr-proxy"
@@ -48,7 +47,6 @@
 
 typedef struct {
 	int exlisnfd;
-	msg_switch_t* msg_switch;
 } website_data_t;
 
 typedef struct {
@@ -58,18 +56,15 @@ typedef struct {
 	int request_type;
 	int postlen;
 	int is_https;
-	msg_packet_t* pending_packet;
 } conn_data_t;
 
 conn_data_t* connections[ FD_SETSIZE ];
 
-void inlisn( int sockfd, void* udata );
-void exlisn( int sockfd, void* udata );
-void exread( int sockfd, void* udata );
-void exwrit( int sockfd, void* udata );
-
+void insock_event_hdlr( int fd, zsocket_event_t event );
+void exsock_event_hdlr( int fd, zsocket_event_t event );
 void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet );
 void cleanup_connection( int sockfd );
+void exread( int sockfd, void* buffer, ssize_t len, size_t size );
 
 void signal_handler( int sig ) {
 	switch( sig ) {
@@ -184,29 +179,21 @@ int main( int argc, char* argv[ ] ) {
 
 	syslog( LOG_INFO, "starting up" );
 
-	// set the fle handlers for the different types of file desriptors
-	// used in zfd_select()
-	zfd_register_type( INLISN, ZFD_R, ZFD_TYPE_HDLR inlisn );
-	zfd_register_type( EXLISN, ZFD_R, ZFD_TYPE_HDLR exlisn );
-	zfd_register_type( EXREAD, ZFD_R, ZFD_TYPE_HDLR exread );
-	zfd_register_type( EXWRIT, ZFD_W, ZFD_TYPE_HDLR exwrit );
-
 	// call any needed library init functions
 	website_init();
 	zsocket_init();
-	msg_switch_init( INREAD, INWRIT );
 
 	memset( connections, 0, sizeof( connections ) );
 
 	for ( i = 0; i < proxy_cnf->n; i++ ) {
-		int sockfd = zsocket( inet_addr( proxy_cnf->proxies[ i ].ip ), proxy_cnf->proxies[ i ].port, ZSOCK_LISTEN, false );
+		int sockfd = zsocket( inet_addr( proxy_cnf->proxies[ i ].ip ), proxy_cnf->proxies[ i ].port, ZSOCK_LISTEN, insock_event_hdlr, false );
 		if ( sockfd == -1 ) {
 			ret = EXIT_FAILURE;
 			fprintf( stderr, "Proxy failed on %s:%d\n", proxy_cnf->proxies[ i ].ip, proxy_cnf->proxies[ i ].port );
 			goto quit;
 		}
 
-		zfd_set( sockfd, INLISN, NULL );
+		zaccept( sockfd, true );
 		printf( "Proxy listening on %s:%d\n", proxy_cnf->proxies[ i ].ip, proxy_cnf->proxies[ i ].port );
 	}
 
@@ -217,7 +204,7 @@ int main( int argc, char* argv[ ] ) {
 	// starts a select() loop and calls
 	// the associated file descriptor handlers
 	// when they are ready to read/write
-	while ( zfd_select( 0 ) ); // The loop is only broken by interrupt
+	while ( zfd_select(0) ); // The loop is only broken by interrupt
 
 quit:
 	// cleanup
@@ -321,17 +308,15 @@ int remove_website( msg_switch_t* msg_switch ) {
 	int i;
 	for ( i = 0; i < FD_SETSIZE; i++ ) {
 		if ( connections[ i ] && connections[ i ]->website_sockfd == website->sockfd )
-			cleanup_connection( i );
+			msg_destroy( website->sockfd, i );
 	}
 
 	if ( website_data->exlisnfd != -1 ) {
-		if ( zsocket_get_by_sockfd( website_data->exlisnfd )->listen.n_open == 1 ) {
-			zfd_clr( website_data->exlisnfd, EXLISN );
-		}
 		zclose( website_data->exlisnfd );
 	}
 
-	msg_switch_destroy( website_data->msg_switch );
+	msg_switch_destroy( website->sockfd );
+	zclose( msg_switch->sockfd );
 
 	free( website_data );
 	website_remove( website );
@@ -348,26 +333,22 @@ bool start_website( char* url, msg_switch_t* msg_switch ) {
 		return false;
 	}
 
-	if ( !( website = website_add( msg_switch->sockfd, url ) ) ) {
-		syslog( LOG_ERR, "start_website: website_add() failed starting website \"%s\"", url );
+	int exlisnfd = zsocket( INADDR_ANY, get_port_from_url( url ), ZSOCK_LISTEN, exsock_event_hdlr, startswith( url, "https://" ) );
+	if ( exlisnfd == -1 ) {
+		syslog( LOG_ERR, "start_website: zsocket_open(): %s", strerror( errno ) );
 		return false;
 	}
+
+	website = website_add( msg_switch->sockfd, url );
 
 	syslog( LOG_INFO, "website: starting \"%s\" on %d", website->full_url, get_port_from_url( website->full_url ) );
 
 	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
 	website->udata = website_data;
 
-	website_data->exlisnfd = zsocket( INADDR_ANY, get_port_from_url( website->full_url ), ZSOCK_LISTEN, startswith( website->full_url, "https://" ) );
-	website_data->msg_switch = msg_switch;
+	website_data->exlisnfd = exlisnfd;
 
-	if ( website_data->exlisnfd == -1 ) {
-		syslog( LOG_ERR, "start_website: zsocket_open(): %s: %s", pdstrerror( zerrno ), strerror( errno ) );
-		remove_website( msg_switch );
-		return false;
-	}
-
-	zfd_set( website_data->exlisnfd, EXLISN, (void*)startswith( website->full_url, "https://" ) );
+	zaccept( website_data->exlisnfd, true );
 	return true;
 }
 
@@ -376,19 +357,30 @@ bool start_website( char* url, msg_switch_t* msg_switch ) {
 void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 	switch ( event.type ) {
 		case MSG_EVT_NEW:
-			zfd_set( event.data.msgid, EXREAD, NULL );
+			msg_want_packet( msg_switch->sockfd, event.data.msgid );
 			break;
-		case MSG_EVT_COMPLETE:
+		case MSG_EVT_SENT:
+			printf( "%d: message sent\n", event.data.msgid );
+			break;
+		case MSG_EVT_RECVD:
+			printf( "%d: message recvd\n", event.data.msgid );
+			break;
 		case MSG_EVT_DESTROY:
-			zfd_clr( event.data.msgid, EXREAD );
-			break;
-		case MSG_RECV_EVT_LAST:
-		case MSG_RECV_EVT_KILL:
-			if ( event.data.msgid >= 0 )
+			if ( event.data.msgid >= 0 ) {
+				puts( "destroyed" );
 				cleanup_connection( event.data.msgid );
+			}
 			break;
-		case MSG_RECV_EVT_PACK:
-			if ( event.data.packet->msgid < 0 ) {
+		case MSG_EVT_SPACE_FULL:
+			if ( event.data.msgid >= 0 )
+				zread( event.data.msgid, false );
+			break;
+		case MSG_EVT_SPACE_AVAIL:
+			if ( event.data.msgid >= 0 )
+				zread( event.data.msgid, true );
+			break;
+		case MSG_EVT_RECVD_PACKET:
+			if ( event.data.packet->header.msgid < 0 ) {
 				/* If the msgid is less than zero, it refers to a command and
 				   the message should not be routed to a file descriptor. */
 
@@ -401,119 +393,101 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 			} else {
 				/* if msgid is zero or greater it refers to a socket file
 				   descriptor that the message should be routed to. */
-				connections[ event.data.packet->msgid ]->pending_packet = memdup( event.data.packet, sizeof( msg_packet_t ) );
-				zfd_set( event.data.packet->msgid, EXWRIT, NULL );
+				zwrite( event.data.packet->header.msgid, event.data.packet->data, event.data.packet->header.size );
 			}
-			break;
-		case MSG_RECV_EVT_RESP:
-			if ( event.data.resp->status == MSG_PACK_RESP_OK )
-				zfd_reset( event.data.resp->msgid, EXREAD );
-			else if ( event.data.resp->status == MSG_PACK_RESP_FAIL ) {
-				cleanup_connection( event.data.resp->msgid );
-			}
-			break;
-		case MSG_EVT_BUF_FULL:
-			zfd_clr( event.data.msgid, EXREAD );
-			break;
-		case MSG_EVT_BUF_EMPTY:
-			zfd_set( event.data.msgid, EXREAD, NULL );
 			break;
 		case MSG_SWITCH_EVT_IO_FAILED:
-			zclose( msg_switch->sockfd );
+			//zclose( msg_switch->sockfd );
 			if ( website_get_by_sockfd( msg_switch->sockfd ) )
 				remove_website( msg_switch );
 			break;
-		case MSG_RECV_EVT_FIRST:
 		case MSG_SWITCH_EVT_NEW:
 		case MSG_SWITCH_EVT_DESTROY:
 			break;
 	}
 }
 
-void inlisn_oncomplete( int fd, int ret, conn_data_t* conn_data ) {
-}
-
-void inlisn( int sockfd, void* udata ) {
-	struct sockaddr_in cli_addr;
-	unsigned int cli_len = sizeof( cli_addr );
-	int insockfd;
-
-	// Connection request on original socket.
-	if ( ( insockfd = zaccept( sockfd, &cli_addr, &cli_len, ZSOCK_HDLR inlisn_oncomplete, NULL ) ) < 0 ) {
-		syslog( LOG_ERR, "inlisn: accept() failed: %s", strerror( errno ) );
-		return;
+void insock_event_hdlr( int fd, zsocket_event_t event ) {
+	switch ( event.type ) {
+		case ZSE_ACCEPT_ERR:
+			fprintf( stderr, "New Connection Failed\n" );
+			break;
+		case ZSE_ACCEPTED_CONNECTION:
+			fprintf( stderr, "New Connection #%d on #%d\n", event.data.conn.fd, fd );
+			msg_switch_create( event.data.conn.fd, msg_event_handler );
+			break;
+		case ZSE_READ_DATA:
+		case ZSE_WROTE_DATA:
+			fprintf( stderr, "Should not be reading or writing in this zsocket_hdlr\n" );
+			break;
 	}
-
-	msg_switch_new( insockfd, msg_event_handler );
 }
 
-void exlisn_oncomplete( int fd, int ret, conn_data_t* conn_data ) {
-}
-
-void exlisn( int sockfd, void* udata ) {
-	int is_https = (int) udata;
+void exsock_event_hdlr( int fd, zsocket_event_t event ) {
 	conn_data_t* conn_data;
-	struct sockaddr_in cli_addr;
-	unsigned int cli_len = sizeof( cli_addr );
-	int newsockfd;
 
-	// Connection request on original socket.
-	if ( ( newsockfd = zaccept( sockfd, &cli_addr, &cli_len, ZSOCK_HDLR exlisn_oncomplete, NULL ) ) < 0 ) {
-		syslog( LOG_ERR, "exlisn: accept() failed: %s", strerror( errno ) );
-		return;
+	switch ( event.type ) {
+		case ZSE_ACCEPT_ERR:
+			fprintf( stderr, "New Connection Failed\n" );
+			break;
+		case ZSE_ACCEPTED_CONNECTION:
+			printf( "%d: message start\n", event.data.conn.fd );
+			// pass the connection information along...
+			conn_data = (conn_data_t*) malloc( sizeof( conn_data_t ) );
+			conn_data->exlisnfd = fd;
+			conn_data->addr = event.data.conn.addr;
+			conn_data->website_sockfd = -1;
+			conn_data->request_type = 0;
+			conn_data->postlen = 0;
+			conn_data->is_https = zsocket_is_ssl( conn_data->exlisnfd );
+
+			connections[ event.data.conn.fd ] = conn_data;
+
+			zread( event.data.conn.fd, true );
+			//msg_start( inconnfd, event.data.conn.fd );
+			break;
+		case ZSE_READ_DATA:
+			exread( fd, event.data.read.buffer, event.data.read.buffer_used, event.data.read.buffer_size );
+			break;
+		case ZSE_WROTE_DATA:
+			if ( event.data.read.buffer_used <= 0 ) {
+				puts( "exwrote: failed!" );
+				zpause( fd, true );
+				msg_kill( connections[ fd ]->website_sockfd, fd );
+			}
+			else msg_want_packet( connections[ fd ]->website_sockfd, fd );
+			//if ( PACK_IS_LAST( packet ) )
+			//	close( sockfd );
+			break;
 	}
-	//fcntl( newsockfd, F_SETFL, O_NONBLOCK );
-
-	// pass the connection information along...
-	conn_data = (conn_data_t*) malloc( sizeof( conn_data_t ) );
-	conn_data->exlisnfd = sockfd;
-	conn_data->addr = cli_addr;
-	conn_data->website_sockfd = -1;
-	conn_data->request_type = 0;
-	conn_data->postlen = 0;
-	conn_data->pending_packet = NULL;
-	conn_data->is_https = is_https;
-
-	connections[ newsockfd ] = conn_data;
-
-	zfd_set( newsockfd, EXREAD, NULL );
 }
 
 void cleanup_connection( int sockfd ) {
-	conn_data_t* conn_data = connections[ sockfd ];
-
-	zfd_clr( sockfd, EXREAD );
-	zfd_clr( sockfd, EXWRIT );
 	zclose( sockfd );
-
-	if ( conn_data->pending_packet )
-		fprintf( stderr, "cleanup_connection(): conn_dat->pending_packet is not null!" );
-	free( conn_data );
+	free( connections[ sockfd ] );
 	connections[ sockfd ] = NULL;
+	printf( "%d: message end\n", sockfd );
 }
 
-void exread_oncomplete( int fd, int ret, void* udata ) {
-}
-
-void exread( int sockfd, void* udata ) {
-	char buffer[ PACK_DATA_SIZE ],* ptr;
-	int len;
+void exread( int sockfd, void* buffer, ssize_t len, size_t size ) {
+	void* ptr;
 	conn_data_t* conn_data = connections[ sockfd ];
 	website_t* website;
 
 	// TODO: wait for entire header before looking up website
-	if ( ( len = zread( sockfd, buffer, sizeof( buffer ), ZSOCK_HDLR exread_oncomplete, NULL ) ) <= 0 ) {
+	if ( len <= 0 ) {
+		puts( "exread: failed!" );
 cleanup:
 		// cleanup
 		website = website_get_by_sockfd( conn_data->website_sockfd );
-		if ( website && msg_exists( ((website_data_t*)website->udata)->msg_switch, sockfd ) )
-			msg_kill( ((website_data_t*)website->udata)->msg_switch, sockfd );
-		else
-			cleanup_connection( sockfd );
+		if ( website && msg_exists( website->sockfd, sockfd ) ) {
+			zpause( sockfd, true );
+			msg_kill( website->sockfd, sockfd );
+		} else cleanup_connection( sockfd );
 		return;
 	}
 
-	memset( buffer + len, 0, sizeof( buffer ) - len );
+	memset( buffer + len, 0, size - len );
 
 	ptr = buffer;
 
@@ -521,7 +495,7 @@ cleanup:
 		/* If req_info is NULL this is the start of a request and the
 		   HTTP request headers need to be parsed. */
 		struct hostent* hp;
-		hp = gethostbyaddr( (char*) &conn_data->addr.sin_addr.s_addr, sizeof( conn_data->addr.sin_addr.s_addr ), AF_INET );
+		hp = NULL;//gethostbyaddr( (char*) &conn_data->addr, sizeof( conn_data->addr ), AF_INET );
 
 		/* Get HTTP request type */
 		if ( startswith( buffer, HTTP_GET ) )
@@ -567,12 +541,12 @@ cleanup:
 		/* Create a new message to send the request to the corresponding
 		   website. The msgid should be set to the external file descriptor
 		   to send the response back to. */
-		msg_new( website_data->msg_switch, sockfd );
+		msg_start( website->sockfd, sockfd );
 
 		// Write the ip address and hostname of the request
-		msg_push_data( website_data->msg_switch, sockfd, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) );
-		if ( hp ) msg_push_data( website_data->msg_switch, sockfd, (void*) hp->h_name, strlen( hp->h_name ) );
-		msg_push_data( website_data->msg_switch, sockfd, (void*) "\0", 1 );
+		msg_send( website->sockfd, sockfd, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) );
+		if ( hp ) msg_send( website->sockfd, sockfd, (void*) hp->h_name, strlen( hp->h_name ) );
+		msg_send( website->sockfd, sockfd, (void*) "\0", 1 );
 
 		// If request_type is POST check if there is content after the HTTP header
 		char postlenbuf[ 32 ];
@@ -584,7 +558,7 @@ cleanup:
 
 		// Send the whole header to the website
 		ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) + strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-		msg_push_data( website_data->msg_switch, sockfd, (void*) buffer, ( ptr - buffer ) );
+		msg_send( website->sockfd, sockfd, (void*) buffer, ( ptr - buffer ) );
 	}
 
 	else {
@@ -594,69 +568,44 @@ cleanup:
 		}
 	}
 
-	website_data_t* website_data = website->udata;
 	if ( conn_data->request_type == HTTP_POST_TYPE && conn_data->postlen ) {
 		int left = len - ( ptr - buffer );
 
 		if ( left > conn_data->postlen )
 			conn_data->postlen = left;
 
-		msg_push_data( website_data->msg_switch, sockfd, (void*) ptr, left );
+		msg_send( website->sockfd, sockfd, (void*) ptr, left );
 
 		conn_data->postlen -= left;
 	}
 
 	if ( !conn_data->postlen ) { /* If there isn't still data coming, */
-		msg_end( website_data->msg_switch, sockfd );
+		msg_end( website->sockfd, sockfd );
 	}
 
-}
-
-void exwrit_oncomplete( int fd, int ret, msg_packet_t* packet ) {
-	conn_data_t* conn_data = connections[ fd ];
-	char status = MSG_PACK_RESP_OK;
-	website_t* website = website_get_by_sockfd( conn_data->website_sockfd );
-	website_data_t* website_data = website->udata;
-	int n;
-	puts( "exwrit_complete" );
-	if ( ret >= 0 ) {
-		if ( n == -1 )
-			syslog( LOG_ERR, "exwrit: write failed: %s", strerror( errno ) );
-		status = MSG_PACK_RESP_FAIL;
-	}
-
-	msg_switch_send_pack_resp( website_data->msg_switch, packet, status );
-
-	free( packet );
-}
-
-void exwrit( int sockfd, void* udata ) {
-	conn_data_t* conn_data = connections[ sockfd ];
-	msg_packet_t* packet = conn_data->pending_packet;
-	conn_data->pending_packet = NULL;
-
-	zfd_clr( sockfd, EXWRIT );
-
-	int n = zwrite( sockfd, packet->data, packet->size, ZSOCK_HDLR exwrit_oncomplete, packet );
 }
 
 void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet ) {
 	char status;
 
-	switch ( packet->msgid ) {
+	switch ( packet->header.msgid ) {
 
 		case ZM_CMD_WS_START:
+			msg_start( msg_switch->sockfd, ZM_CMD_WS_START );
 			if ( start_website( packet->data, msg_switch ) )
-				status = MSG_PACK_RESP_OK;
+				msg_send( msg_switch->sockfd, ZM_CMD_WS_START, "OK", 3 );
 			else
-				status = MSG_PACK_RESP_FAIL;
+				msg_send( msg_switch->sockfd, ZM_CMD_WS_START, "FAIL", 3 );
+			msg_end( msg_switch->sockfd, ZM_CMD_WS_START );
 			break;
 
 		case ZM_CMD_WS_STOP:
+			msg_start( msg_switch->sockfd, ZM_CMD_WS_STOP );
 			if ( remove_website( msg_switch ) )
-				status = MSG_PACK_RESP_OK;
+				msg_send( msg_switch->sockfd, ZM_CMD_WS_STOP, "OK", 3 );
 			else
-				status = MSG_PACK_RESP_FAIL;
+				msg_send( msg_switch->sockfd, ZM_CMD_WS_STOP, "FAIL", 3 );
+			msg_end( msg_switch->sockfd, ZM_CMD_WS_STOP );
 			break;
 
 		/*case ZM_CMD_STATUS:
@@ -665,11 +614,9 @@ void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet ) {
 			break;*/
 
 		default:
-			status = MSG_PACK_RESP_FAIL;
+			//status = MSG_PACK_RESP_FAIL;
 			break;
 	}
-
-	msg_switch_send_pack_resp( msg_switch, packet, status );
 }
 
 ////////////////////////////////////////////////////////////////

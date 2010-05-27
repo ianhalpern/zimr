@@ -43,7 +43,6 @@
 #include "userdir.h"
 #include "mime.h"
 #include "zcnf.h"
-#include "zerr.h"
 
 #define INREAD 0x01
 #define INWRIT 0x02

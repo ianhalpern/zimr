@@ -28,9 +28,6 @@
 #include "msg_switch.h"
 #include "config.h"
 
-#define INREAD 0x5
-#define INWRIT 0x6
-
 int sockfd;
 
 bool packet_recvd( msg_packet_t* packet ) {
@@ -63,8 +60,13 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 			msg_want_packet( sockfd, event.data.msgid );
 			break;
 		case MSG_EVT_SENT:
-		case MSG_EVT_COMPLETE:
+			break;
+		case MSG_EVT_RECVD:
+			msg_destroy( sockfd, event.data.msgid );
+			break;
 		case MSG_EVT_DESTROY:
+			puts( "destroy" );
+			break;
 		case MSG_EVT_SPACE_FULL:
 		case MSG_EVT_SPACE_AVAIL:
 			break;

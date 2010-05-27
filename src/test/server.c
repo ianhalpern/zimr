@@ -39,11 +39,11 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 	switch ( event.type ) {
 		case MSG_EVT_NEW:
 		case MSG_EVT_SENT:
+		case MSG_EVT_RECVD:
 			break;
-		case MSG_EVT_COMPLETE:
 		case MSG_EVT_DESTROY:
 			puts( "complete." );
-			zread( event.data.msgid, false );
+			zclose( event.data.msgid );
 			break;
 		case MSG_EVT_SPACE_FULL:
 			zread( event.data.msgid, false );
@@ -116,7 +116,7 @@ int main( int argc, char* argv[] ) {
 	//zfd_register_type( EXWRIT, ZFD_W, ZFD_TYPE_HDLR exwrit );
 
 	int insockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_LISTEN, insock_event_hdlr, false );
-	int exsockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), 8080, ZSOCK_LISTEN, exsock_event_hdlr, true );
+	int exsockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), 8080, ZSOCK_LISTEN, exsock_event_hdlr, false );
 
 	zaccept( insockfd, true );
 	zaccept( exsockfd, true );

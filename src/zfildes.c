@@ -25,11 +25,10 @@
 static fd_set active_read_fd_set, read_fd_set;
 static fd_set active_write_fd_set, write_fd_set;
 static fd_info_t fd_data[ FD_SETSIZE ][ 2 ];
-static fd_type_t fd_types[ 64 ];
 static bool first_set = true;
 static bool unblock = false;
 
-void zfd_set( int fd, int type, void* udata ) {
+void zfd_set( int fd, char io_type, void (*handler)( int, void* ), void* udata ) {
 	if ( first_set ) {
 		FD_ZERO( &active_read_fd_set );
 		FD_ZERO( &active_write_fd_set );
@@ -37,69 +36,34 @@ void zfd_set( int fd, int type, void* udata ) {
 		first_set = false;
 	}
 
-	int io_type = fd_types[ type ].io_type;
-	fd_data[ fd ][ io_type - 1 ].type = type;
+	fd_data[ fd ][ io_type - 1 ].handler = handler;
 	fd_data[ fd ][ io_type - 1 ].udata = udata;
 
-	zfd_reset( fd, type );
-}
-
-void zfd_reset( int fd, int type ) {
-	fd_type_t* fd_type = &fd_types[ type ];
-
-	if ( fd_type->io_type == ZFD_R )
+	if ( io_type == ZFD_R )
 		FD_SET( fd, &active_read_fd_set );
 
-	else if ( fd_type->io_type == ZFD_W )
+	else if ( io_type == ZFD_W )
 		FD_SET( fd, &active_write_fd_set );
 }
 
-void zfd_clr( int fd, int type ) {
-	fd_type_t* fd_type = &fd_types[ type ];
+void zfd_clr( int fd, char io_type ) {
 
-	if ( fd_type->io_type == ZFD_R )
+	if ( io_type == ZFD_R )
 		FD_CLR( fd, &active_read_fd_set );
 
-	else if ( fd_type->io_type == ZFD_W )
+	else if ( io_type == ZFD_W )
 		FD_CLR( fd, &active_write_fd_set );
 }
 
-bool zfd_type_isset( int fd, int type ) {
-	fd_type_t* fd_type = &fd_types[ type ];
+bool zfd_isset( int fd, char io_type ) {
 
-	if ( fd_data[ fd ][ fd_type->io_type - 1 ].type == type ) {
-		if ( fd_type->io_type == ZFD_R )
-			return FD_ISSET( fd, &active_read_fd_set );
+	if ( io_type == ZFD_R )
+		return FD_ISSET( fd, &active_read_fd_set );
 
-		else if ( fd_type->io_type == ZFD_W )
-			return FD_ISSET( fd, &active_write_fd_set );
-	}
+	else if ( io_type == ZFD_W )
+		return FD_ISSET( fd, &active_write_fd_set );
 
 	return false;
-}
-
-bool zfd_io_isset( int fd, int io_type ) {
-
-	if ( io_type == ZFD_R && FD_ISSET( fd, &active_read_fd_set ) )
-		return true;
-
-	if ( io_type == ZFD_W && FD_ISSET( fd, &active_write_fd_set ) )
-		return true;
-
-	return false;
-}
-
-void* zfd_udata( int fd, int type ) {
-	return fd_data[ fd ][ fd_types[ type ].io_type - 1 ].udata;
-}
-
-fd_info_t zfd_info( int fd, int io_type ) {
-	return fd_data[ fd ][ io_type - 1 ];
-}
-
-void zfd_register_type( int type, unsigned char io_type, void (*handler)( int, void* ) ) {
-	fd_types[ type ].io_type = io_type;
-	fd_types[ type ].handler = handler;
 }
 
 void zfd_unblock() {
@@ -138,10 +102,10 @@ int zfd_select( int tv_sec ) {
 
 	for ( i = 0; i < FD_SETSIZE; i++ ) {
 		if ( FD_ISSET( i, &read_fd_set ) && FD_ISSET( i, &active_read_fd_set ) )
-			fd_types[ fd_data[ i ][ ZFD_R - 1 ].type ].handler( i, fd_data[ i ][ ZFD_R - 1 ].udata );
+			fd_data[ i ][ ZFD_R - 1 ].handler( i, fd_data[ i ][ ZFD_R - 1 ].udata );
 
 		if ( FD_ISSET( i, &write_fd_set ) && FD_ISSET( i, &active_write_fd_set ) ) {
-			fd_types[ fd_data[ i ][ ZFD_W - 1 ].type ].handler( i, fd_data[ i ][ ZFD_W - 1 ].udata );
+			fd_data[ i ][ ZFD_W - 1 ].handler( i, fd_data[ i ][ ZFD_W - 1 ].udata );
 		}
 	}
 

@@ -36,23 +36,13 @@
 #define ZFD_W 0x02
 
 typedef struct {
-	int type;
+	void (*handler)( int fd, void* udata );
 	void* udata;
 } fd_info_t;
 
-typedef struct {
-	unsigned char io_type;
-	void (*handler)( int fd, void* udata );
-} fd_type_t;
-
-void zfd_set( int fd, int type, void* udata );
-void zfd_reset( int fd, int type );
-void zfd_clr( int fd, int type );
-bool zfd_type_isset( int fd, int type );
-bool zfd_io_isset( int fd, int type );
-void zfd_register_type( int type, unsigned char io_type, void (*handler)( int, void* ) );
-void* zfd_udata( int fd, int type );
-fd_info_t zfd_info( int fd, int io_type );
+void zfd_set( int fd, char io_type, void (*handler)( int, void* ), void* udata );
+void zfd_clr( int fd, char io_type );
+bool zfd_isset( int fd, char io_type );
 int zfd_select();
 void zfd_unblock();
 

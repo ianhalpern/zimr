@@ -85,20 +85,20 @@ install:
 ##### EXECS #####
 #################
 
-zimr: $(EXEC_DEPENDS) zsocket.o zfildes.o zerr.o zcnf.o general.o simclist.o userdir.o
+zimr: $(EXEC_DEPENDS) zsocket.o zfildes.o zcnf.o general.o simclist.o userdir.o
 	$(EXEC_COMPILE) -lyaml -lssl
 
-zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zerr.o zcnf.o
+zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zcnf.o
 	$(EXEC_COMPILE) -lyaml -lssl
 
 zimr-app: $(EXEC_DEPENDS) libzimr.so
-	$(EXEC_COMPILE) $(LDZIMR) -lssl
+	$(EXEC_COMPILE) $(LDZIMR)
 
 ##### SHARED OBJS #####
 
 libzimr.so: $(SHARED_OBJ_DEPENDS) general.o msg_switch.o zfildes.o website.o mime.o connection.o\
-			 					  headers.o params.o cookies.o zsocket.o urldecoder.o zcnf.o zerr.o simclist.o userdir.o
-	$(EXEC_COMPILE) $(SHARED) -lyaml -ldl -Wl,-rpath,$(INSTALL_MODDIR)/
+			 					  headers.o params.o cookies.o zsocket.o urldecoder.o zcnf.o simclist.o userdir.o
+	$(EXEC_COMPILE) $(SHARED) -lyaml -lssl -ldl -Wl,-rpath,$(INSTALL_MODDIR)/
 
 ##### PYTHON MODS #####
 
@@ -116,10 +116,10 @@ $(MODULES): $(MOD_DEPENDS)
 test-strnstr: $(TEST_DEPENDS) general.o
 	$(EXEC_COMPILE)
 
-test-client: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o general.o simclist.o
+test-client: $(TEST_DEPENDS) msg_switch.o zsocket.o zfildes.o general.o simclist.o
 	$(EXEC_COMPILE) -lssl
 
-test-server: $(TEST_DEPENDS) msg_switch.o zsocket.o zerr.o zfildes.o general.o simclist.o
+test-server: $(TEST_DEPENDS) msg_switch.o zsocket.o zfildes.o general.o simclist.o
 	$(EXEC_COMPILE) -lssl
 
 test-zsocket-client: $(TEST_DEPENDS) zsocket.o zfildes.o simclist.o general.o

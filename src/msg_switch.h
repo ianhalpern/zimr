@@ -35,33 +35,37 @@
 #include "zsocket.h"
 #include "zfildes.h"
 
-#define MSG_STAT_NEW                       0x001
-#define MSG_STAT_STARTED                   0x002
-#define MSG_STAT_COMPLETED                 0x004
-#define MSG_STAT_PACKET_AVAIL_TO_READ      0x008
-#define MSG_STAT_PACKET_AVAIL_TO_WRIT      0x010
-#define MSG_STAT_SPACE_AVAIL_FOR_READ      0x020
-#define MSG_STAT_SPACE_AVAIL_FOR_WRIT      0x040
-#define MSG_STAT_WAITING_FOR_RESP          0x080
-#define MSG_STAT_NEED_TO_SEND_RESP         0x100
-#define MSG_STAT_WANT_PACK                 0x200
+#define MSG_STAT_NEW                       0x0001
+#define MSG_STAT_READ_STARTED              0x0002
+#define MSG_STAT_WRIT_STARTED              0x0004
+#define MSG_STAT_READ_COMPLETED            0x0008
+#define MSG_STAT_WRIT_COMPLETED            0x0010
+#define MSG_STAT_FINISHED                  0x0020
+#define MSG_STAT_PACKET_AVAIL_TO_READ      0x0040
+#define MSG_STAT_PACKET_AVAIL_TO_WRIT      0x0080
+#define MSG_STAT_SPACE_AVAIL_FOR_READ      0x0100
+#define MSG_STAT_SPACE_AVAIL_FOR_WRIT      0x0200
+#define MSG_STAT_WAITING_FOR_RESP          0x0400
+#define MSG_STAT_NEED_TO_SEND_RESP         0x0800
+#define MSG_STAT_WANT_PACK                 0x1000
+#define MSG_STAT_KILL_SENT                 0x2000
 
 #define MSG_EVT_NEW                        0x1
 #define MSG_EVT_SENT                       0x2
-#define MSG_EVT_COMPLETE                   0x3
-#define MSG_EVT_DESTROY                    0x4
-#define MSG_EVT_SPACE_AVAIL                0x5
-#define MSG_EVT_SPACE_FULL                 0x6
-#define MSG_EVT_RECVD_PACKET               0x7
-#define MSG_SWITCH_EVT_NEW                 0x8
-#define MSG_SWITCH_EVT_DESTROY             0x9
-#define MSG_SWITCH_EVT_IO_FAILED           0xa
+#define MSG_EVT_RECVD                      0x3
+#define MSG_EVT_DESTROY                    0x5
+#define MSG_EVT_SPACE_AVAIL                0x6
+#define MSG_EVT_SPACE_FULL                 0x7
+#define MSG_EVT_RECVD_PACKET               0x8
+#define MSG_SWITCH_EVT_NEW                 0x9
+#define MSG_SWITCH_EVT_DESTROY             0xa
+#define MSG_SWITCH_EVT_IO_FAILED           0xb
 
 #define PACK_FL_FIRST 0x1
 #define PACK_FL_LAST  0x2
 
-#define PACK_IS_FIRST(X) ( FL_ISSET( ( (msg_packet_t*)(X) )->flags, PACK_FL_FIRST ) )
-#define PACK_IS_LAST(X)  ( FL_ISSET( ( (msg_packet_t*)(X) )->flags, PACK_FL_LAST ) )
+#define PACK_IS_FIRST(X) ( FL_ISSET( ( (msg_packet_t*)(X) )->header.flags, PACK_FL_FIRST ) )
+#define PACK_IS_LAST(X)  ( FL_ISSET( ( (msg_packet_t*)(X) )->header.flags, PACK_FL_LAST ) )
 
 #define MSG_RESP_OK   0x1
 #define MSG_RESP_FAIL 0x2
@@ -90,6 +94,8 @@ typedef struct {
 typedef struct {
 	int msgid;
 	int status;
+	int n_writ;
+	int n_read;
 	msg_packet_t* incomplete_writ_packet;
 	list_t read_queue;
 	list_t writ_queue;
@@ -132,9 +138,11 @@ typedef struct msg_switch {
 
 void msg_switch_create( int sockfd, void (*event_handler)( struct msg_switch*, msg_event_t event ) );
 void msg_switch_destroy( int sockfd );
+bool msg_exists( int sockfd, int msgid );
 void msg_start( int sockfd, int msgid );
 void msg_end( int sockfd, int msgid );
 void msg_kill( int sockfd, int msgid );
+void msg_destroy( int sockfd, int msgid );
 void msg_send( int sockfd, int msgid, void* data, int size );
 void msg_want_packet( int sockfd, int msgid );
 
