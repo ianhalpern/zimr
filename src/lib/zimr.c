@@ -364,18 +364,13 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 
 	switch ( event.type ) {
 		case MSG_EVT_NEW:
-			printf( "%d: message started sending\n", event.data.msgid );
 			msg_want_packet( website->sockfd, event.data.msgid );
 			break;
 		case MSG_EVT_SENT:
-			printf( "%d: message sent\n", event.data.msgid );
-			break;
 		case MSG_EVT_RECVD:
-			printf( "%d: message recvd\n", event.data.msgid );
 			break;
 		case MSG_EVT_DESTROY:
 			if ( event.data.msgid >= 0 ) {
-				puts( "destroyed" );
 				cleanup_connection( website_data, event.data.msgid );
 			}
 			break;
@@ -397,7 +392,7 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 				msg_kill( website->sockfd, event.data.packet->header.msgid );
 				return;
 			}
-			msg_want_packet( website->sockfd, event.data.msgid );
+			msg_want_packet( website->sockfd, event.data.packet->header.msgid );
 			//if ( !packet_recvd( event.data.packet ) )
 			//	msg_kill( sockfd, event.data.packet->header.msgid );
 			break;

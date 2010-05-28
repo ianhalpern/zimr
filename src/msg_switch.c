@@ -30,7 +30,7 @@ static void msg_switch_push_resp( msg_switch_t* msg_switch, msg_resp_t* resp );
 
 msg_switch_t* msg_switch_get_by_sockfd( int sockfd ) {
 	zsocket_t* zs = zsocket_get_by_sockfd( sockfd );
-	return (msg_switch_t*) zs->general.udata;
+	return zs ? (msg_switch_t*) zs->general.udata : NULL;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -153,7 +153,9 @@ static void msg_push_read_packet( msg_switch_t* msg_switch, int msgid, msg_packe
 
 	list_append( &msg_get( msg_switch, msgid )->read_queue, memdup( packet, sizeof( msg_packet_t ) ) );
 
+	int sockfd = msg_switch->sockfd;
 	msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_PACKET_AVAIL_TO_READ );
+	if( !msg_switch_get_by_sockfd( sockfd ) ) return;
 	if ( msg_has_available_read_packets( msg_switch, msg->msgid, MSG_N_BUFF_PACKETS_ALLOWED ) )
 		msg_update_status( msg_switch, msg->msgid, CLR, MSG_STAT_SPACE_AVAIL_FOR_READ );
 	msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_NEED_TO_SEND_RESP );
@@ -331,7 +333,7 @@ void msg_want_packet( int fd, int msgid ) {
 /////////////////////////////////////////////////////////////////////////////////////
 
 static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* info ) {
-	printf( "msg_switch_failed(): %d %s\n", code, info );
+	printf( "msg_switch_failed() on %d: %d %s\n", msg_switch->sockfd, code, info );
 
 	msg_switch_event( msg_switch, MSG_SWITCH_EVT_IO_FAILED, &code, info );
 }
@@ -536,6 +538,7 @@ void msg_switch_destroy( int fd ) {
 }
 
 static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, int status ) {
+	int sockfd = msg_switch->sockfd;
 	msg_t* msg = msg_get( msg_switch, msgid );
 
 	if ( type == SET && !FL_ISSET( msg->status, status ) ) {

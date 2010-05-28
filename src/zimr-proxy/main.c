@@ -272,7 +272,6 @@ char* get_url_from_http_header( char* raw, char* url, int size ) {
 int get_port_from_url( char* url ) {
 	char* ptr1,* ptr2,* ptr3;
 	char port_str[ 6 ];
-	puts( url );
 	memset( port_str, 0, sizeof( port_str ) );
 
 	ptr1 = strstr( url, ":" ) + 1;
@@ -316,7 +315,7 @@ int remove_website( msg_switch_t* msg_switch ) {
 	}
 
 	msg_switch_destroy( website->sockfd );
-	zclose( msg_switch->sockfd );
+	zclose( website->sockfd );
 
 	free( website_data );
 	website_remove( website );
@@ -360,14 +359,10 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 			msg_want_packet( msg_switch->sockfd, event.data.msgid );
 			break;
 		case MSG_EVT_SENT:
-			printf( "%d: message sent\n", event.data.msgid );
-			break;
 		case MSG_EVT_RECVD:
-			printf( "%d: message recvd\n", event.data.msgid );
 			break;
 		case MSG_EVT_DESTROY:
 			if ( event.data.msgid >= 0 ) {
-				puts( "destroyed" );
 				cleanup_connection( event.data.msgid );
 			}
 			break;
@@ -413,7 +408,6 @@ void insock_event_hdlr( int fd, zsocket_event_t event ) {
 			fprintf( stderr, "New Connection Failed\n" );
 			break;
 		case ZSE_ACCEPTED_CONNECTION:
-			fprintf( stderr, "New Connection #%d on #%d\n", event.data.conn.fd, fd );
 			msg_switch_create( event.data.conn.fd, msg_event_handler );
 			break;
 		case ZSE_READ_DATA:
@@ -431,7 +425,6 @@ void exsock_event_hdlr( int fd, zsocket_event_t event ) {
 			fprintf( stderr, "New Connection Failed\n" );
 			break;
 		case ZSE_ACCEPTED_CONNECTION:
-			printf( "%d: message start\n", event.data.conn.fd );
 			// pass the connection information along...
 			conn_data = (conn_data_t*) malloc( sizeof( conn_data_t ) );
 			conn_data->exlisnfd = fd;
@@ -451,7 +444,6 @@ void exsock_event_hdlr( int fd, zsocket_event_t event ) {
 			break;
 		case ZSE_WROTE_DATA:
 			if ( event.data.read.buffer_used <= 0 ) {
-				puts( "exwrote: failed!" );
 				zpause( fd, true );
 				msg_kill( connections[ fd ]->website_sockfd, fd );
 			}
@@ -466,7 +458,6 @@ void cleanup_connection( int sockfd ) {
 	zclose( sockfd );
 	free( connections[ sockfd ] );
 	connections[ sockfd ] = NULL;
-	printf( "%d: message end\n", sockfd );
 }
 
 void exread( int sockfd, void* buffer, ssize_t len, size_t size ) {
@@ -600,12 +591,7 @@ void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet ) {
 			break;
 
 		case ZM_CMD_WS_STOP:
-			msg_start( msg_switch->sockfd, ZM_CMD_WS_STOP );
-			if ( remove_website( msg_switch ) )
-				msg_send( msg_switch->sockfd, ZM_CMD_WS_STOP, "OK", 3 );
-			else
-				msg_send( msg_switch->sockfd, ZM_CMD_WS_STOP, "FAIL", 3 );
-			msg_end( msg_switch->sockfd, ZM_CMD_WS_STOP );
+			remove_website( msg_switch );
 			break;
 
 		/*case ZM_CMD_STATUS:

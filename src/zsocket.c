@@ -231,7 +231,6 @@ void zsocket_set_event_hdlr( int fd,  void (*zsocket_event_hdlr)( int fd, zsocke
 
 void zclose( int fd ) {
 	assert( initialized );
-
 	zsocket_t* p = zsockets[ fd ];
 
 	if ( p->type == ZSOCK_LISTEN ) {
