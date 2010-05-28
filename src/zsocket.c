@@ -562,12 +562,12 @@ static void zsocket_fire_event( int fd, unsigned int type, ... ) {
 		case ZSE_READ_DATA:
 			event.data.read.buffer_used = va_arg( ap, ssize_t );
 			event.data.read.buffer = va_arg( ap, char* );
-			event.data.read.buffer_size = va_arg( ap, ssize_t );
+			event.data.read.buffer_size = va_arg( ap, size_t );
 			break;
 		case ZSE_WROTE_DATA:
 			event.data.write.buffer_used = va_arg( ap, ssize_t );
 			event.data.write.buffer = va_arg( ap, char* );
-			event.data.write.buffer_size = va_arg( ap, ssize_t );
+			event.data.write.buffer_size = va_arg( ap, size_t );
 			break;
 		default:
 			fprintf( stderr, "zsocket_fire_event: passed undefined event %d\n", event.type );

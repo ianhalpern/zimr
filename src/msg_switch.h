@@ -49,6 +49,7 @@
 #define MSG_STAT_NEED_TO_SEND_RESP         0x0800
 #define MSG_STAT_WANT_PACK                 0x1000
 #define MSG_STAT_KILL_SENT                 0x2000
+#define MSG_STAT_WORKING                   0x4000
 
 #define MSG_EVT_NEW                        0x1
 #define MSG_EVT_SENT                       0x2

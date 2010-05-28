@@ -504,10 +504,10 @@ void msg_switch_create( int fd, void (*event_handler)( struct msg_switch*, msg_e
 	zsocket_set_event_hdlr( fd, msg_zsocket_event_hdlr );
 	zread( fd, true );
 
-	msg_switch_event( msg_switch, MSG_SWITCH_EVT_NEW );
-
 	zsocket_t* zs = zsocket_get_by_sockfd( fd );
 	zs->general.udata = msg_switch;
+
+	msg_switch_event( msg_switch, MSG_SWITCH_EVT_NEW );
 }
 
 void msg_switch_destroy( int fd ) {
@@ -540,6 +540,12 @@ void msg_switch_destroy( int fd ) {
 static void msg_update_status( msg_switch_t* msg_switch, int msgid, char type, int status ) {
 	int sockfd = msg_switch->sockfd;
 	msg_t* msg = msg_get( msg_switch, msgid );
+
+	bool unset_working = false;
+	if ( !FL_ISSET( msg->status, MSG_STAT_WORKING ) ) {
+		FL_SET( msg->status, MSG_STAT_WORKING );
+		unset_working = true;
+	}
 
 	if ( type == SET && !FL_ISSET( msg->status, status ) ) {
 		FL_SET( msg->status, status );
@@ -577,7 +583,8 @@ check_to_destroy:
 				  && !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ )
 				  && !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT )
 				  && !FL_ISSET( msg->status, MSG_STAT_NEED_TO_SEND_RESP )
-				  && !FL_ISSET( msg->status, MSG_STAT_WAITING_FOR_RESP ) )
+				  && !FL_ISSET( msg->status, MSG_STAT_WAITING_FOR_RESP )
+				  && !FL_ISSET( msg->status, MSG_STAT_WORKING ) )
 					msg_destroy( msg_switch->sockfd, msgid );
 				break;
 
@@ -656,6 +663,12 @@ check_to_destroy:
 			case MSG_STAT_WANT_PACK:
 				break;
 		}
+	}
+
+	if ( unset_working ) {
+		unset_working = false;
+		FL_CLR( msg->status, MSG_STAT_WORKING );
+		goto check_to_destroy;
 	}
 
 }

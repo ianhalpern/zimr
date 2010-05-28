@@ -395,6 +395,11 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
 			//zclose( msg_switch->sockfd );
 			if ( website_get_by_sockfd( msg_switch->sockfd ) )
 				remove_website( msg_switch );
+			else {
+				int sockfd = msg_switch->sockfd;
+				msg_switch_destroy( sockfd );
+				zclose( sockfd );
+			}
 			break;
 		case MSG_SWITCH_EVT_NEW:
 		case MSG_SWITCH_EVT_DESTROY:
@@ -443,7 +448,7 @@ void exsock_event_hdlr( int fd, zsocket_event_t event ) {
 			exread( fd, event.data.read.buffer, event.data.read.buffer_used, event.data.read.buffer_size );
 			break;
 		case ZSE_WROTE_DATA:
-			if ( event.data.read.buffer_used <= 0 ) {
+			if ( event.data.write.buffer_used <= 0 ) {
 				zpause( fd, true );
 				msg_kill( connections[ fd ]->website_sockfd, fd );
 			}

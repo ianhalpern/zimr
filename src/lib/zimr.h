@@ -67,7 +67,7 @@ typedef struct {
 typedef struct website_data {
 	msg_switch_t* msg_switch;
 	struct {
-		char ip[ 16 ];
+		char ip[16];
 		int port;
 	} proxy;
 	char  status;
