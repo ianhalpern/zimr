@@ -1,3 +1,4 @@
+*timeout for gethostbyaddr
 *add non regex ignore functionality
 *use getpwent - http://www.kernel.org/doc/man-pages/online/pages/man3/getpwent.3.html
 *implement the OPTIONS and HEADERS method, alternates to GET or POST

@@ -267,7 +267,6 @@ void msg_kill( int fd, int msgid ) {
 void msg_send( int fd, int msgid, void* data, int size ) {
 	msg_switch_t* msg_switch;
 	assert( msg_switch = msg_switch_get_by_sockfd( fd ) );
-	assert( size );
 
 	//printf( "pushing %d bytes\n", size );
 	msg_t* msg;
