@@ -151,7 +151,7 @@ static void msg_push_read_packet( msg_switch_t* msg_switch, int msgid, msg_packe
 
 	assert( FL_ISSET( msg->status, MSG_STAT_READ_STARTED ) );
 
-	list_append( &msg_get( msg_switch, msgid )->read_queue, memdup( packet, sizeof( msg_packet_t ) ) );
+	list_append( &msg->read_queue, memdup( packet, sizeof( msg_packet_t ) ) );
 
 	int sockfd = msg_switch->sockfd;
 	msg_update_status( msg_switch, msg->msgid, SET, MSG_STAT_PACKET_AVAIL_TO_READ );
@@ -203,6 +203,11 @@ static void msg_clear( msg_switch_t* msg_switch, int msgid ) {
 
 	while ( list_size( &msg->read_queue ) )
 		free( list_fetch( &msg->read_queue ) );
+
+	int i=0;
+	if ( ( i = list_locate( &msg_switch->pending_msgs, msg ) ) >= 0 )
+		list_delete_at( &msg_switch->pending_msgs, i );
+
 }
 
 // External MSG functions /////////////////////////////////////////////////////////////
