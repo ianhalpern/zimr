@@ -4,7 +4,6 @@
 *implement the OPTIONS and HEADERS method, alternates to GET or POST
 *adding file sorting to directory view
 *python module: make public directory main directory
-*python module: look further into threading and locks for the python functions called from c, make sure PyGIL functions are used correctly
 *add ping/timeout functionality
 *make "zimr restart" smart enough to keep the old instance alive until all connections die but the new connections get routed to the new instance
 *add "zimr init" command which will be a quick wizard to create a zimr.cnf file
@@ -12,7 +11,7 @@
 *extend module api
 *bug: if comp goes into suspend and is connected to an external proxy, neither side can reconnect
 *update pyzimr cookies type to accept expires, path, etc.
-*add a flag to the ~/.zimr.state file that shows whether or not a app is paused
+*add a flag to the ~/.zimr.state file that shows whether or not an app is paused
 *add multiple architecure compilation to makefile (x86,x86-64)
 *thorough testing (use socat for request testing, check for memleaks with valgrind)
 *make ubuntu package
@@ -44,6 +43,7 @@
 
 < Milestone v0.2.0 >
 
+x*python module: look further into threading and locks for the python functions called from c, make sure PyGIL functions are used correctly
 x*SSL for external encryption
 x*update ignore_files to be regex patterns
 x*add zimr.cnf attributes to zimr-app command line
