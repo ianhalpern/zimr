@@ -34,8 +34,6 @@ static list_t loaded_modules;
 
 // module function definitions //////////////////
 static void  (*modzimr_init)();
-static void  (*modzimr_start_loop)();
-static void  (*modzimr_end_loop)();
 static void  (*modzimr_destroy)();
 static void* (*modzimr_website_init)( website_t*, int, char** );
 static void  (*modzimr_website_destroy)( website_t*, void* );
@@ -148,12 +146,6 @@ void zimr_start() {
 	website_t* website;
 	website_data_t* website_data;
 
-	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
-		module_t* module = list_get_at( &loaded_modules, i );
-		*(void**) (&modzimr_start_loop) = dlsym( module->handle, "modzimr_start_loop" );
-		if ( modzimr_start_loop ) (*modzimr_start_loop)();
-	}
-
 	// TODO: also check to see if there are any enabled websites.
 	if ( !list_size( &websites ) )
 		syslog( LOG_WARNING, "zimr_start() failed: No websites created" );
@@ -189,12 +181,6 @@ void zimr_start() {
 		}
 
 	} while ( list_size( &websites ) && zfd_select( timeout ) );
-
-	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
-		module_t* module = list_get_at( &loaded_modules, i );
-		*(void**) (&modzimr_end_loop) = dlsym( module->handle, "modzimr_end_loop" );
-		if ( modzimr_end_loop ) (*modzimr_end_loop)();
-	}
 }
 
 module_t* zimr_load_module( const char* module_name ) {
@@ -564,7 +550,7 @@ void zimr_connection_send_headers( connection_t* connection ) {
 }
 
 void zimr_connection_send( connection_t* connection, void* message, int size ) {
-	char sizebuf[ 32 ];
+	char sizebuf[32];
 
 	msg_start( connection->website->sockfd, connection->sockfd );
 
@@ -587,7 +573,7 @@ void zimr_connection_send( connection_t* connection, void* message, int size ) {
 void zimr_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir ) {
 	website_data_t* website_data = connection->website->udata;
 	struct stat file_stat;
-	char full_filepath[ 256 ] = "";
+	char full_filepath[256] = "";
 	char* ptr;
 	int i;
 
@@ -600,7 +586,7 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 
 	if ( stat( full_filepath, &file_stat ) ) {
 		// Does not exist.
-		zimr_connection_send_error( connection, 404 );
+		zimr_connection_send_error( connection, 404, NULL, 0 );
 		return;
 	}
 
@@ -631,7 +617,7 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 	// check if file is ignored
 	if ( list_contains( &website_data->ignored_regexs, filepath ) ) {
 		// Does not exist.
-		zimr_connection_send_error( connection, 404 );
+		zimr_connection_send_error( connection, 404, NULL, 0 );
 		return;
 	}
 
@@ -656,26 +642,43 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 
 }
 
-void zimr_connection_send_error( connection_t* connection, short code ) {
-	char sizebuf[ 10 ];
+void zimr_connection_send_error( connection_t* connection, short code, char* message, size_t message_size ) {
+	char sizebuf[10];
 	msg_start( connection->website->sockfd, connection->sockfd );
 
 	response_set_status( &connection->response, code );
 	headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
 
-	char error_msg_buf[ 128 ];
-	strcpy( error_msg_buf, "<html><body><h1>" );
-	strcat( error_msg_buf, response_status( code ) );
-	strcat( error_msg_buf, "</h1></body></html>" );
+	char error_msg_top[] = 
+	"<!doctype html>"
+	"<html>"
+	"<body>"
+	"<h1>";
+	char error_msg_middle[] = 
+	"</h1>"
+	"<div>";
+	char error_msg_bottom[] =
+	"</div>"
+	"</body>"
+	"</html>";
 
-	sprintf( sizebuf, "%zu", strlen( error_msg_buf ) );
+	sprintf( sizebuf, "%zu", strlen( response_status( code ) ) + message_size
+	  + sizeof( error_msg_top ) + sizeof( error_msg_middle ) + sizeof( error_msg_bottom ) - 3 );
 	headers_set_header( &connection->response.headers, "Content-Length", sizebuf );
 
 	zimr_connection_send_status( connection );
 	zimr_connection_send_headers( connection );
 
 	msg_send( connection->website->sockfd, connection->sockfd,
-	  (void*) error_msg_buf, strlen( error_msg_buf ) );
+	  (void*) error_msg_top, sizeof( error_msg_top ) - 1 );
+	msg_send( connection->website->sockfd, connection->sockfd,
+	  (void*) response_status( code ), strlen( response_status( code ) ) );
+	msg_send( connection->website->sockfd, connection->sockfd,
+	  (void*) error_msg_middle, sizeof( error_msg_middle ) - 1 );
+	msg_send( connection->website->sockfd, connection->sockfd,
+	  (void*) message, message_size );
+	msg_send( connection->website->sockfd, connection->sockfd,
+	  (void*) error_msg_bottom, sizeof( error_msg_bottom ) - 1 );
 	msg_end( connection->website->sockfd, connection->sockfd );
 
 	FL_SET( connection->status, CONN_STATUS_SENT );
@@ -701,7 +704,7 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 	DIR* dir;
 	struct dirent* dp;
 	if ( ( dir = opendir( filepath ) ) == NULL) {
-		zimr_connection_send_error( connection, 404 );
+		zimr_connection_send_error( connection, 404, NULL, 0 );
 		return;
 	}
 
@@ -782,7 +785,7 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 	char sizebuf[ 32 ];
 
 	if ( stat( filepath, &file_stat ) ) {
-		zimr_connection_send_error( connection, 404 );
+		zimr_connection_send_error( connection, 404, NULL, 0 );
 		return;
 	}
 
@@ -792,7 +795,7 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 	}
 
 	if ( ( fd = open( filepath, O_RDONLY ) ) < 0 ) {
-		zimr_connection_send_error( connection, 404 );
+		zimr_connection_send_error( connection, 404, NULL, 0 );
 		return;
 	}
 	range_end = (int) file_stat.st_size;

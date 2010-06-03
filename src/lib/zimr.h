@@ -125,7 +125,7 @@ void zimr_connection_send_status( connection_t* connection );
 void zimr_connection_send_headers( connection_t* connection );
 void zimr_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir );
 void zimr_connection_send( connection_t* connection, void* message, int size );
-void zimr_connection_send_error( connection_t* connection, short code );
+void zimr_connection_send_error( connection_t* connection, short code, char* message, size_t message_size );
 void zimr_connection_send_redirect( connection_t* connection, char* url );
 void zimr_connection_default_page_handler( connection_t* connection, char* filepath );
 

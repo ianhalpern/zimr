@@ -26,16 +26,21 @@
 
 #include "zimr.h"
 
-static PyThreadState* _save;
+static PyThreadState* mainstate;
 
 void modzimr_init() {
-	Py_Initialize();
 
 	// initialize thread support
 	PyEval_InitThreads();
 //	PyEval_ReleaseLock();
 
-	PyGILState_STATE gstate = PyGILState_Ensure();
+	Py_Initialize();
+	mainstate = PyThreadState_Swap(NULL);
+	PyEval_ReleaseLock();
+
+	PyEval_AcquireLock();
+	PyThreadState_Swap( mainstate );
+//	PyGILState_STATE gstate = PyGILState_Ensure();
 
 	PyObject* local_path = PyString_FromString( "" );
 	PyObject* sys_path   = PySys_GetObject( "path" );
@@ -43,9 +48,12 @@ void modzimr_init() {
 	PyList_Insert( sys_path, 0, local_path );
 	Py_DECREF( local_path );
 
-	char argv[][ 1 ] = { { "" } };
+	char argv[][1] = { { "" } };
 
 	PySys_SetArgv( 0, (char**) argv );
+
+	if ( PyErr_Occurred() )
+		PyErr_PrintEx(0);
 
 	/*if ( !PyRun_SimpleString(
 		"import zimr\n"
@@ -55,20 +63,15 @@ void modzimr_init() {
 		PyErr_Print();
 	}*/
 
-	PyGILState_Release( gstate );
-//	PyEval_ReleaseLock();
+//	PyGILState_Release( gstate );
+	PyEval_ReleaseLock();
 //	Py_UNBLOCK_THREADS
 }
 
-void modzimr_start_loop() {
-	_save = PyEval_SaveThread();
-}
-
-void modzimr_end_loop() {
-	PyEval_RestoreThread(_save);
-}
-
 void modzimr_destroy() {
+	PyEval_AcquireLock();
+	PyThreadState_Swap( mainstate );
+
 //	Py_BLOCK_THREADS
 //	PyEval_AcquireLock();
 	Py_Finalize();
@@ -78,7 +81,16 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	char* filepath;
 	FILE* fd;
 
-	PyObject* module_path = NULL;
+	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
+	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
+	  * func1_ret = NULL,* func2_ret = NULL,* pyfilename = NULL,* module_path = NULL;
+
+	PyEval_AcquireLock();
+	PyThreadState_Swap( mainstate );
+//	PyGILState_STATE gstate = PyGILState_Ensure();
+//	PyEval_AcquireLock();
+//	Py_BLOCK_THREADS
+
 
 	if ( !argc ) {
 		filepath = "main.py";
@@ -98,28 +110,20 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 			  !( filepath = PyString_AsString( module_path ) )
 			);
 
+			if ( module_path )
+				Py_INCREF( module_path );
+
 			Py_XDECREF( imp_module );
 			Py_XDECREF( find_module_func );
 			Py_XDECREF( ret );
 
 			if ( !filepath || !( fd = fopen( filepath, "r" ) ) ) {
-				Py_XDECREF( module_path );
 				fprintf( stderr, "Error: modpython could not open file or find module %s.\n", argv[0] );
-				if ( PyErr_Occurred() )
-					PyErr_Print();
-				return NULL;
+				goto quit;
 			}
 
 		} else filepath = argv[0];
 	}
-
-	PyGILState_STATE gstate = PyGILState_Ensure();
-//	PyEval_AcquireLock();
-//	Py_BLOCK_THREADS
-
-	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
-	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
-	  * func1_ret = NULL,* func2_ret = NULL;
 
 	if (
 	  !( zimr_module     = PyImport_ImportModule( "zimr" ) ) ||
@@ -153,6 +157,11 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	PyObject* main_module = PyImport_AddModule( "__main__" );
 	PyObject* main_dict = PyModule_GetDict( main_module );
 
+	if ( !( pyfilename = PyString_FromString( filepath ) ) || PyDict_SetItemString( main_dict, "__file__", pyfilename ) == -1 ) {
+		//Py_XDECREF( pyfilename ); // Only DECREF if error, else main_dict takes the reference...maybe?
+		goto quit;
+	}
+
 	if ( !PyRun_File( fd, filepath, Py_file_input, main_dict, main_dict ) ) {
 		goto quit;
 	}
@@ -174,12 +183,13 @@ quit:
 	Py_XDECREF( func1_ret );
 	Py_XDECREF( func2_ret );
 	Py_XDECREF( module_path );
+	Py_XDECREF( pyfilename );
 
 	if ( PyErr_Occurred() )
-		PyErr_Print();
+		PyErr_PrintEx(0);
 
-//	PyEval_ReleaseLock();
-	PyGILState_Release( gstate );
+	PyEval_ReleaseLock();
+//	PyGILState_Release( gstate );
 //	Py_UNBLOCK_THREADS
 
 	return NULL;

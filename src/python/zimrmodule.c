@@ -25,9 +25,47 @@
 
 #include "zimr.h"
 
-PyThreadState* _save = NULL;
+//static PyThreadState* mainstate;
+//PyThreadState* _save = NULL;
 static PyObject* m;
 static void pyzimr_page_handler( connection_t* connection, const char* filepath, void* udata );
+
+static void pyzimr_error_print( connection_t* connection ) {
+	char error_message[ 8192 ] = "";
+	size_t error_message_size = 0;
+
+	PyObject* err_type = NULL,* err_value = NULL,* err_traceback = NULL,* err_traceback_lines = NULL,
+	  * err_traceback_str = NULL,* traceback_module = NULL,* format_exc_func = NULL,* str_join = NULL;
+
+	PyErr_Fetch( &err_type, &err_value, &err_traceback );
+	PyErr_NormalizeException( &err_type, &err_value, &err_traceback );
+
+	if (
+	  ( traceback_module = PyImport_ImportModule( "traceback" ) ) &&
+	  ( format_exc_func = PyObject_GetAttrString( traceback_module, "format_exception" ) ) &&
+	  ( str_join = PyObject_GetAttrString( (PyObject*) &PyString_Type, "join" ) ) &&
+	  ( err_traceback_lines = PyObject_CallFunction( format_exc_func, "OOO", err_type, err_value, err_traceback ) ) &&
+	  ( err_traceback_str = PyObject_CallFunction( str_join, "sO", "", err_traceback_lines ) ) //&&
+	//  ( err_traceback_str = PyObject_Str( err_traceback_str ) )
+	) {
+		error_message_size = snprintf( error_message, sizeof( error_message ), "<pre>%s</pre>", PyString_AsString( err_traceback_str ) );
+		fprintf( stderr, "%s", PyString_AsString( err_traceback_str ) );
+	} else {
+		if ( PyErr_Occurred() )
+			PyErr_PrintEx(0);
+	}
+
+	zimr_connection_send_error( connection, 500, error_message, error_message_size );
+
+	Py_XDECREF( err_type );
+	Py_XDECREF( err_value );
+	Py_XDECREF( err_traceback );
+	Py_XDECREF( err_traceback_lines );
+	Py_XDECREF( err_traceback_str );
+	Py_XDECREF( traceback_module );
+	Py_XDECREF( format_exc_func );
+	Py_XDECREF( str_join );
+}
 
 /********** START OF pyzimr_headers_t *******/
 /**********************************************/
@@ -574,7 +612,7 @@ static void pyzimr_connection_dealloc( pyzimr_connection_t* self ) {
 
 static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* args ) {
 	PyObject* message;
-	const void* message_ptr;
+	void* message_ptr;
 	Py_ssize_t message_len;
 
 	if ( !PyArg_ParseTuple( args, "O", &message ) ) {
@@ -582,7 +620,7 @@ static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* ar
 		return NULL;
 	}
 
-	if ( PyObject_AsReadBuffer( message, &message_ptr, &message_len ) ) {
+	if ( PyObject_AsReadBuffer( message, (const void**) &message_ptr, (Py_ssize_t*) &message_len ) ) {
 		PyErr_SetString( PyExc_TypeError, "invalid message paramater" );
 		return NULL;
 	}
@@ -593,7 +631,7 @@ static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* ar
 }
 
 static PyObject* pyzimr_connection_send_file( pyzimr_connection_t* self, PyObject* args ) {
-	const char* filename = self->_connection->request.url;
+	char* filename = self->_connection->request.url;
 	unsigned char use_pubdir = 1;
 
 	if ( !PyArg_ParseTuple( args, "|sb", &filename, &use_pubdir ) ) {
@@ -749,6 +787,7 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 //	}
 	PyGILState_STATE gstate = PyGILState_Ensure();
 //	PyEval_AcquireLock();
+//	PyThreadState_Swap( mainstate );
 
 	pyzimr_website_t* website = (pyzimr_website_t*) ( (website_data_t*) _connection->website->udata )->udata;
 
@@ -787,9 +826,9 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 	PyObject_CallFunctionObjArgs( website->connection_handler, connection, NULL );
 
 	Py_DECREF( connection );
-	if ( PyErr_Occurred() ) {
-		PyErr_PrintEx( 0 );
-	}
+
+	if ( PyErr_Occurred() )
+		pyzimr_error_print( _connection );
 
 //	PyEval_ReleaseLock();
 	PyGILState_Release( gstate );
@@ -1036,6 +1075,8 @@ static PyObject* pyzimr_default_connection_handler( PyObject* self, PyObject* ar
 static void pyzimr_page_handler( connection_t* connection, const char* filepath, void* udata ) {
 	PyGILState_STATE gstate = PyGILState_Ensure();
 //	PyEval_AcquireLock();
+//	PyThreadState_Swap( mainstate );
+//	PyEval_AcquireLock();
 //	if ( _save ) {
 //		Py_BLOCK_THREADS
 //	}
@@ -1043,7 +1084,7 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 	PyObject* page_handler = udata;
 	PyObject* result;
 	PyObject* connection_obj = connection->udata;
-	const void* result_ptr;
+	void* result_ptr;
 	Py_ssize_t result_len;
 
 
@@ -1052,7 +1093,7 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 	result = PyObject_CallFunction( page_handler, "sO", filepath, connection_obj );
 
 	if ( result != NULL ) {
-		if ( PyObject_AsReadBuffer( result, &result_ptr, &result_len ) ) {
+		if ( PyObject_AsReadBuffer( result, (const void**) &result_ptr, (Py_ssize_t*) &result_len ) ) {
 			PyErr_SetString( PyExc_TypeError, "result from page_handler invalid" );
 			return;
 		}
@@ -1062,8 +1103,8 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 	}
 
 	else {
-		PyErr_Print();
-		zimr_connection_send_error( connection, 500 );
+		if ( PyErr_Occurred() )
+			pyzimr_error_print( connection );
 	}
 
 //	PyEval_ReleaseLock();
@@ -1079,6 +1120,12 @@ static PyMethodDef pyzimr_methods[] = {
 };
 
 PyMODINIT_FUNC initzimr( void ) {
+	/*PyEval_InitThreads();
+	mainstate = PyThreadState_Swap(NULL);
+	PyEval_ReleaseLock();
+
+	PyEval_AcquireLock();
+	PyThreadState_Swap( mainstate );*/
 
 	if ( PyType_Ready( &pyzimr_website_type ) < 0
 	  || PyType_Ready( &pyzimr_connection_type ) < 0
@@ -1118,6 +1165,7 @@ PyMODINIT_FUNC initzimr( void ) {
 	Py_AtExit( &zimr_shutdown );
 
 	zimr_init( "" );
+	//PyEval_ReleaseLock();
 
 	return;
 }
