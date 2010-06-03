@@ -75,20 +75,42 @@ void modzimr_destroy() {
 }
 
 void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
-	char* filename;
+	char* filepath;
 	FILE* fd;
 
+	PyObject* module_path = NULL;
+
 	if ( !argc ) {
-		filename = "main.py";
-		fd = fopen( filename, "r" );
+		filepath = "main.py";
+		fd = fopen( filepath, "r" );
 	}
 
 	else {
-		filename = argv[ 0 ];
-		if ( !( fd = fopen( filename, "r" ) ) ) {
-			fprintf( stderr, "%s: modpython could not open file %s.\n", strerror( errno ), filename );
-			return NULL;
-		}
+		filepath = NULL;
+		if ( !( fd = fopen( argv[0], "r" ) ) ) {
+			PyObject* imp_module = NULL,* find_module_func = NULL,* ret = NULL;
+
+			if (
+			  !( imp_module = PyImport_ImportModule( "imp" ) ) ||
+			  !( find_module_func = PyObject_GetAttrString( imp_module, "find_module" ) ) ||
+			  !( ret = PyObject_CallFunction( find_module_func, "s", argv[0] ) ) ||
+			  !( module_path = PyTuple_GetItem( ret, 1 ) ) ||
+			  !( filepath = PyString_AsString( module_path ) )
+			);
+
+			Py_XDECREF( imp_module );
+			Py_XDECREF( find_module_func );
+			Py_XDECREF( ret );
+
+			if ( !filepath || !( fd = fopen( filepath, "r" ) ) ) {
+				Py_XDECREF( module_path );
+				fprintf( stderr, "Error: modpython could not open file or find module %s.\n", argv[0] );
+				if ( PyErr_Occurred() )
+					PyErr_Print();
+				return NULL;
+			}
+
+		} else filepath = argv[0];
 	}
 
 	PyGILState_STATE gstate = PyGILState_Ensure();
@@ -131,7 +153,7 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	PyObject* main_module = PyImport_AddModule( "__main__" );
 	PyObject* main_dict = PyModule_GetDict( main_module );
 
-	if ( !PyRun_File( fd, filename, Py_file_input, main_dict, main_dict ) ) {
+	if ( !PyRun_File( fd, filepath, Py_file_input, main_dict, main_dict ) ) {
 		goto quit;
 	}
 
@@ -151,6 +173,7 @@ quit:
 	Py_XDECREF( insert_default_page );
 	Py_XDECREF( func1_ret );
 	Py_XDECREF( func2_ret );
+	Py_XDECREF( module_path );
 
 	if ( PyErr_Occurred() )
 		PyErr_Print();
