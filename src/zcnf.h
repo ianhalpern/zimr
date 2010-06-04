@@ -90,7 +90,6 @@ typedef struct {
 // zimr state structs
 typedef struct zcnf_state_app {
 	char* path;
-	list_t args;
 	pid_t pid;
 } zcnf_state_app_t;
 
@@ -112,7 +111,7 @@ zcnf_state_t* zcnf_state_load( uid_t uid );
 zcnf_app_t* zcnf_app_load( char* path );
 zcnf_proxies_t* zcnf_proxy_load();
 bool zcnf_state_app_is_running( zcnf_state_t* state, const char* cwd );
-void zcnf_state_set_app( zcnf_state_t* state, const char* cwd, pid_t pid, list_t* args );
+void zcnf_state_set_app( zcnf_state_t* state, const char* cwd, pid_t pid );
 void zcnf_state_save( zcnf_state_t* state );
 
 void zcnf_app_free( zcnf_app_t* cnf );

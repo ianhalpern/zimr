@@ -44,6 +44,7 @@ int startswith( const char*, const char* );
 char* normalize( char* normpath, const char* path );
 int xtoi( const char* xs, unsigned int* result );
 char* expand_tilde( char* path, char* buffer, int size, uid_t uid );
+char* expand_tilde_with( char* path, char* buffer, int size, char* home );
 bool stopproc( pid_t pid );
 char* strnstr( const char *s, const char *find, size_t slen);
 char* strtolower( char* s );

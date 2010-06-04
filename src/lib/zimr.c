@@ -208,9 +208,16 @@ module_t* zimr_load_module( const char* module_name ) {
 
 		void* handle = dlopen( module_filename, RTLD_NOW | RTLD_GLOBAL );
 		if ( handle == NULL ) {
-			// report error ...
-			fprintf( stderr, "%s\n", dlerror() );
-			return NULL;
+
+			char module_fullpath[ 256 ];
+			expand_tilde( ZM_USR_MODULE_DIR, module_fullpath, sizeof( module_fullpath ), getuid() );
+			strcat( module_fullpath, module_filename );
+			handle = dlopen( module_fullpath, RTLD_NOW | RTLD_GLOBAL );
+			if ( handle == NULL ) {
+				// report error ...
+				fprintf( stderr, "%s\n", dlerror() );
+				return NULL;
+			}
 		}
 
 		module = malloc( sizeof( module_t ) );

@@ -1,4 +1,6 @@
 #! /bin/sh
+# /etc/init.d/zimr-proxy
+#
 
 ### BEGIN INIT INFO
 # Provides:          zimr-proxy
@@ -7,28 +9,27 @@
 # Should-Start:      $networking $named $time
 # Should-Stop:       $networking $named $time
 # Default-Start:     2 3 4 5
-# Default-Stop:      1
+# Default-Stop:      0 1 6
 # Short-Description: virtual http host proxy
 # Description:       zimr-proxy is a specialized http proxy to route
 #                    http(s) requests to internally or externally connected applications.
 ### END INIT INFO
 
-# /etc/init.d/zimr-proxy: start and stop the zimr proxy
 
 exitval=0
 
 case "$1" in
 	start)
 		zimr-proxy start
-		exitval=$?
+		#exitval=$?
 	;;
 	stop)
 		zimr-proxy stop
-		exitval=$?
+		#exitval=$?
 	;;
 	restart)
 		zimr-proxy restart
-		exitval=$?
+		#exitval=$?
 	;;
 	*)
 		echo "Usage: /etc/init.d/zimr-proxy {start|stop}"

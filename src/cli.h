@@ -20,34 +20,23 @@
  *
  */
 
-#include <stdio.h>
+#ifndef _ZM_CLI_H
+#define _ZM_CLI_H
+
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
+#include <stdio.h>
+#include <stdbool.h>
 
-#include "zimr.h"
+typedef struct command {
+	char* name;
+	char* description;
+	void* sub_commands;
+	void (*func)( int optc, char* optv[ ] );
+} cli_cmd_t;
 
-void sigquit() {
-	exit( 0 );
-}
+int cli_to_string( char* commands[ 50 ][ 2 ], char* top_cmd, cli_cmd_t* command, int* n );
+void cli_print( cli_cmd_t* root_cmd );
+bool cli_run( cli_cmd_t* command, int argc, char* argv[] );
 
-int main( int argc, char* argv[] ) {
-
-	zimr_init();
-
-	signal( SIGTERM, sigquit );
-	signal( SIGINT,  sigquit );
-
-	char* cnf_path = NULL;
-	if ( argc > 1 )
-		cnf_path = argv[ 1 ];
-
-	assert( zimr_cnf_load( cnf_path ) );
-
-	atexit( zimr_shutdown );
-
-	zimr_start();
-
-	return 0;
-}
-
+#endif

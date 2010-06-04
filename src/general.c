@@ -158,6 +158,22 @@ int xtoi( const char* xs, unsigned int* result ) {
 	 return 1;
 }
 
+char* expand_tilde_with( char* path, char* buffer, int size, char* home ) {
+	*buffer = 0;
+	if ( *path != '~' ) {
+		if ( strlen( path ) > size ) return NULL;
+		strcpy( buffer, path );
+		return buffer;
+	}
+
+	if ( strlen( home ) + strlen( path + 1 ) > size ) return NULL;
+
+	strcat( buffer, home );
+	strcat( buffer, path + 1 );
+
+	return buffer;
+}
+
 char* expand_tilde( char* path, char* buffer, int size, uid_t uid ) {
 	*buffer = 0;
 	if ( *path != '~' ) {

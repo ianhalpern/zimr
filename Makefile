@@ -17,9 +17,9 @@ PYVERSION = 2.6
 
 OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o zerr.o\
-			  simclist.o msg_switch.o userdir.o
+			  simclist.o msg_switch.o userdir.o cli.o
 
-EXECS       = zimr-proxy zimr-app zimr
+EXECS       = zimr-proxy zimr #zimr-app
 TEST_EXECS  = test-zsocket-client test-zsocket-server test-strnstr test-client test-server
 SHARED_OBJS = libzimr.so
 PYMOD_OBJS  = zimr.so
@@ -74,19 +74,19 @@ install:
 	cp --remove-destination -r modules/* $(INSTALL_MODDIR)
 	@echo "--- Success ---";
 	@echo;
-	@#@echo "--- Setting up system to autostart zimr ---";
-	@#cp init.d/* /etc/init.d/
-	@#@ls init.d | awk '{ x = "chmod 755 /etc/init.d/" $$0; print x; system( x ); }'
-	@#@ls init.d | awk '{ x = "update-rc.d " $$0 " defaults > /dev/null"; print x; system( x ); }'
-	@#@echo "--- Success ---";
-	@#@echo;
+	@echo "--- Setting up system to autostart zimr ---";
+	cp init.d/* /etc/init.d/
+	@ls init.d | awk '{ x = "chmod 755 /etc/init.d/" $$0; print x; system( x ); }'
+	@ls init.d | awk '{ x = "update-rc.d " $$0 " defaults > /dev/null"; print x; system( x ); }'
+	@echo "--- Success ---";
+	@echo;
 	@echo "Finished. Installation succeeded!";
 
 ##### EXECS #####
 #################
 
-zimr: $(EXEC_DEPENDS) zsocket.o zfildes.o zcnf.o general.o simclist.o userdir.o
-	$(EXEC_COMPILE) -lyaml -lssl
+zimr: $(EXEC_DEPENDS) libzimr.so userdir.o cli.o
+	$(EXEC_COMPILE) $(LDZIMR)
 
 zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zcnf.o
 	$(EXEC_COMPILE) -lyaml -lssl

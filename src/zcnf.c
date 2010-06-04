@@ -240,7 +240,6 @@ bool zcnf_state_load_apps( zcnf_state_t* state, yaml_document_t* document, int i
 		list_append( &state->apps, app );
 		app->path = NULL;
 		app->pid = 0;
-		list_init( &app->args );
 
 		for ( j = 0; j < app_node->data.mapping.pairs.top - app_node->data.mapping.pairs.start; j++ ) {
 			yaml_node_t* attr_key = yaml_document_get_node( document, app_node->data.mapping.pairs.start[ j ].key );
@@ -264,20 +263,6 @@ bool zcnf_state_load_apps( zcnf_state_t* state, yaml_document_t* document, int i
 				if ( attr_val->type != YAML_SCALAR_NODE )
 					continue;
 				app->pid = atoi( (char*) attr_val->data.scalar.value );
-			}
-
-			// args
-			else if ( strcmp( "args", (char*) attr_key->data.scalar.value ) == 0 ) {
-				if ( attr_val->type != YAML_SEQUENCE_NODE )
-					continue;
-				int k;
-				for ( k = 0; k < attr_val->data.sequence.items.top - attr_val->data.sequence.items.start; k++ ) {
-					yaml_node_t* arg_node = yaml_document_get_node( document, attr_val->data.sequence.items.start[ k ] );
-					if ( arg_node->type != YAML_SCALAR_NODE )
-						continue;
-					// TODO: remember to free strdup value
-					list_append( &app->args, strdup( (char*) arg_node->data.scalar.value ) );
-				}
 			}
 
 		}
@@ -467,7 +452,7 @@ quit:
 	return cnf;
 }
 
-void zcnf_state_set_app( zcnf_state_t* state, const char* path, pid_t pid, list_t* args ) {
+void zcnf_state_set_app( zcnf_state_t* state, const char* path, pid_t pid ) {
 	zcnf_state_app_t* app;
 
 	int i;
@@ -481,17 +466,10 @@ void zcnf_state_set_app( zcnf_state_t* state, const char* path, pid_t pid, list_
 	if ( i == list_size( &state->apps ) ) {
 		app = (zcnf_state_app_t*) malloc( sizeof( zcnf_state_app_t ) );
 		app->path  = strdup( path );
-		list_init( &app->args );
 		list_append( &state->apps, app );
 	}
 
 	app->pid = pid;
-	if ( args ) {
-		list_clear( &app->args );
-		for ( i = 0; i < list_size( args ); i++ ) {
-			list_append( &app->args, list_get_at( args, i ) );
-		}
-	}
 
 }
 
@@ -531,7 +509,7 @@ void zcnf_state_save( zcnf_state_t* state ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		zcnf_state_app_t* app = list_get_at( &state->apps, i );
-		int app_map, path_name, path_value, pid_name, pid_value, args_name, args_value;
+		int app_map, path_name, path_value, pid_name, pid_value;
 
 		assert( ( app_map = yaml_document_add_mapping( &document, NULL, YAML_BLOCK_SEQUENCE_STYLE ) ) );
 
@@ -547,21 +525,6 @@ void zcnf_state_save( zcnf_state_t* state ) {
 		assert( ( pid_value = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) number, -1, YAML_PLAIN_SCALAR_STYLE ) ) );
 		assert( yaml_document_append_mapping_pair( &document, app_map, pid_name, pid_value ) );
-
-		if ( list_size( &app->args ) ) {
-			assert( ( args_name = yaml_document_add_scalar( &document, NULL,
-			  (unsigned char*) "args", -1, YAML_PLAIN_SCALAR_STYLE ) ) );
-			assert( ( args_value = yaml_document_add_sequence( &document, NULL, YAML_FLOW_SEQUENCE_STYLE ) ) );
-			assert( yaml_document_append_mapping_pair( &document, app_map, args_name, args_value ) );
-
-			int j;
-			for ( j = 0; j < list_size( &app->args ); j++ ) {
-				int arg_item;
-				assert( ( arg_item = yaml_document_add_scalar( &document, NULL,
-				  (unsigned char*) list_get_at( &app->args, j ), -1, YAML_PLAIN_SCALAR_STYLE ) ) );
-				assert( yaml_document_append_sequence_item( &document, args_value, arg_item ) );
-			}
-		}
 
 		assert( yaml_document_append_sequence_item( &document, apps, app_map ) );
 
@@ -612,7 +575,6 @@ void zcnf_app_free( zcnf_app_t* cnf ) {
 }
 
 void zcnf_state_app_free( zcnf_state_app_t* app ) {
-	list_destroy( &app->args );
 	free( app->path );
 	free( app );
 }

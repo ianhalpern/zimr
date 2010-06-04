@@ -1,6 +1,5 @@
 *timeout for gethostbyaddr
 *add non regex ignore functionality
-*use getpwent - http://www.kernel.org/doc/man-pages/online/pages/man3/getpwent.3.html
 *implement the OPTIONS and HEADERS method, alternates to GET or POST
 *adding file sorting to directory view
 *python module: make public directory main directory
@@ -16,7 +15,6 @@
 *thorough testing (use socat for request testing, check for memleaks with valgrind)
 *make ubuntu package
 *look through and update syslog/stdio logging
-*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
 *error files/website handling
 *bug: connections sometimes fail on read and get "connection reset by peers"
 *add support for http headers that are just \n and not \r\n
@@ -43,6 +41,8 @@
 
 < Milestone v0.2.0 >
 
+x*fix bug: "sudo /etc/init.d/zimr start" doesn't run cleany in some cases
+x*use getpwent - http://www.kernel.org/doc/man-pages/online/pages/man3/getpwent.3.html
 x*python module: look further into threading and locks for the python functions called from c, make sure PyGIL functions are used correctly
 x*SSL for external encryption
 x*update ignore_files to be regex patterns

@@ -1,41 +1,38 @@
 #! /bin/sh
+# /etc/init.d/zimr
+#
 
 ### BEGIN INIT INFO
-# Provides:
+# Provides:          zimr
 # Required-Start:    $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Should-Start:      $networking $named $time
 # Should-Stop:       $networking $named $time
 # Default-Start:     2 3 4 5
-# Default-Stop:      1
+# Default-Stop:      0 1 6
 # Short-Description: starts all users applications defined thier zimr state files
 # Description:       each user may have a zimr state that will include any number of
 #                    zimr applications and this utility will autostart all available states.
 ### END INIT INFO
 
-# /etc/init.d/zimr: start and stop all zimr user state applications
-
 exitval=0
 
 case "$1" in
 	start)
-		zimr start all states
-		exitval=$?
+	restart)
+		zimr restart all states
+		#exitval=$?
 	;;
 	stop)
 		zimr stop all states
-		exitval=$?
-	;;
-	restart)
-		zimr restart all states
-		exitval=$?
+		#exitval=$?
 	;;
 	remove)
 		zimr remove all states
-		exitval=$?
+		#exitval=$?
 	;;
 	*)
-		echo "Usage: /etc/init.d/zimr {start|stop|restart|remove}"
+		echo "Usage: /etc/init.d/zimr {restart|stop|remove}"
 		exit 1
 	;;
 esac
