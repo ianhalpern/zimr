@@ -139,6 +139,12 @@ int main( int argc, char* argv[ ] ) {
 	}
 	/////////////////////////////////////////////////
 
+	if ( make_daemon ) {
+		if ( !daemon_init( daemon_flags ) ) {
+			exit(0);
+		}
+	}
+
 	zcnf_proxies_t* proxy_cnf = zcnf_proxy_load();
 	if ( !proxy_cnf ) {
 		fprintf( stderr, "failed to load config.\n" );
@@ -179,7 +185,7 @@ int main( int argc, char* argv[ ] ) {
 
 	// daemonize
 	if ( make_daemon ) {
-		if ( !daemon_start( daemon_flags ) ) {
+		if ( !daemon_detach( daemon_flags ) ) {
 			ret = EXIT_FAILURE;
 			goto quit;
 		}
@@ -343,13 +349,20 @@ const char* start_website( char* url, msg_switch_t* msg_switch ) {
 // Handlers ////////////////////////////////////////////
 
 void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
+	//printf( "event 0x%03x for msg %d\n", event->type, event->data.msgid );
 	switch ( event->type ) {
 		case MSG_EVT_READ_START:
 			msg_want_data( msg_switch->sockfd, event->data.msgid );
 			break;
 		case MSG_EVT_WRITE_START:
+			break;
 		case MSG_EVT_READ_END:
+			//zpause( event->data.msgid, true );
+			break;
 		case MSG_EVT_WRITE_END:
+			if ( event->data.msgid >= 0 ) {
+				zread( event->data.msgid, false );
+			}
 			break;
 		case MSG_EVT_DESTROYED:
 			if ( event->data.msgid >= 0 ) {
@@ -357,12 +370,14 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
 			}
 			break;
 		case MSG_EVT_WRITE_SPACE_FULL:
-			if ( event->data.msgid >= 0 )
+			if ( event->data.msgid >= 0 ) {
 				zread( event->data.msgid, false );
+			}
 			break;
 		case MSG_EVT_WRITE_SPACE_AVAIL:
-			if ( event->data.msgid >= 0 )
+			if ( event->data.msgid >= 0 ) {
 				zread( event->data.msgid, true );
+			}
 			break;
 		case MSG_EVT_RECVD_DATA:
 			if ( event->data.packet.header.msgid < 0 ) {
@@ -429,6 +444,7 @@ void exsock_event_hdlr( int fd, zsocket_event_t event ) {
 			conn_data->postlen = 0;
 			conn_data->is_https = zsocket_is_ssl( conn_data->exlisnfd );
 
+			assert( !connections[ event.data.conn.fd ] );
 			connections[ event.data.conn.fd ] = conn_data;
 
 			zread( event.data.conn.fd, true );
@@ -566,6 +582,7 @@ cleanup:
 
 	if ( !conn_data->postlen ) { /* If there isn't still data coming, */
 		msg_end( website->sockfd, sockfd );
+		//zread( sockfd, false );
 	}
 
 }

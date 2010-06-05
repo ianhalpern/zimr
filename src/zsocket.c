@@ -279,10 +279,11 @@ static void _zsocket_update_fd_state( int fd, void* udata ) {
 		FL_SET( zs->connect.flags, ZREAD_FROM_READ );
 
 	if ( !FL_ISSET( zs->connect.flags, ZPAUSE ) && ( FL_ISSET( zs->connect.flags, ZREAD_FROM_READ ) || FL_ISSET( zs->connect.flags, ZREAD_FROM_WRITE )
-	|| FL_ISSET( zs->connect.flags, ZREAD_FROM_ACCEPT ) ) )
+	|| FL_ISSET( zs->connect.flags, ZREAD_FROM_ACCEPT ) ) ) {
 		zfd_set( fd, ZFD_R, &_zread, udata );
-	else
+	} else {
 		zfd_clr( fd, ZFD_R );
+	}
 }
 
 static void _zread( int fd, void* udata ) {
@@ -438,8 +439,10 @@ void zread( int fd, bool toggle ) {
 
 	if ( toggle )
 		FL_SET( zs->connect.flags, ZREAD_READ );
-	else
+	else {
 		FL_CLR( zs->connect.flags, ZREAD_READ );
+		FL_CLR( zs->connect.flags, ZREAD_FROM_READ );
+	}
 
 	_zsocket_update_fd_state( fd, NULL );
 }

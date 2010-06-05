@@ -48,7 +48,8 @@
 #define D_NOLOCKFILE  0x04
 #define D_NOLOCKCHECK 0x08
 
-int daemon_start( int flags );
+int daemon_init( int flags );
+int daemon_detach( int flags );
 int daemon_stop( bool force );
 void daemon_redirect_stdio( );
 #endif

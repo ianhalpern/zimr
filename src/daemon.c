@@ -67,27 +67,30 @@ void daemon_redirect_stdio() {
 	freopen( "/dev/null", "r", stdin  );
 }
 
-int daemon_start( int flags ) {
-
-	printf( " * starting daemon..." );
-	fflush( stdout );
+int daemon_init( int flags ) {
 
 	if ( is_daemon ) {// already daemonized
 		printf( "failed: process already daemonized.\n" );
 		return 0;
 	}
 
-	if ( !FL_ISSET( flags, D_NOLOCKFILE ) ) {
-		pid_t pid;
-		if ( !FL_ISSET( flags, D_NOLOCKCHECK ) && ( pid = readlockfile( ) ) ) {// lockfile previously set
-			if ( kill( pid, 0 ) == 0 ) { // process running
-				printf( "failed: daemon already running.\n" );
-				return 0;
-			} else {
-				printf( "warning: previous daemon did not clean up lockfile on exit.\n" );
-			}
+	pid_t pid;
+	if ( ( !FL_ISSET( flags, D_NOLOCKFILE ) && !FL_ISSET( flags, D_NOLOCKCHECK ) ) && ( pid = readlockfile() ) ) {// lockfile previously set
+		if ( kill( pid, 0 ) == 0 ) { // process running
+			printf( "failed: daemon already running.\n" );
+			return false;
+		} else {
+			printf( "warning: previous daemon did not clean up lockfile on exit.\n" );
 		}
 	}
+
+	return 1;
+}
+
+int daemon_detach( int flags ) {
+
+	printf( " * starting daemon..." );
+	fflush( stdout );
 
 	void (*prev_sighandler)( int );
 
