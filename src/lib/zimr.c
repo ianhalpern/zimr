@@ -52,14 +52,6 @@ const char* zimr_build_date() {
 
 bool zimr_init() {
 	if ( initialized ) return true;
-	// Setup syslog logging - see SETLOGMASK(3)
-#if defined(DEBUG)
-	setlogmask( LOG_UPTO( LOG_DEBUG ) );
-	openlog( DAEMON_NAME, LOG_CONS | LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_USER );
-#else
-	setlogmask( LOG_UPTO( LOG_INFO ) );
-	openlog( DAEMON_NAME, LOG_CONS, LOG_USER );
-#endif
 
 	// call any needed library init functions
 	assert( userdir_init( getuid() ) );
@@ -75,7 +67,6 @@ bool zimr_init() {
 	//zfd_register_type( INT_CONNECTED, ZFD_R, PFD_TYPE_HDLR zimr_connection_handler );
 	//zfd_register_type( FILEREAD, ZFD_R, ZFD_TYPE_HDLR zimr_file_handler );
 
-	syslog( LOG_INFO, "initialized." );
 	initialized = true;
 	return true;
 }
@@ -96,7 +87,6 @@ void zimr_shutdown() {
 
 	list_destroy( &websites );
 	list_destroy( &loaded_modules );
-	syslog( LOG_INFO, "shutdown." );
 	zimr_close_request_log();
 }
 
@@ -148,9 +138,11 @@ void zimr_start() {
 
 	// TODO: also check to see if there are any enabled websites.
 	if ( !list_size( &websites ) )
-		syslog( LOG_WARNING, "zimr_start() failed: No websites created" );
+		dlog( stderr, "zimr_start() failed: No websites created" );
 
 	do {
+		msg_switch_fire_all_events();
+
 		timeout = 0; // reset timeout value
 
 		// Test and Start website proxies
@@ -163,7 +155,7 @@ void zimr_start() {
 				   requests or commands to this process. */
 				if ( !zimr_website_enable( website ) ) {
 					if ( website_data->conn_tries == 0 )
-						syslog( LOG_WARNING, "%s could not connect to proxy...will retry.", website->url );
+						dlog( stderr, "%s could not connect to proxy...will retry.", website->url );
 
 					if ( ( !ZM_NUM_PROXY_DEATH_RETRIES && website_data->conn_tries != -1 )
 					  || ZM_NUM_PROXY_DEATH_RETRIES > ++website_data->conn_tries )
@@ -171,7 +163,7 @@ void zimr_start() {
 
 					// giving up ...
 					else {
-						syslog( LOG_ERR, "\"%s\" is destroying: %s", website->url, strerror( errno ) );
+						dlog( stderr, "\"%s\" is destroying: %s", website->url, strerror( errno ) );
 						//zimr_website_disable( website );
 						zimr_website_destroy( website );
 					}
@@ -185,7 +177,7 @@ void zimr_start() {
 
 module_t* zimr_load_module( const char* module_name ) {
 	if ( strlen( module_name ) >= ZM_MODULE_NAME_MAX_LEN ) {
-		fprintf( stderr, "module name excedes max length: %s\n", module_name );
+		dlog( stderr, "module name excedes max length: %s\n", module_name );
 		return NULL;
 	}
 
@@ -320,10 +312,11 @@ void command_response_handler( msg_switch_t* msg_switch, msg_packet_t* packet ) 
 				// Everything is good, start listening for requests.
 				website_data->status = WS_STATUS_ENABLED;
 
-				syslog( LOG_INFO, "%s is enabled!", website->url );
+				dlog( stderr, "%s is enabled.", website->full_url );
 				website_data->conn_tries = 0;
 
 			} else {
+				dlog( stderr, "%s failed to enable:\n%s", website->full_url, packet->data + 5 );
 				// WS_START_CMD failed...close socket
 				zclose( website->sockfd );
 				website->sockfd = -1;
@@ -351,41 +344,41 @@ void cleanup_connection( website_data_t* website_data, int sockfd ) {
 	website_data->connections[ sockfd ] = NULL;
 }
 
-void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
+void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
 	website_t* website = website_get_by_sockfd( msg_switch->sockfd );
 	website_data_t* website_data = website->udata;
 
-	switch ( event.type ) {
-		case MSG_EVT_NEW:
-			msg_want_packet( website->sockfd, event.data.msgid );
+	switch ( event->type ) {
+		case MSG_EVT_READ_START:
+			msg_want_data( website->sockfd, event->data.msgid );
 			break;
-		case MSG_EVT_SENT:
-		case MSG_EVT_RECVD:
+		case MSG_EVT_WRITE_END:
+		case MSG_EVT_READ_END:
 			break;
-		case MSG_EVT_DESTROY:
-			if ( event.data.msgid >= 0 ) {
-				cleanup_connection( website_data, event.data.msgid );
+		case MSG_EVT_DESTROYED:
+			if ( event->data.msgid >= 0 ) {
+				cleanup_connection( website_data, event->data.msgid );
 			}
 			break;
-		case MSG_EVT_SPACE_FULL:
-			if ( event.data.msgid >= 0 && website_data->connections[ event.data.msgid ]->fileread_data.fd != -1 ) {
-				zfd_clr( website_data->connections[ event.data.msgid ]->fileread_data.fd, ZFD_R );
+		case MSG_EVT_WRITE_SPACE_FULL:
+			if ( event->data.msgid >= 0 && website_data->connections[ event->data.msgid ]->fileread_data.fd != -1 ) {
+				zfd_clr( website_data->connections[ event->data.msgid ]->fileread_data.fd, ZFD_R );
 			}
 			break;
-		case MSG_EVT_SPACE_AVAIL:
-			if ( event.data.msgid >= 0 && website_data->connections[ event.data.msgid ]->fileread_data.fd != -1 ) {
-				zfd_set( website_data->connections[ event.data.msgid ]->fileread_data.fd, ZFD_R,
-				  ZFD_TYPE_HDLR zimr_file_handler, website_data->connections[ event.data.msgid ]->connection );
+		case MSG_EVT_WRITE_SPACE_AVAIL:
+			if ( event->data.msgid >= 0 && website_data->connections[ event->data.msgid ]->fileread_data.fd != -1 ) {
+				zfd_set( website_data->connections[ event->data.msgid ]->fileread_data.fd, ZFD_R,
+				  ZFD_HDLR zimr_file_handler, website_data->connections[ event->data.msgid ]->connection );
 			}
 			break;
-		case MSG_EVT_RECVD_PACKET:
-			if ( event.data.packet->header.msgid < 0 )
-				command_response_handler( msg_switch, event.data.packet );
-			else if ( !zimr_connection_handler( website, event.data.packet ) ) {
-				msg_kill( website->sockfd, event.data.packet->header.msgid );
+		case MSG_EVT_RECVD_DATA:
+			if ( event->data.packet.header.msgid < 0 )
+				command_response_handler( msg_switch, &event->data.packet );
+			else if ( !zimr_connection_handler( website, &event->data.packet ) ) {
+				msg_destroy( website->sockfd, event->data.packet.header.msgid );
 				return;
 			}
-			msg_want_packet( website->sockfd, event.data.packet->header.msgid );
+			msg_want_data( website->sockfd, event->data.packet.header.msgid );
 			//if ( !packet_recvd( event.data.packet ) )
 			//	msg_kill( sockfd, event.data.packet->header.msgid );
 			break;
@@ -844,7 +837,7 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 	website_data->connections[ connection->sockfd ]->fileread_data.range_start = range_start;
 	website_data->connections[ connection->sockfd ]->fileread_data.range_end = range_end;
 
-	zfd_set( fd, ZFD_R, ZFD_TYPE_HDLR zimr_file_handler, connection );
+	zfd_set( fd, ZFD_R, ZFD_HDLR zimr_file_handler, connection );
 
 }
 
@@ -864,7 +857,7 @@ void zimr_file_handler( int fd, connection_t* connection ) {
 
 	else {
 		if ( n == -1 )
-			msg_kill( connection->website->sockfd, connection->sockfd );
+			msg_destroy( connection->website->sockfd, connection->sockfd );
 		else {
 			msg_end( connection->website->sockfd, connection->sockfd );
 			FL_SET( connection->status, CONN_STATUS_SENT );
@@ -970,7 +963,7 @@ bool zimr_open_request_log() {
 	if ( ( reqlogfd = open( ZM_REQ_LOGFILE, O_WRONLY | O_APPEND ) ) == -1 ) {
 		if ( errno != ENOENT
 		 || ( reqlogfd = creat( ZM_REQ_LOGFILE, S_IRUSR | S_IWUSR ) ) == -1 ) {
-			syslog( LOG_ERR, "error opening request logfile: %s", strerror( errno ) );
+			dlog( stderr, "error opening request logfile: %s", strerror( errno ) );
 			return false;
 		}
 	}
@@ -1000,7 +993,7 @@ void zimr_log_request( connection_t* connection ) {
 	);
 
 	if ( write( reqlogfd, buffer, strlen( buffer ) ) == -1 ) {
-		perror( "error" );
+		dlog( stderr, "error writing to request logfile: %s", strerror( errno ) );
 	}
 }
 

@@ -22,15 +22,15 @@
 
 #include "daemon.h"
 
-static void empty_sighandler( ) { }
+static void empty_sighandler() { }
 
 static bool is_daemon = false;
 
-static void removelockfile( ) {
+static void removelockfile() {
 	remove( D_LOCKFILE_PATH );
 }
 
-static int createlockfile( ) {
+static int createlockfile() {
 	int lockfd;
 	char pidbuf[ 10 ];
 	memset( pidbuf, 0, sizeof( pidbuf ) );
@@ -47,7 +47,7 @@ static int createlockfile( ) {
 	return 1;
 }
 
-static int readlockfile( ) {
+static int readlockfile() {
 	int lockfd;
 	char pidbuf[ 10 ];
 
@@ -60,7 +60,7 @@ static int readlockfile( ) {
 	return atoi( pidbuf );
 }
 
-void daemon_redirect_stdio( ) {
+void daemon_redirect_stdio() {
 	/* repoen the standard file descriptors */
 	freopen( "/dev/null", "w", stdout );
 	freopen( "/dev/null", "w", stderr );
@@ -105,7 +105,7 @@ int daemon_start( int flags ) {
 	pid_t pid, sid;
 
 	/* Fork off the parent process */
-	pid = fork( );
+	pid = fork();
 	if ( pid < 0 )
 		return 0;
 
@@ -143,8 +143,8 @@ int daemon_start( int flags ) {
 	return 1;
 }
 
-int daemon_stop( ) {
-	int pid = readlockfile( );
+int daemon_stop( bool force ) {
+	int pid = readlockfile();
 
 	printf( " * stopping daemon..." );
 	fflush( stdout );
@@ -159,8 +159,11 @@ int daemon_stop( ) {
 			printf( "warning: %s\n", strerror( errno ) );
 			return true;
 		} else {
-			printf( "failed: %s\n", strerror( errno ) );
-			return false;
+			if ( !force || !killproc( pid ) ) {
+				printf( "failed: %s\n", strerror( errno ) );
+				return false;
+			} else if ( force )
+				printf( "force " );
 		}
 	}
 

@@ -20,37 +20,14 @@
  *
  */
 
-#ifndef _ZM_GENERAL_H
-#define _ZM_GENERAL_H
+#ifndef _ZM_DLOG_H
+#define _ZM_DLOG_H
 
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <signal.h>
+#include <stdarg.h>
 #include <time.h>
-#include <unistd.h>
-#include <ctype.h>
-#include <stdbool.h>
-#include <errno.h>
-#include <pwd.h>
-#include <linux/limits.h>
 
-#include "config.h"
-
-int randkey( );
-int url2int( const char* );
-void wait_for_kill( );
-int startswith( const char*, const char* );
-char* normalize( char* normpath, const char* path );
-int xtoi( const char* xs, unsigned int* result );
-char* expand_tilde( char* path, char* buffer, int size, uid_t uid );
-char* expand_tilde_with( char* path, char* buffer, int size, char* home );
-bool stopproc( pid_t pid );
-bool killproc( pid_t pid );
-char* strnstr( const char *s, const char *find, size_t slen);
-char* strtolower( char* s );
-void* memdup( const void* src, size_t len );
-char* chomp(char *s);
+int dlog( FILE* fd, char* message, ...);
 
 #endif
-

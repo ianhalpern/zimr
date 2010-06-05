@@ -296,17 +296,20 @@ static void _zread( int fd, void* udata ) {
 			// clear write_from_write, if read_from_write is not set clear fd select flag
 			FL_CLR( zs->connect.flags, ZREAD_FROM_READ );
 			_zreader( fd, udata );
+			if ( !zsocket_get_by_sockfd( fd ) ) return;
 		}
 
 		if ( FL_ISSET( zs->connect.flags, ZREAD_FROM_WRITE ) ) {
 			// clear write_from_read, if read_from_read is not set and read is not set clear fd select flag
 			FL_CLR( zs->connect.flags, ZREAD_FROM_WRITE );
 			_zwriter( fd, udata );
+			if ( !zsocket_get_by_sockfd( fd ) ) return;
 		}
 
 	} else {
 		FL_CLR( zs->connect.flags, ZREAD_FROM_ACCEPT );
 		_zaccepter( fd, udata );
+		if ( !zsocket_get_by_sockfd( fd ) ) return;
 	}
 
 	_zsocket_update_fd_state( fd, udata );
@@ -323,17 +326,20 @@ static void _zwrite( int fd, void* udata ) {
 			// clear write_from_write, if read_from_write is not set clear fd select flag
 			FL_CLR( zs->connect.flags, ZWRITE_FROM_WRITE );
 			_zwriter( fd, udata );
+			if ( !zsocket_get_by_sockfd( fd ) ) return;
 		}
 
 		if ( FL_ISSET( zs->connect.flags, ZWRITE_FROM_READ ) ) {
 			// clear write_from_read, if read_from_read is not set and read is not set clear fd select flag
 			FL_CLR( zs->connect.flags, ZWRITE_FROM_READ );
 			_zreader( fd, udata );
+			if ( !zsocket_get_by_sockfd( fd ) ) return;
 		}
 
 	} else {
 		FL_CLR( zs->connect.flags, ZWRITE_FROM_ACCEPT );
 		_zaccepter( fd, udata );
+		if ( !zsocket_get_by_sockfd( fd ) ) return;
 	}
 
 	_zsocket_update_fd_state( fd, udata );
@@ -374,6 +380,7 @@ static void _zaccept( int fd, void* udata ) {
 
 	int* origfd_ptr = memdup( &fd, sizeof( fd ) );
 	_zaccepter( newsockfd, origfd_ptr );
+	if ( !zsocket_get_by_sockfd( fd ) ) return;
 	_zsocket_update_fd_state( newsockfd, origfd_ptr );
 }
 
@@ -474,8 +481,9 @@ static void _zreader( int fd, void* udata ) {
 	//if ( rw->fd_info_set )
 	//	zfd_set( fd,rw->fd_info.type, rw->fd_info.udata );
 
-	zsocket_fire_event( fd, ZSE_READ_DATA,  n <= 0 ? n : zs->connect.read.buffer_used, zs->connect.read.buffer, zs->connect.read.buffer_size );
+	ssize_t buff_used = zs->connect.read.buffer_used;
 	zs->connect.read.buffer_used = 0;
+	zsocket_fire_event( fd, ZSE_READ_DATA,  n <= 0 ? n : buff_used, zs->connect.read.buffer, zs->connect.read.buffer_size );
 }
 
 void zwrite( int fd, const void* buffer, ssize_t buffer_size ) {
@@ -490,7 +498,8 @@ void zwrite( int fd, const void* buffer, ssize_t buffer_size ) {
 	zs->connect.write.buffer_used = 0;
 	FL_SET( zs->connect.flags, ZWRITE_FROM_WRITE );
 
-	_zwrite( fd, NULL );
+	//_zwrite( fd, NULL );
+	_zsocket_update_fd_state( fd, NULL );
 }
 
 static void _zwriter( int fd, void* udata ) {

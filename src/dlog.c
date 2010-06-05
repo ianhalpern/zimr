@@ -20,35 +20,24 @@
  *
  */
 
-#ifndef _ZM_DAEMON_H
-#define _ZM_DAEMON_H
+#include "dlog.h"
 
-#include <errno.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <signal.h>
-#include <fcntl.h>
+int dlog( FILE* f, char* message, ... ) {
+	time_t now;
+	char now_str[ 80 ];
+	int ret;
 
-#include "general.h"
-#include "config.h"
+	time( &now );
+	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y: ", localtime( &now ) );
+	if ( fwrite( now_str, strlen( now_str ), 1, f ) == -1 )
+		return -1;
 
-// to change the lockfile path
-// just define D_LOCKFILE_PATH
-// before including "daemonize.h"
-#ifndef D_LOCKFILE_PATH
-#define D_LOCKFILE_PATH "daemon.pid"
-#endif
+	va_list ap;
+	va_start( ap, message );
+	ret = vfprintf( f, message, ap );
+	va_end( ap );
 
-#define D_KEEPSTDIO   0x01
-#define D_NOCD        0x02
-#define D_NOLOCKFILE  0x04
-#define D_NOLOCKCHECK 0x08
-
-int daemon_start( int flags );
-int daemon_stop( bool force );
-void daemon_redirect_stdio( );
-#endif
+	fwrite( "\n", 1, 1, f );
+	fflush( f );
+	return ret;
+}

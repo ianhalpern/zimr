@@ -19,16 +19,18 @@ exitval=0
 
 case "$1" in
 	start)
+		zimr restart all users
+	;;
 	restart)
-		zimr restart all states
+		zimr restart all users
 		#exitval=$?
 	;;
 	stop)
-		zimr stop all states
+		zimr stop all users
 		#exitval=$?
 	;;
 	remove)
-		zimr remove all states
+		zimr remove all users
 		#exitval=$?
 	;;
 	*)

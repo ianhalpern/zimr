@@ -50,29 +50,29 @@ bool packet_recvd( msg_packet_t* packet ) {
 	} else
 		return false;
 
-	msg_want_packet( sockfd, packet->header.msgid );
+	msg_want_data( sockfd, packet->header.msgid );
 	return true;
 }
 
-void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
-	switch ( event.type ) {
-		case MSG_EVT_NEW:
-			msg_want_packet( sockfd, event.data.msgid );
+void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
+	switch ( event->type ) {
+		case MSG_EVT_READ_START:
+			msg_want_data( sockfd, event->data.msgid );
 			break;
-		case MSG_EVT_SENT:
+		case MSG_EVT_WRITE_END:
 			break;
-		case MSG_EVT_RECVD:
-			msg_destroy( sockfd, event.data.msgid );
+		case MSG_EVT_READ_END:
+			msg_destroy( sockfd, event->data.msgid );
 			break;
-		case MSG_EVT_DESTROY:
+		case MSG_EVT_DESTROYED:
 			puts( "destroy" );
 			break;
-		case MSG_EVT_SPACE_FULL:
-		case MSG_EVT_SPACE_AVAIL:
+		case MSG_EVT_WRITE_SPACE_FULL:
+		case MSG_EVT_WRITE_SPACE_AVAIL:
 			break;
-		case MSG_EVT_RECVD_PACKET:
-			if ( !packet_recvd( event.data.packet ) )
-				msg_kill( sockfd, event.data.packet->header.msgid );
+		case MSG_EVT_RECVD_DATA:
+			if ( !packet_recvd( &event->data.packet ) )
+				msg_destroy( sockfd, event->data.packet.header.msgid );
 			break;
 		case MSG_SWITCH_EVT_NEW:
 		case MSG_SWITCH_EVT_DESTROY:
@@ -89,7 +89,9 @@ int main( int argc, char* argv[] ) {
 	sockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_CONNECT, NULL, false );
 	puts( "connected to server" );
 	msg_switch_create( sockfd, msg_event_handler );
-	while( zfd_select(0) );
+	do {
+		msg_switch_fire_all_events();
+	} while( zfd_select(0) );
 
 	return 0;
 }

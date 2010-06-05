@@ -26,7 +26,6 @@
 #include <sys/types.h>
 #include <time.h>
 #include <sys/stat.h>
-#include <syslog.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <signal.h>
@@ -43,6 +42,7 @@
 #include "userdir.h"
 #include "mime.h"
 #include "zcnf.h"
+#include "dlog.h"
 
 #define INREAD 0x01
 #define INWRIT 0x02

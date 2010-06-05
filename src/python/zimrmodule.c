@@ -24,6 +24,7 @@
 #include <structmember.h>
 
 #include "zimr.h"
+#include "dlog.h"
 
 //static PyThreadState* mainstate;
 //PyThreadState* _save = NULL;
@@ -49,7 +50,7 @@ static void pyzimr_error_print( connection_t* connection ) {
 	//  ( err_traceback_str = PyObject_Str( err_traceback_str ) )
 	) {
 		error_message_size = snprintf( error_message, sizeof( error_message ), "<pre>%s</pre>", PyString_AsString( err_traceback_str ) );
-		fprintf( stderr, "%s", PyString_AsString( err_traceback_str ) );
+		dlog( stderr, "\n%s", PyString_AsString( err_traceback_str ) );
 	} else {
 		if ( PyErr_Occurred() )
 			PyErr_PrintEx(0);

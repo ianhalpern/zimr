@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include "zimr.h"
+#include "dlog.h"
 
 static PyThreadState* mainstate;
 

@@ -68,12 +68,12 @@ void print_usage() {
 }*/
 
 void sigquit() {
-	exit(0);
+	//exit(0);
 }
 // Functions ////////////////////////////
 void application_shutdown() {
+	puts( "shutdown" );
 	zimr_shutdown();
-	puts( "here" );
 }
 
 pid_t application_exec( uid_t uid, char* path, bool nofork ) {
@@ -90,9 +90,6 @@ pid_t application_exec( uid_t uid, char* path, bool nofork ) {
 		setuid( uid );
 		setgid( uid );
 
-		//freopen( ZM_OUT_LOGFILE, "w", stdout );
-		//freopen( ZM_ERR_LOGFILE, "w", stderr );
-
 		zimr_init();
 
 		signal( SIGTERM, sigquit );
@@ -102,6 +99,9 @@ pid_t application_exec( uid_t uid, char* path, bool nofork ) {
 
 		atexit( application_shutdown );
 
+		//freopen( ZM_OUT_LOGFILE, "w", stdout );
+		freopen( ZM_ERR_LOGFILE, "a", stderr );
+
 		zimr_start();
 
 	} else if ( pid == (pid_t) -1 ) {
@@ -109,9 +109,9 @@ pid_t application_exec( uid_t uid, char* path, bool nofork ) {
 		puts( "parent error: no child" );
 		return -1;
 	} else {
-		/*int exitstat;
 		sleep( 1 );
-		waitpid( pid, &exitstat, WNOHANG );
+		int exitstat;
+		/*waitpid( pid, &exitstat, WNOHANG );
 		if ( exitstat ) {
 			//waitpid( pid, &exitstat, 0 );
 			return -1;
@@ -121,15 +121,21 @@ pid_t application_exec( uid_t uid, char* path, bool nofork ) {
 	return pid;
 }
 
-bool application_kill( pid_t pid ) {
+bool application_kill( pid_t pid, bool force ) {
 	if ( !pid ) return true;
+	if ( force ) {
+		if ( !killproc( pid ) && errno != ESRCH )
+			return false;
+		return true;
+	}
+
 	if ( !stopproc( pid ) && errno != ESRCH ) {
 		return false;
 	}
 	return true;
 }
 
-bool application_function( uid_t uid, char* cnf_path, char type ) {
+bool application_function( uid_t uid, char* cnf_path, char type, bool force ) {
 	if ( CMDSTR( type ) )
 		printf( " * %s %s...", CMDSTR( type ), cnf_path ); fflush( stdout );
 
@@ -178,7 +184,7 @@ bool application_function( uid_t uid, char* cnf_path, char type ) {
 				zcnf_state_set_app( state, cnf_path, pid );
 				break;
 			case RESTART:
-				if ( !application_kill( app->pid ) ) {
+				if ( !application_kill( app->pid, force ) ) {
 					retval = false;
 					printf( "Failed: %s\n", strerror( errno ) );
 					goto quit;
@@ -193,7 +199,7 @@ bool application_function( uid_t uid, char* cnf_path, char type ) {
 				zcnf_state_set_app( state, app->path, pid );
 				break;
 			case STOP:
-				if ( !application_kill( app->pid ) ) {
+				if ( !application_kill( app->pid, force ) ) {
 					retval = false;
 					//printf( "Failed: %s\n", strerror( errno ) );
 					goto quit;
@@ -202,7 +208,7 @@ bool application_function( uid_t uid, char* cnf_path, char type ) {
 				zcnf_state_set_app( state, app->path, 0 );
 				break;
 			case REMOVE:
-				if ( !application_kill( app->pid ) ) {
+				if ( !application_kill( app->pid, force ) ) {
 					retval = false;
 					printf( "Failed: %s\n", strerror( errno ) );
 					//print_errors( cnf_path );
@@ -246,7 +252,7 @@ bool state_function( uid_t uid, char type ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( !application_function( uid, app->path, type ) ) {
+		if ( !application_function( uid, app->path, type, false ) ) {
 			//retval = false;
 			//goto quit;
 		}
@@ -297,10 +303,10 @@ void application_add_cmd( int optc, char* optv[] ) {
 	bool nostate = false;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( strcmp( optv[ i ], "-no-state" ) == 0 ) {
+		if ( strcmp( optv[i], "-no-state" ) == 0 ) {
 			nostate = true;
 		} else if ( !i ) {
-			realpath( optv[ i ], cnf_path );
+			realpath( optv[i], cnf_path );
 		} else {
 			print_usage();
 			return;
@@ -310,7 +316,7 @@ void application_add_cmd( int optc, char* optv[] ) {
 	if ( nostate )
 		application_exec( getuid(), cnf_path, true );
 
-	else if ( !application_function( getuid(), cnf_path, ADD ) )
+	else if ( !application_function( getuid(), cnf_path, ADD, false ) )
 		exit( EXIT_FAILURE );
 
 }
@@ -320,17 +326,20 @@ void application_stop_cmd( int optc, char* optv[] ) {
 	getcwd( cnf_path, sizeof( cnf_path ) );
 	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
 
+	bool force = false;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( !i )
-			realpath( optv[ i ], cnf_path );
+		if ( strcmp( optv[i], "-force" ) == 0 ) {
+			force = true;
+		} else if ( !i )
+			realpath( optv[i], cnf_path );
 		else {
 			print_usage();
 			return;
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, STOP ) )
+	if ( !application_function( getuid(), cnf_path, STOP, force ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -339,17 +348,20 @@ void application_restart_cmd( int optc, char* optv[] ) {
 	getcwd( cnf_path, sizeof( cnf_path ) );
 	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
 
+	bool force = false;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( !i )
-			realpath( optv[ i ], cnf_path );
+		if ( strcmp( optv[i], "-force" ) == 0 ) {
+			force = true;
+		} else if ( !i )
+			realpath( optv[i], cnf_path );
 		else {
 			print_usage();
 			return;
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, RESTART ) )
+	if ( !application_function( getuid(), cnf_path, RESTART, force ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -358,17 +370,20 @@ void application_remove_cmd( int optc, char* optv[] ) {
 	getcwd( cnf_path, sizeof( cnf_path ) );
 	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
 
+	bool force = false;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( !i )
-			realpath( optv[ i ], cnf_path );
+		if ( strcmp( optv[i], "-force" ) == 0 ) {
+			force = true;
+		} else if ( !i )
+			realpath( optv[i], cnf_path );
 		else {
 			print_usage();
 			return;
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, REMOVE ) )
+	if ( !application_function( getuid(), cnf_path, REMOVE, force ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -380,14 +395,14 @@ void application_status_cmd( int optc, char* optv[] ) {
 	int i;
 	for ( i = 0; i < optc; i++ ) {
 		if ( !i )
-			realpath( optv[ i ], cnf_path );
+			realpath( optv[i], cnf_path );
 		else {
 			print_usage();
 			return;
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, STATUS ) )
+	if ( !application_function( getuid(), cnf_path, STATUS, false ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -471,7 +486,7 @@ void proxy_status_cmd( int optc, char* optv[] ) {
 int main( int argc, char* argv[] ) {
 
 	cli_cmd_t stop_all_commands[] = {
-		{ "states", "Stop all users' webapps.\n", NULL, &state_stop_all_cmd },
+		{ "users", "Stop all users' webapps.\n", NULL, &state_stop_all_cmd },
 		{ NULL }
 	};
 
@@ -481,7 +496,7 @@ int main( int argc, char* argv[] ) {
 	};
 
 	cli_cmd_t restart_all_commands[] = {
-		{ "states", "Restart all users' webapps.\n", NULL, &state_restart_all_cmd },
+		{ "users", "Restart all users' webapps.\n", NULL, &state_restart_all_cmd },
 		{ NULL }
 	};
 
@@ -491,7 +506,7 @@ int main( int argc, char* argv[] ) {
 	};
 
 	cli_cmd_t remove_all_commands[] = {
-		{ "states", "Remove all users' webapps.\n", NULL, &state_remove_all_cmd },
+		{ "users", "Remove all users' webapps.\n", NULL, &state_remove_all_cmd },
 		{ NULL }
 	};
 
@@ -501,7 +516,7 @@ int main( int argc, char* argv[] ) {
 	};
 
 	cli_cmd_t status_all_commands[] = {
-		{ "states", "View the status of all users' webapps.\n", NULL, &state_status_all_cmd },
+		{ "users", "View the status of all users' webapps.\n", NULL, &state_status_all_cmd },
 		{ NULL }
 	};
 
@@ -512,10 +527,10 @@ int main( int argc, char* argv[] ) {
 
 	cli_cmd_t zimr_commands[] = {
 		{ "add",     "Add a webapp. [ <config path>, -no-state ]\n", NULL, &application_add_cmd },
-		{ "restart", "Restart a webapp. [ <config path> ]", &restart_commands, &application_restart_cmd },
-		{ "stop",    "Stop a webapp. [ <config path> ]", &stop_commands, &application_stop_cmd },
+		{ "restart", "Restart a webapp. [ <config path>, -force ]", &restart_commands, &application_restart_cmd },
+		{ "stop",    "Stop a webapp. [ <config path>, -force ]", &stop_commands, &application_stop_cmd },
 		{ "status",  "View the status of a webapp. [ <config path> ]", &status_commands, &application_status_cmd },
-		{ "remove",  "Remove a webapp. [ <config path> ]", &remove_commands, &application_remove_cmd },
+		{ "remove",  "Remove a webapp. [ <config path>, -force ]", &remove_commands, &application_remove_cmd },
 		{ "help",    "List all commands.", NULL, &help_cmd },
 		{ NULL }
 	};

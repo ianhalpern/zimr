@@ -35,24 +35,24 @@
 
 int inconnfd;
 
-void msg_event_handler( msg_switch_t* msg_switch, msg_event_t event ) {
-	switch ( event.type ) {
-		case MSG_EVT_NEW:
-		case MSG_EVT_SENT:
-		case MSG_EVT_RECVD:
+void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
+	switch ( event->type ) {
+		case MSG_EVT_READ_START:
+		case MSG_EVT_READ_END:
+		case MSG_EVT_WRITE_END:
 			break;
-		case MSG_EVT_DESTROY:
+		case MSG_EVT_DESTROYED:
 			puts( "complete." );
-			zclose( event.data.msgid );
+			zclose( event->data.msgid );
 			break;
-		case MSG_EVT_SPACE_FULL:
-			zread( event.data.msgid, false );
+		case MSG_EVT_WRITE_SPACE_FULL:
+			zread( event->data.msgid, false );
 			break;
-		case MSG_EVT_SPACE_AVAIL:
-			zread( event.data.msgid, true );
+		case MSG_EVT_WRITE_SPACE_AVAIL:
+			zread( event->data.msgid, true );
 			break;
-		case MSG_EVT_RECVD_PACKET:
-			zwrite( event.data.packet->header.msgid, event.data.packet->data, event.data.packet->header.size );
+		case MSG_EVT_RECVD_DATA:
+			zwrite( event->data.packet.header.msgid, event->data.packet.data, event->data.packet.header.size );
 			break;
 		case MSG_SWITCH_EVT_IO_FAILED:
 		case MSG_SWITCH_EVT_NEW:
@@ -92,15 +92,16 @@ void exsock_event_hdlr( int fd, zsocket_event_t event ) {
 
 			if ( event.data.read.buffer_used == 0 ) {
 				msg_end( inconnfd, fd );
+				zread( fd, false );
 			} else if ( event.data.read.buffer_used == -1 )
-				msg_kill( inconnfd, fd );
+				msg_destroy( inconnfd, fd );
 			else
 				// push onto queue for sockfd
 				msg_send( inconnfd, fd, event.data.read.buffer, event.data.read.buffer_used );
 			break;
 		case ZSE_WROTE_DATA:
 			if ( event.data.read.buffer_used <= 0 )
-				msg_kill( inconnfd, fd );
+				msg_destroy( inconnfd, fd );
 
 			//if ( PACK_IS_LAST( packet ) )
 			//	close( sockfd );
@@ -121,8 +122,9 @@ int main( int argc, char* argv[] ) {
 	zaccept( insockfd, true );
 	zaccept( exsockfd, true );
 	//zfd_set( exsockfd, EXLISN, NULL );
-
-	while( zfd_select(0) );
+	do {
+		msg_switch_fire_all_events();
+	} while( zfd_select(0) );
 
 	return 0;
 }

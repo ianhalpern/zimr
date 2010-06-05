@@ -23,7 +23,7 @@
 #ifndef _ZM_PFILDES_H
 #define _ZM_PFILDES_H
 
-#define ZFD_TYPE_HDLR (void (*)( int, void* ))
+#define ZFD_HDLR (void (*)( int, void* ))
 
 #include <string.h>
 #include <stdlib.h>

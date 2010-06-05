@@ -48,19 +48,19 @@
 #define MSG_STAT_WAITING_FOR_RESP          0x0400
 #define MSG_STAT_NEED_TO_SEND_RESP         0x0800
 #define MSG_STAT_WANT_PACK                 0x1000
-#define MSG_STAT_KILL_SENT                 0x2000
-#define MSG_STAT_WORKING                   0x4000
+#define MSG_STAT_DESTROY_SENT              0x2000
 
-#define MSG_EVT_NEW                        0x1
-#define MSG_EVT_SENT                       0x2
-#define MSG_EVT_RECVD                      0x3
-#define MSG_EVT_DESTROY                    0x5
-#define MSG_EVT_SPACE_AVAIL                0x6
-#define MSG_EVT_SPACE_FULL                 0x7
-#define MSG_EVT_RECVD_PACKET               0x8
-#define MSG_SWITCH_EVT_NEW                 0x9
-#define MSG_SWITCH_EVT_DESTROY             0xa
-#define MSG_SWITCH_EVT_IO_FAILED           0xb
+#define MSG_EVT_READ_START                 0x001
+#define MSG_EVT_RECVD_DATA                 0x002
+#define MSG_EVT_READ_END                   0x004
+#define MSG_EVT_WRITE_START                0x008
+#define MSG_EVT_WRITE_SPACE_AVAIL          0x010
+#define MSG_EVT_WRITE_SPACE_FULL           0x020
+#define MSG_EVT_WRITE_END                  0x040
+#define MSG_EVT_DESTROYED                  0x080
+#define MSG_SWITCH_EVT_NEW                 0x100
+#define MSG_SWITCH_EVT_IO_FAILED           0x200
+#define MSG_SWITCH_EVT_DESTROY             0x400
 
 #define PACK_FL_FIRST 0x1
 #define PACK_FL_LAST  0x2
@@ -68,8 +68,8 @@
 #define PACK_IS_FIRST(X) ( FL_ISSET( ( (msg_packet_t*)(X) )->header.flags, PACK_FL_FIRST ) )
 #define PACK_IS_LAST(X)  ( FL_ISSET( ( (msg_packet_t*)(X) )->header.flags, PACK_FL_LAST ) )
 
-#define MSG_RESP_OK   0x1
-#define MSG_RESP_FAIL 0x2
+#define MSG_RESP_OK      0x1
+#define MSG_RESP_DESTROY 0x2
 
 #define MSG_TYPE_RESP 0x1
 #define MSG_TYPE_PACK 0x2
@@ -106,7 +106,7 @@ typedef struct {
 	int type;
 	union {
 		int msgid;
-		msg_packet_t* packet;
+		msg_packet_t packet;
 	} data;
 } msg_event_t;
 
@@ -114,6 +114,7 @@ typedef struct msg_switch {
 	int sockfd;
 	list_t pending_resps;
 	list_t pending_msgs;
+	list_t pending_events;
 	msg_t* msgs[ FD_SETSIZE * 2 ];
 
 	struct {
@@ -134,17 +135,18 @@ typedef struct msg_switch {
 	} write;
 
 	// events
-	void (*event_handler)( struct msg_switch*, msg_event_t event );
+	void (*event_handler)( struct msg_switch*, msg_event_t* event );
 } msg_switch_t;
 
-void msg_switch_create( int sockfd, void (*event_handler)( struct msg_switch*, msg_event_t event ) );
+void msg_switch_create( int sockfd, void (*event_handler)( struct msg_switch*, msg_event_t* event ) );
 void msg_switch_destroy( int sockfd );
 bool msg_exists( int sockfd, int msgid );
 void msg_start( int sockfd, int msgid );
 void msg_end( int sockfd, int msgid );
-void msg_kill( int sockfd, int msgid );
+void msg_send( int sockfd, int msgid, const void* data, int size );
+void msg_want_data( int sockfd, int msgid );
+//void msg_kill( int sockfd, int msgid );
 void msg_destroy( int sockfd, int msgid );
-void msg_send( int sockfd, int msgid, void* data, int size );
-void msg_want_packet( int sockfd, int msgid );
+void msg_switch_fire_all_events();
 
 #endif

@@ -270,6 +270,6 @@ void modzimr_connection_new( connection_t* connection, void* udata ) {
 not_auth:
 	if ( !auth_info->url || startswith( connection->request.url, auth_info->url ) ) {
 		headers_set_header( &connection->response.headers, "WWW-Authenticate", "Basic realm=\"Secure Area\"" );
-		zimr_connection_send_error( connection, 401 );
+		zimr_connection_send_error( connection, 401, NULL, 0 );
 	}
 }

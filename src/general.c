@@ -214,6 +214,26 @@ bool stopproc( pid_t pid ) {
 	return true;
 }
 
+bool killproc( pid_t pid ) {
+
+	if ( kill( pid, SIGKILL ) != 0 ) { // process not running
+		return false;
+	}
+
+	sleep( 1 );
+
+	if ( kill( pid, 0 ) != -1 ) { // process still running, not dead
+		errno = EBUSY;
+		return false;
+	}
+
+	if ( errno != ESRCH ) {// failed on error other than nonexistant pid
+		return false;
+	}
+
+	return true;
+}
+
 char* strnstr( const char* s, const char* find, size_t slen) {
 
 	int success = 0, len = strlen( find );
