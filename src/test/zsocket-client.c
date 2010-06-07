@@ -30,45 +30,9 @@
 #include "zsocket.h"
 #include "zfildes.h"
 
-/*
-#define READ   0x2
-#define WRITE  0x3
-
-void write_data( int fd, void* udata );
-
-void write_data_complete( int fd, int n, void* buffer, size_t s, void* udata ) {
-	if ( n <= 0 ) {
-		puts( "error: write_data_complete" );
-		zfd_clr( fd, WRITE );
-		return;
-	}
-
-	//free( buffer );
-	//zfd_set( fd, READ, NULL );
-	//zfd_clr( fd, WRITE );
-	write_data( fd, NULL );
-}
-
-void read_data_complete( int fd, int n, void* buffer, size_t s, void* udata ) {
-	if ( n > 0 )
-		printf( "read: %s\n", buffer );
-	else {
-		puts( "error: read_data_complete" );
-		zfd_clr( fd, READ );
-		zclose( fd );
-		return;
-	}
-	//zwrite( fd, memdup( buffer, 1024 ), 1024, write_data_complete, NULL );
-	//zwrite( fd, memdup( buffer, 1024 ), 1024, write_data_complete, NULL );
-	//zfd_set( fd, WRITE, NULL );
-	free( buffer );
-}
-
-void read_data( int fd, void* udata ) {
-	void* buff = malloc( 1024 );
-	memset( buff, 0, 1024 );
-	zread( fd, buff, 1024, read_data_complete, NULL );
-}*/
+int nread = 0;
+int nwrote = 0;
+int finished = 0;
 
 void zsocket_event_hdlr( int fd, int event ) {
 	int n;
@@ -88,8 +52,16 @@ void zsocket_event_hdlr( int fd, int event ) {
 					fprintf( stderr, "%d: EOF\n", fd );
 				//zs_close( fd );
 				zs_clr_read( fd );
-			} else
+			} else {
+				nread += n;
 				write( STDOUT_FILENO, buf, n );
+			}
+
+			if ( !zs_isset_write( fd ) && nread == nwrote ) {
+				fprintf( stderr, "finished...closing.\n" );
+				zs_close( fd );
+				finished = 1;
+			}
 			break;
 		case ZS_EVT_WRITE_READY:
 			//fprintf( stderr, "Wrote %d bytes of data\n", (int)event.data.write.buffer_used );
@@ -100,7 +72,7 @@ void zsocket_event_hdlr( int fd, int event ) {
 				//zs_close( fd );
 				zs_clr_write( fd );
 				return;
-			}
+			} else nwrote += n;
 			n = zs_write( fd, buf, n );
 			if ( n == -1 ) {
 				perror( "zsocket_event_hdlr() error: zs_write" );
@@ -115,7 +87,7 @@ int main( int argc, char **argv ) {
 
 	zs_init();
 
-	int fd = zsocket( inet_addr( "127.0.0.1" ), 8080, ZSOCK_CONNECT, zsocket_event_hdlr, true );
+	int fd = zsocket( inet_addr( "127.0.0.1" ), 8080, ZSOCK_CONNECT, zsocket_event_hdlr, false );
 	if ( fd < 0 ) {
 		perror( "ERROR" );
 		return EXIT_FAILURE;
@@ -126,7 +98,7 @@ int main( int argc, char **argv ) {
 
 	do {
 		while ( zs_select() );
-	} while( zfd_select(0) );
+	} while( !finished && zfd_select(0) );
 
 	return EXIT_SUCCESS;
 }
