@@ -90,54 +90,65 @@ void accept_conn( int fd, void* udata ) {
 	zaccept( fd, cli_addr, cli_len, accept_conn_complete, NULL );
 }*/
 
-void write_data( int fd ) {
-	static char buff[ 1024 ];
-	int n = read( STDIN_FILENO, buff, 1024 );
-	if ( n > 0 )
-		zwrite( fd, buff, n );
-		//zclose( fd );
-}
+void zsocket_event_hdlr( int fd, int event ) {
+	int n;
+	char buf[1024];
 
-void zsocket_event_hdlr( int fd, zsocket_event_t event ) {
-	switch ( event.type ) {
-		case ZSE_ACCEPT_ERR:
-			fprintf( stderr, "New Connection Failed\n" );
+	switch ( event ) {
+		case ZS_EVT_ACCEPT_READY:
+			n = zs_accept( fd );
+			if ( n == -1 ) {
+				perror( "zsocket_event_hdlr() error: zs_accept" );
+				//zs_close( fd );
+				break;
+			}
+			fprintf( stderr, "New Connection #%d on #%d\n", n, fd );
+			zs_set_read( n );
+			zs_set_write( n );
 			break;
-		case ZSE_ACCEPTED_CONNECTION:
-			fprintf( stderr, "New Connection #%d on #%d\n", event.data.conn.fd, fd );
-			zread( event.data.conn.fd, true );
-			write_data(  event.data.conn.fd );
+		case ZS_EVT_READ_READY:
+			n = zs_read( fd, buf, sizeof( buf ) );
+			if ( n <= 0 ) {
+				if ( n == -1 )
+					perror( "zsocket_event_hdlr() error: zs_read" );
+				else
+					fprintf( stderr, "%d: EOF\n", fd );
+				//zs_close( fd );
+				zs_clr_read( fd );
+			} else
+				write( STDOUT_FILENO, buf, n );
 			break;
-		case ZSE_READ_DATA:
-			if ( event.data.read.buffer_used <= 0 )
-				zclose( fd );
-			else
-				write( STDOUT_FILENO, event.data.read.buffer, event.data.read.buffer_used );
-			break;
-		case ZSE_WROTE_DATA:
+		case ZS_EVT_WRITE_READY:
+			//fprintf( stderr, "write\n" );
 			//fprintf( stderr, "Wrote %d bytes of data\n", (int)event.data.write.buffer_used );
-			if ( event.data.write.buffer_used <= 0 )
-				zclose( fd );
-			else
-				write_data( fd );
+			n = read( STDIN_FILENO, buf, sizeof( buf ) );
+			if ( n <= 0 ) {
+				if ( n == -1 )
+					perror( "zsocket_event_hdlr() error: read" );
+				else
+					fprintf( stderr, "%d: EOF\n", fd );
+				//zs_close( fd );
+				zs_clr_write( fd );
+				return;
+			}
+			n = zs_write( fd, buf, n );
+			if ( n == -1 ) {
+				perror( "zsocket_event_hdlr() error: zs_write" );
+				zs_close( fd );
+			}
 			break;
 	}
 }
 
 int main( int argc, char **argv ) {
-	zsocket_init();
-
-	//zfd_register_type( ACCEPT, ZFD_R, ZFD_TYPE_HDLR accept_conn );
-	//zfd_register_type( READ,   ZFD_R, ZFD_TYPE_HDLR read_data );
-	//zfd_register_type( WRITE,  ZFD_W, ZFD_TYPE_HDLR write_data );
-
-	//puts( "Hello World, I'm a server." );
+	zs_init();
 
 	int fd = zsocket( INADDR_ANY, 8080, ZSOCK_LISTEN, zsocket_event_hdlr, true );
-	//zfd_set( fd, ACCEPT, NULL );
-	zaccept( fd, true );
+	zs_set_read( fd );
 
-	while( zfd_select(0) );
+	do {
+		while ( zs_select() );
+	} while( zfd_select(0) );
 
 	return EXIT_SUCCESS;
 }

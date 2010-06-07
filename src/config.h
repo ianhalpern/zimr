@@ -28,6 +28,7 @@
 #define ZIMR_WEBSITE "http://Zimr.org"
 
 #define FL_ISSET( flags, flag ) ( ( (flags) & (flag) ) == (flag) )
+#define FL_ARESOMESET( flags, flag ) ( ( (flags) & (flag) ) )
 #define FL_SET( flags, flag ) ( (flags) |= (flag) )
 #define FL_CLR( flags, flag ) ( (flags) ^= (flags)&(flag) )
 

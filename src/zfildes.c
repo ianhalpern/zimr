@@ -24,7 +24,7 @@
 
 static fd_set active_read_fd_set, read_fd_set;
 static fd_set active_write_fd_set, write_fd_set;
-static fd_info_t fd_data[ FD_SETSIZE ][ 2 ];
+static fd_info_t fd_data[ FD_SETSIZE ][2];
 static bool first_set = true;
 static bool unblock = false;
 

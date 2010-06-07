@@ -354,6 +354,7 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
 			break;
 		case MSG_EVT_WRITE_END:
 		case MSG_EVT_READ_END:
+		case MSG_EVT_COMPLETE:
 			break;
 		case MSG_EVT_DESTROYED:
 			if ( event->data.msgid >= 0 ) {
@@ -378,7 +379,8 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
 				msg_destroy( website->sockfd, event->data.packet.header.msgid );
 				return;
 			}
-			msg_want_data( website->sockfd, event->data.packet.header.msgid );
+			if ( msg_exists( website->sockfd, event->data.packet.header.msgid ) )
+				msg_want_data( website->sockfd, event->data.packet.header.msgid );
 			//if ( !packet_recvd( event.data.packet ) )
 			//	msg_kill( sockfd, event.data.packet->header.msgid );
 			break;

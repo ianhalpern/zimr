@@ -359,6 +359,8 @@ void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
 		case MSG_EVT_READ_END:
 			//zpause( event->data.msgid, true );
 			break;
+		case MSG_EVT_COMPLETE:
+			break;
 		case MSG_EVT_WRITE_END:
 			if ( event->data.msgid >= 0 ) {
 				zread( event->data.msgid, false );
@@ -458,7 +460,7 @@ void exsock_event_hdlr( int fd, zsocket_event_t event ) {
 				zpause( fd, true );
 				msg_destroy( connections[ fd ]->website_sockfd, fd );
 			}
-			else msg_want_data( connections[ fd ]->website_sockfd, fd );
+			msg_want_data( connections[ fd ]->website_sockfd, fd );
 			//if ( PACK_IS_LAST( packet ) )
 			//	close( sockfd );
 			break;

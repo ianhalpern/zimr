@@ -49,6 +49,7 @@
 #define MSG_STAT_NEED_TO_SEND_RESP         0x0800
 #define MSG_STAT_WANT_PACK                 0x1000
 #define MSG_STAT_DESTROY_SENT              0x2000
+#define MSG_STAT_WAITING_TO_FREE           0x4000
 
 #define MSG_EVT_READ_START                 0x001
 #define MSG_EVT_RECVD_DATA                 0x002
@@ -58,9 +59,10 @@
 #define MSG_EVT_WRITE_SPACE_FULL           0x020
 #define MSG_EVT_WRITE_END                  0x040
 #define MSG_EVT_DESTROYED                  0x080
-#define MSG_SWITCH_EVT_NEW                 0x100
-#define MSG_SWITCH_EVT_IO_FAILED           0x200
-#define MSG_SWITCH_EVT_DESTROY             0x400
+#define MSG_EVT_COMPLETE                   0x100
+#define MSG_SWITCH_EVT_NEW                 0x200
+#define MSG_SWITCH_EVT_IO_FAILED           0x400
+#define MSG_SWITCH_EVT_DESTROY             0x800
 
 #define PACK_FL_FIRST 0x1
 #define PACK_FL_LAST  0x2

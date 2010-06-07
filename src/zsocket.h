@@ -46,20 +46,27 @@
 //#define ZSOCK_ZLISTEN  0x03
 //#define ZSOCK_ZCONNECT 0x04
 
-#define ZCONNECTED          0x001
-#define ZREAD_FROM_READ     0x002
-#define ZREAD_FROM_WRITE    0x004
-#define ZWRITE_FROM_WRITE   0x008
-#define ZWRITE_FROM_READ    0x010
-#define ZREAD_FROM_ACCEPT   0x020
-#define ZWRITE_FROM_ACCEPT  0x040
-#define ZREAD_READ          0x080
-#define ZPAUSE              0x100
+#define ZS_STAT_CONNECTED               0x00001
+#define ZS_STAT_WANT_READ_FROM_READ     0x00002
+#define ZS_STAT_WANT_READ_FROM_WRITE    0x00004
+#define ZS_STAT_WANT_WRITE_FROM_WRITE   0x00008
+#define ZS_STAT_WANT_WRITE_FROM_READ    0x00010
+#define ZS_STAT_WANT_READ_FROM_ACCEPT   0x00020
+#define ZS_STAT_WANT_WRITE_FROM_ACCEPT  0x00040
+#define ZS_STAT_WANT_READ_FROM_CONNECT  0x00080
+#define ZS_STAT_WANT_WRITE_FROM_CONNECT 0x00100
+#define ZS_STAT_READABLE                0x00200
+#define ZS_STAT_WRITABLE                0x00400
+#define ZS_STAT_ACCEPTING               0x00800
+#define ZS_STAT_CONNECTING              0x01000
+#define ZS_STAT_READING                 0x02000
+#define ZS_STAT_WRITING                 0x04000
+#define ZS_STAT_EOF                     0x08000
+#define ZS_STAT_CLOSED                  0x10000
 
-#define ZSE_ACCEPT_ERR 0x1
-#define ZSE_ACCEPTED_CONNECTION 0x2
-#define ZSE_READ_DATA 0x3
-#define ZSE_WROTE_DATA 0x4
+#define ZS_EVT_READ_READY   0x1
+#define ZS_EVT_WRITE_READY  0x2
+#define ZS_EVT_ACCEPT_READY 0x3
 
 #define ZSOCK_HDLR (void (*)( int, int, void*, ssize_t, void* ))
 
@@ -68,21 +75,11 @@
 
 typedef struct {
 	char* buffer;
-	size_t buffer_size;
-	ssize_t buffer_used;
+	size_t size;
+	ssize_t used;
+	size_t pos;
+	int rw_errno;
 } zsock_rw_data_t;
-
-typedef struct {
-	int type;
-	union {
-		struct {
-			int fd;
-			struct sockaddr_in addr;
-		} conn;
-		zsock_rw_data_t read;
-		zsock_rw_data_t write;
-	} data;
-} zsocket_event_t;
 
 typedef union {
 	char type;
@@ -91,8 +88,8 @@ typedef union {
 		int sockfd;
 		struct sockaddr_in addr;
 		int portno;
-		unsigned int flags;
-		void (*event_hdlr)( int fd, zsocket_event_t event );
+		unsigned int status;
+		void (*event_hdlr)( int fd, int event );
 		void* udata;
 	} general;
 	struct {
@@ -100,11 +97,13 @@ typedef union {
 		int sockfd;
 		struct sockaddr_in addr;
 		int portno;
-		unsigned int flags;
-		void (*event_hdlr)( int fd, zsocket_event_t event );
+		unsigned int status;
+		void (*event_hdlr)( int fd, int event );
 		void* udata;
 		////////////////////
 		int n_open;
+		int accepted_fd;
+		int accepted_errno;
 		SSL_CTX* ssl_ctx;
 	} listen;
 	struct {
@@ -112,10 +111,11 @@ typedef union {
 		int sockfd;
 		struct sockaddr_in addr;
 		int portno;
-		unsigned int flags;
-		void (*event_hdlr)( int fd, zsocket_event_t event );
+		unsigned int status;
+		void (*event_hdlr)( int fd, int event );
 		void* udata;
 		////////////////////
+		int parent_fd;
 		zsock_rw_data_t read;
 		zsock_rw_data_t write;
 		SSL* ssl;
@@ -129,16 +129,26 @@ typedef struct {
 
 zsocket_t* zsockets[ FD_SETSIZE ];
 
-void zsocket_init();
-int  zsocket( in_addr_t addr, int portno, int type, void (*zsocket_event_hdlr)( int fd, zsocket_event_t event ), bool ssl );
-void zclose( int zsockfd );
-void zaccept( int fd, bool toggle );
-void zpause( int fd, bool toogle );
-void zread( int fd, bool toggle );
-void zwrite( int fd, const void* buf, ssize_t n );
-bool zsocket_is_ssl( int fd );
-zsocket_t* zsocket_get_by_info( in_addr_t addr, int portno );
-zsocket_t* zsocket_get_by_sockfd( int sockfd );
-void zsocket_set_event_hdlr( int fd,  void (*zsocket_event_hdlr)( int fd, zsocket_event_t event ) );
+void zs_init();
+int  zsocket( in_addr_t addr, int portno, int type, void (*zs_event_hdlr)( int fd, int event ), bool ssl );
+
+int     zs_accept( int fd );
+ssize_t zs_read( int fd, void* buf, size_t size );
+ssize_t zs_write( int fd, const void* buf, size_t n );
+int     zs_close( int zsockfd );
+
+int zs_select();
+
+void zs_set_read( int fd );
+void zs_clr_read( int fd );
+bool zs_isset_read( int fd );
+void zs_set_write( int fd );
+void zs_clr_write( int fd );
+bool zs_isset_write( int fd );
+
+bool zs_is_ssl( int fd );
+zsocket_t* zs_get_by_info( in_addr_t addr, int portno );
+zsocket_t* zs_get_by_fd( int sockfd );
+void zs_set_event_hdlr( int fd, void (*zs_event_hdlr)( int fd, int event ) );
 
 #endif
