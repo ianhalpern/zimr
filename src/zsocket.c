@@ -26,6 +26,8 @@
 
 #include "zsocket.h"
 
+static int n_selectable = 0;
+
 static fd_set active_read_fd_set;
 static fd_set active_write_fd_set;
 
@@ -353,6 +355,9 @@ static void zs_writer( int fd, void* udata ) {
 	free( zs->connect.write.buffer );
 	zs->connect.write.buffer = NULL;
 
+	if ( FD_ISSET( fd, &active_write_fd_set ) && !FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
+		n_selectable++;
+
 	FL_SET( zs->general.status, ZS_STAT_WRITABLE );
 	FL_CLR( zs->general.status, ZS_STAT_WRITING );
 	if ( FL_ISSET( zs->general.status, ZS_STAT_CLOSED ) )
@@ -403,6 +408,9 @@ static void zs_reader( int fd, void* udata ) {
 		zs->connect.read.used = -1;
 	else
 		FL_SET( zs->general.status, ZS_STAT_EOF );
+
+	if ( FD_ISSET( fd, &active_read_fd_set ) && !FL_ISSET( zs->general.status, ZS_STAT_READABLE ) )
+		n_selectable++;
 
 	FL_SET( zs->general.status, ZS_STAT_READABLE );
 	FL_CLR( zs->general.status, ZS_STAT_READING );
@@ -505,10 +513,10 @@ static void zs_internal_read( int fd, void* udata ) {
 		if ( FL_ISSET( zs->connect.status, ZS_STAT_WANT_READ_FROM_WRITE ) ) {
 			// clear write_from_read, if read_from_read is not set and read is not set clear fd select flag
 			FL_CLR( zs->connect.status, ZS_STAT_WANT_READ_FROM_WRITE );
+			zs_writer( fd, udata );
 
 			// zs_writer sometimes will call zs_close
 			if ( !zs_get_by_fd( fd ) ) return;
-			zs_writer( fd, udata );
 		}
 
 	} else if ( FL_ISSET( zs->connect.status, ZS_STAT_CONNECTING ) ) {
@@ -538,9 +546,9 @@ static void zs_update_fd_state( int fd, void* udata ) {
 		ZS_STAT_WANT_WRITE_FROM_READ |
 		ZS_STAT_WANT_WRITE_FROM_WRITE |
 		ZS_STAT_WANT_WRITE_FROM_CONNECT |
-		ZS_STAT_WANT_WRITE_FROM_ACCEPT ) )
+		ZS_STAT_WANT_WRITE_FROM_ACCEPT ) ) {
 			zfd_set( fd, ZFD_W, &zs_internal_write, udata );
-		else
+		} else
 			zfd_clr( fd, ZFD_W );
 
 		if ( ( zs_isset_read( fd ) && !FL_ARESOMESET( zs->connect.status, ZS_STAT_READING | ZS_STAT_READABLE ) )
@@ -548,9 +556,9 @@ static void zs_update_fd_state( int fd, void* udata ) {
 		ZS_STAT_WANT_READ_FROM_READ |
 		ZS_STAT_WANT_READ_FROM_WRITE |
 		ZS_STAT_WANT_READ_FROM_CONNECT |
-		ZS_STAT_WANT_READ_FROM_ACCEPT ) )
+		ZS_STAT_WANT_READ_FROM_ACCEPT ) ) {
 			zfd_set( fd, ZFD_R, &zs_internal_read, udata );
-		else
+		} else
 			zfd_clr( fd, ZFD_R );
 
 	} else {
@@ -563,11 +571,23 @@ static void zs_update_fd_state( int fd, void* udata ) {
 
 ////////////////////////////////////////////////////////////////////////////
 void zs_set_read( int fd ) {
+	zsocket_t* zs = zs_get_by_fd( fd );
+	assert( zs );
+
+	if ( !FD_ISSET( fd, &active_read_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_READABLE ) )
+		n_selectable++;
+
 	FD_SET( fd, &active_read_fd_set );
 	zs_update_fd_state( fd, NULL );
 }
 
 void zs_clr_read( int fd ) {
+	zsocket_t* zs = zs_get_by_fd( fd );
+	assert( zs );
+
+	if ( FD_ISSET( fd, &active_read_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_READABLE ) )
+		n_selectable--;
+
 	FD_CLR( fd, &active_read_fd_set );
 	if ( zs_get_by_fd( fd ) ) zs_update_fd_state( fd, NULL );
 }
@@ -577,11 +597,23 @@ bool zs_isset_read( int fd ) {
 }
 
 void zs_set_write( int fd ) {
+	zsocket_t* zs = zs_get_by_fd( fd );
+	assert( zs );
+
+	if ( !FD_ISSET( fd, &active_write_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
+		n_selectable++;
+
 	FD_SET( fd, &active_write_fd_set );
 	zs_update_fd_state( fd, NULL );
 }
 
 void zs_clr_write( int fd ) {
+	zsocket_t* zs = zs_get_by_fd( fd );
+	assert( zs );
+
+	if ( FD_ISSET( fd, &active_write_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
+		n_selectable--;
+
 	FD_CLR( fd, &active_write_fd_set );
 	if ( zs_get_by_fd( fd ) ) zs_update_fd_state( fd, NULL );
 }
@@ -635,7 +667,7 @@ ssize_t zs_read( int fd,  void* buf, size_t nbyte ) {
 		return -1;
 	}
 
-	ssize_t used = nbyte > zs->connect.read.used ? zs->connect.read.used : nbyte;
+	ssize_t used = (ssize_t)nbyte > zs->connect.read.used ? zs->connect.read.used : nbyte;
 
 	if ( zs->connect.read.rw_errno ) {
 		errno = zs->connect.read.rw_errno;
@@ -655,6 +687,10 @@ ssize_t zs_read( int fd,  void* buf, size_t nbyte ) {
 
 quit:
 	if ( !zs->connect.read.used && !FL_ISSET( zs->connect.status, ZS_STAT_EOF ) ) {
+
+		if ( FD_ISSET( fd, &active_read_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_READABLE ) )
+			n_selectable--;
+
 		zs->connect.read.pos = 0;
 		zs->connect.read.used = 0;
 		FL_CLR( zs->connect.status, ZS_STAT_READABLE );
@@ -680,10 +716,13 @@ ssize_t zs_write( int fd, const void* buf, size_t nbyte ) {
 
 	assert( !zs->connect.write.buffer );
 
+	if ( FD_ISSET( fd, &active_write_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
+		n_selectable--;
+
 	FL_CLR( zs->connect.status, ZS_STAT_WRITABLE );
 
 	if ( zs->connect.write.rw_errno ) {
-		errno = zs->connect.write.rw_errno;
+		errno = zs->connect.write.rw_errno || zs->connect.read.rw_errno;
 		zs->connect.write.rw_errno = 0;
 		nbyte = -1;
 	} else {
@@ -754,11 +793,15 @@ int zs_close( int fd ) {
 	return 0;
 }
 
+bool zs_need_select() {
+	return n_selectable;
+}
+
 int zs_select() {
 	fd_set read_fd_set  = active_read_fd_set;
 	fd_set write_fd_set = active_write_fd_set;
 
-	int rw_still_avail = 0;
+//	int rw_still_avail = 0;
 	int fd;
 	for ( fd = 0; fd < FD_SETSIZE; fd++ ) {
 		zsocket_t* zs;
@@ -776,12 +819,12 @@ int zs_select() {
 			zs->general.event_hdlr( fd, ZS_EVT_WRITE_READY );
 		}
 
-		if ( zs_get_by_fd( fd ) && (
-		( FL_ISSET( zs->general.status, ZS_STAT_READABLE ) && FD_ISSET( fd, &active_read_fd_set ) ) ||
-		( FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) && FD_ISSET( fd, &active_write_fd_set ) )
-		) )
-			rw_still_avail++;
+		/*if (
+		( FD_ISSET( fd, &active_read_fd_set )  && FL_ISSET( zs->general.status, ZS_STAT_READABLE ) ) ||
+		( FD_ISSET( fd, &active_write_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
+		)
+			rw_still_avail++;*/
 	}
 
-	return rw_still_avail;
+	return zs_need_select();
 }

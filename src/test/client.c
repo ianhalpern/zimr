@@ -20,6 +20,11 @@
  *
  */
 
+/* test-client used for msg_switch testing. test-client acts as a
+ * simple ping client. Ment to be
+ * used along with test-server and test-zsocket-client.
+ */
+
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -28,70 +33,75 @@
 #include "msg_switch.h"
 #include "config.h"
 
+typedef struct {
+	char* buf;
+	size_t size;
+} data_t;
+
+data_t conn_data[FD_SETSIZE];
+
 int sockfd;
 
-bool packet_recvd( msg_packet_t* packet ) {
-	int fd;
-	char filename[ 23 ];
-	sprintf( filename, "test-outputs/%d", packet->header.msgid );
+void msg_event_handler( int fd, int msgid, int event ) {
+	char buf[1024];
+	int n;
+	switch ( event ) {
+		case MSG_EVT_ACCEPT_READY:
+			n = msg_accept( fd, msgid );
+			if ( n == -1 ) {
+				fprintf( stderr, "Accept Failed #%d on #%d: %s\n", msgid, fd, strerror( errno ) );
+				break;
+			}
+			printf( "Accepted Message #%d on #%d\n", msgid, fd );
+			msg_set_read( fd, msgid );
+			break;
+		case MSG_EVT_READ_READY:
+			msg_clr_read( fd, msgid );
 
-	if ( FL_ISSET( packet->header.flags, PACK_FL_FIRST ) ) {
-		fd = creat( filename, S_IRUSR | S_IWUSR | O_WRONLY );
-		printf( "%d: message start\n", packet->header.msgid );
-	} else
-		fd = open( filename, O_WRONLY | O_APPEND );
-
-	if ( FL_ISSET( packet->header.flags, PACK_FL_LAST ) )
-		printf( "%d: message end\n", packet->header.msgid );
-
-	if ( fd >= 0 ) {
-		write( fd, packet->data, packet->header.size );
-		close( fd );
-	} else
-		return false;
-
-	msg_want_data( sockfd, packet->header.msgid );
-	return true;
-}
-
-void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
-	switch ( event->type ) {
-		case MSG_EVT_READ_START:
-			msg_want_data( sockfd, event->data.msgid );
+			n = msg_read( fd, msgid, buf, sizeof( buf ) );
+			if ( n <= 0 ) {
+				if ( n == -1 ) {
+					perror( "msg_event_handler() error: msg_read...closing" );
+				} else
+					fprintf( stderr, "%d: EOF...closing\n", msgid );
+				msg_close( fd, msgid );
+			} else {
+				conn_data[msgid].buf = malloc( n );
+				conn_data[msgid].size = n;
+				memcpy( conn_data[msgid].buf, buf, n );
+				msg_set_write( fd, msgid );
+			}
 			break;
-		case MSG_EVT_WRITE_END:
-			break;
-		case MSG_EVT_READ_END:
-			msg_destroy( sockfd, event->data.msgid );
-			break;
-		case MSG_EVT_DESTROYED:
-			puts( "destroy" );
-			break;
-		case MSG_EVT_WRITE_SPACE_FULL:
-		case MSG_EVT_WRITE_SPACE_AVAIL:
-			break;
-		case MSG_EVT_RECVD_DATA:
-			if ( !packet_recvd( &event->data.packet ) )
-				msg_destroy( sockfd, event->data.packet.header.msgid );
-			break;
-		case MSG_SWITCH_EVT_NEW:
-		case MSG_SWITCH_EVT_DESTROY:
-			break;
-		case MSG_SWITCH_EVT_IO_FAILED:
-			msg_switch_destroy( sockfd );
+		case MSG_EVT_WRITE_READY:
+			msg_clr_write( fd, msgid );
+			//fprintf( stderr, "write\n" );
+			//fprintf( stderr, "Wrote %d bytes of data\n", (int)event.data.write.buffer_used );
+			n = msg_write( fd, msgid, conn_data[msgid].buf, conn_data[msgid].size );
+			free( conn_data[msgid].buf );
+			conn_data[msgid].buf = NULL;
+			if ( n == -1 ) {
+				perror( "msg_event_handler() error: msg_write" );
+				msg_close( fd, msgid );
+			} else
+				msg_set_read( fd, msgid );
 			break;
 	}
 }
 
 int main( int argc, char* argv[] ) {
-	zsocket_init();
+	memset( conn_data, 0, sizeof( conn_data ) );
+	zs_init();
 
 	sockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_CONNECT, NULL, false );
 	puts( "connected to server" );
 	msg_switch_create( sockfd, msg_event_handler );
+
 	do {
-		msg_switch_fire_all_events();
-	} while( zfd_select(0) );
+		do {
+			msg_switch_select();
+			zs_select();
+		} while ( msg_switch_need_select() || zs_need_select() );
+	} while ( zfd_select(2) );
 
 	return 0;
 }

@@ -64,11 +64,9 @@
 #define ZS_STAT_EOF                     0x08000
 #define ZS_STAT_CLOSED                  0x10000
 
-#define ZS_EVT_READ_READY   0x1
-#define ZS_EVT_WRITE_READY  0x2
-#define ZS_EVT_ACCEPT_READY 0x3
-
-#define ZSOCK_HDLR (void (*)( int, int, void*, ssize_t, void* ))
+#define ZS_EVT_ACCEPT_READY 0x1
+#define ZS_EVT_READ_READY   0x2
+#define ZS_EVT_WRITE_READY  0x3
 
 #define RSA_SERVER_CERT "server.crt"
 #define RSA_SERVER_KEY  "server.key"
@@ -137,6 +135,7 @@ ssize_t zs_read( int fd, void* buf, size_t size );
 ssize_t zs_write( int fd, const void* buf, size_t n );
 int     zs_close( int zsockfd );
 
+bool zs_need_select();
 int zs_select();
 
 void zs_set_read( int fd );

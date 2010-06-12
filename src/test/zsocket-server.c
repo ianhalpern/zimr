@@ -41,6 +41,8 @@ typedef struct {
 
 data_t conn_data[FD_SETSIZE];
 
+int connfd;
+
 void zsocket_event_hdlr( int fd, int event ) {
 	int n;
 	char buf[1024];
@@ -94,8 +96,8 @@ int main( int argc, char **argv ) {
 	memset( conn_data, 0, sizeof( conn_data ) );
 	zs_init();
 
-	int fd = zsocket( INADDR_ANY, 8080, ZSOCK_LISTEN, zsocket_event_hdlr, false );
-	zs_set_read( fd );
+	connfd = zsocket( INADDR_ANY, 8080, ZSOCK_LISTEN, zsocket_event_hdlr, false );
+	zs_set_read( connfd );
 
 	do {
 		while ( zs_select() );

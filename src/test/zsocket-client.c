@@ -20,6 +20,15 @@
  *
  */
 
+/* A zsocket ping client
+ * How to:
+ *    Run:
+ *    $ test-zsocket-client < inputfile > outputfile
+ *
+ *    The inputfile should match the output file, to check this run:
+ *    $ md5sum inputfile outputfile
+ */
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -98,7 +107,7 @@ int main( int argc, char **argv ) {
 
 	do {
 		while ( zs_select() );
-	} while( !finished && zfd_select(0) );
+	} while( !finished && zfd_select(2) );
 
 	return EXIT_SUCCESS;
 }

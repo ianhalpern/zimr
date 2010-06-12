@@ -22,8 +22,8 @@
 
 #include "zfildes.h"
 
-static fd_set active_read_fd_set, read_fd_set;
-static fd_set active_write_fd_set, write_fd_set;
+static fd_set active_read_fd_set;
+static fd_set active_write_fd_set;
 static fd_info_t fd_data[ FD_SETSIZE ][2];
 static bool first_set = true;
 static bool unblock = false;
@@ -53,6 +53,7 @@ void zfd_clr( int fd, char io_type ) {
 
 	else if ( io_type == ZFD_W )
 		FD_CLR( fd, &active_write_fd_set );
+
 }
 
 bool zfd_isset( int fd, char io_type ) {
@@ -72,6 +73,8 @@ void zfd_unblock() {
 
 int zfd_select( int tv_sec ) {
 	int i;
+
+	fd_set read_fd_set, write_fd_set;
 
 	struct timeval timeout,* timeout_ptr = NULL;
 
@@ -104,7 +107,7 @@ int zfd_select( int tv_sec ) {
 		if ( FD_ISSET( i, &read_fd_set ) && FD_ISSET( i, &active_read_fd_set ) )
 			fd_data[ i ][ ZFD_R - 1 ].handler( i, fd_data[ i ][ ZFD_R - 1 ].udata );
 
-		if ( FD_ISSET( i, &write_fd_set ) && FD_ISSET( i, &active_write_fd_set ) ) {
+		if ( /*FD_ISSET( i, &write_fd_set &&*/ FD_ISSET( i, &active_write_fd_set ) ) {
 			fd_data[ i ][ ZFD_W - 1 ].handler( i, fd_data[ i ][ ZFD_W - 1 ].udata );
 		}
 	}

@@ -20,88 +20,166 @@
  *
  */
 
+/* test-server used for msg_switch testing. Ment to be
+ * used along with test-client and test-zsocket-client.
+ */
+
 #include "zfildes.h"
 #include "zsocket.h"
 #include "msg_switch.h"
 #include "simclist.h"
 #include "general.h"
 
-#define EXLISN 0x1
-#define EXREAD 0x2
-#define EXWRIT 0x3
-#define INLISN 0x4
-#define INREAD 0x5
-#define INWRIT 0x6
+typedef struct {
+	char* rbuf;
+	size_t rsize;
+	char* wbuf;
+	size_t wsize;
+} rw_data_t;
+
+rw_data_t conn_data[FD_SETSIZE];
 
 int inconnfd;
 
-void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
-	switch ( event->type ) {
-		case MSG_EVT_READ_START:
-		case MSG_EVT_READ_END:
-		case MSG_EVT_WRITE_END:
+void msg_event_handler( int fd, int msgid, int event ) {
+	char buf[1024];
+	int n;
+
+	//printf( "%d msg event on %d %d\n", event, fd, msgid );
+
+	switch ( event ) {
+		case MSG_EVT_ACCEPT_READY:
 			break;
-		case MSG_EVT_DESTROYED:
-			puts( "complete." );
-			zclose( event->data.msgid );
+		case MSG_EVT_WRITE_READY:
+			msg_clr_write( fd, msgid );
+
+			assert( conn_data[msgid].rbuf );
+
+			n = msg_write( inconnfd, msgid, conn_data[msgid].rbuf, conn_data[msgid].rsize );
+			free( conn_data[msgid].rbuf );
+			conn_data[msgid].rbuf = NULL;
+
+			if ( n == -1 ) {
+				perror( "msg_event_handler() error: msg_write" );
+				zs_close( msgid );
+				msg_close( inconnfd, msgid );
+			} else
+				zs_set_read( msgid );
 			break;
-		case MSG_EVT_WRITE_SPACE_FULL:
-			zread( event->data.msgid, false );
+		case MSG_EVT_READ_READY:
+			msg_clr_read( fd, msgid );
+
+			assert( !conn_data[msgid].wbuf );
+
+			n = msg_read( inconnfd, msgid, buf, sizeof( buf ) );
+			if ( n <= 0 ) {
+				if ( n == -1 ) {
+					perror( "msg_event_handler() error: msg_read...closing" );
+				} else
+					fprintf( stderr, "%d: EOF...closing\n", fd );
+				zs_close( msgid );
+				msg_close( inconnfd, msgid );
+			} else {
+				conn_data[msgid].wbuf = malloc( n );
+				conn_data[msgid].wsize = n;
+				memcpy( conn_data[msgid].wbuf, buf, n );
+				zs_set_write( msgid );
+			}
 			break;
-		case MSG_EVT_WRITE_SPACE_AVAIL:
-			zread( event->data.msgid, true );
-			break;
-		case MSG_EVT_RECVD_DATA:
-			zwrite( event->data.packet.header.msgid, event->data.packet.data, event->data.packet.header.size );
-			break;
-		case MSG_SWITCH_EVT_IO_FAILED:
-		case MSG_SWITCH_EVT_NEW:
-		case MSG_SWITCH_EVT_DESTROY:
+		case MSG_SWITCH_EVT_IO_ERROR:
+			for ( n = 0; n < FD_SETSIZE; n++ ) {
+				if ( msg_exists( inconnfd, n ) ) {
+					if ( conn_data[n].wbuf ) 
+						free( conn_data[n].wbuf );
+					if ( conn_data[n].rbuf ) 
+						free( conn_data[n].rbuf );
+					conn_data[n].wbuf = NULL;
+					conn_data[n].rbuf = NULL;
+					msg_close( inconnfd, n );
+					zs_close( n );
+				}
+			}
+			msg_switch_destroy( inconnfd );
+			zs_close( inconnfd );
 			break;
 	}
 }
 
-void insock_event_hdlr( int fd, zsocket_event_t event ) {
-	switch ( event.type ) {
-		case ZSE_ACCEPT_ERR:
-			fprintf( stderr, "New Connection Failed\n" );
+void insock_event_hdlr( int fd, int event ) {
+	switch ( event ) {
+		case ZS_EVT_ACCEPT_READY:
+			inconnfd = zs_accept( fd );
+			if ( inconnfd == -1 ) {
+				perror( "insock_event_hdlr() error: zs_accept" );
+				zs_close( fd );
+				break;
+			}
+			fprintf( stderr, "Accepted Internal Connection #%d on #%d\n", inconnfd, fd );
+			msg_switch_create( inconnfd, msg_event_handler );
 			break;
-		case ZSE_ACCEPTED_CONNECTION:
-			fprintf( stderr, "New Connection #%d on #%d\n", event.data.conn.fd, fd );
-			msg_switch_create( event.data.conn.fd, msg_event_handler );
-			inconnfd = event.data.conn.fd;
-			break;
-		case ZSE_READ_DATA:
-		case ZSE_WROTE_DATA:
+		default:
 			fprintf( stderr, "Should not be reading or writing in this zsocket_hdlr\n" );
 			break;
 	}
 }
 
-void exsock_event_hdlr( int fd, zsocket_event_t event ) {
-	switch ( event.type ) {
-		case ZSE_ACCEPT_ERR:
-			fprintf( stderr, "New Connection Failed\n" );
-			break;
-		case ZSE_ACCEPTED_CONNECTION:
-			printf( "%d: message start\n", event.data.conn.fd );
-			msg_start( inconnfd, event.data.conn.fd );
-			break;
-		case ZSE_READ_DATA:
-			if ( event.data.read.buffer_used <= 0 ) printf( "%d: message end: exread()\n", fd );
+void exsock_event_hdlr( int fd, int event ) {
+	//printf( "%d exsock event on %d\n", event, fd );
+	char buf[1024];
+	int n;
 
-			if ( event.data.read.buffer_used == 0 ) {
-				msg_end( inconnfd, fd );
-				zread( fd, false );
-			} else if ( event.data.read.buffer_used == -1 )
-				msg_destroy( inconnfd, fd );
-			else
-				// push onto queue for sockfd
-				msg_send( inconnfd, fd, event.data.read.buffer, event.data.read.buffer_used );
+	switch ( event ) {
+		case ZS_EVT_ACCEPT_READY:
+			n = zs_accept( fd );
+			if ( n == -1 ) {
+				perror( "exsock_event_hdlr() error: zs_accept" );
+				//zs_close( fd );
+				break;
+			}
+			fprintf( stderr, "Accepted External Connection #%d on #%d\n", n, fd );
+			msg_open( inconnfd, n );
+			zs_set_read( n );
+			msg_set_read( inconnfd, n );
 			break;
-		case ZSE_WROTE_DATA:
-			if ( event.data.read.buffer_used <= 0 )
-				msg_destroy( inconnfd, fd );
+		case ZS_EVT_READ_READY:
+			zs_clr_read( fd );
+
+			assert( !conn_data[fd].rbuf );
+
+			n = zs_read( fd, buf, sizeof( buf ) );
+			if ( n <= 0 ) {
+				if ( n == -1 ) {
+					fprintf( stderr, "%d: exsock_event_hdlr() error: zs_read...closing\n", fd );
+				} else
+					fprintf( stderr, "%d: EOF...closing\n", fd );
+				zs_clr_write( fd );
+				zs_close( fd );
+				msg_close( inconnfd, fd );
+			} else {
+				conn_data[fd].rbuf = malloc( n );
+				conn_data[fd].rsize = n;
+				memcpy( conn_data[fd].rbuf, buf, n );
+				msg_set_write( inconnfd, fd );
+			}
+			break;
+		case ZS_EVT_WRITE_READY:
+			zs_clr_write( fd );
+			assert( conn_data[fd].wbuf );
+			//fprintf( stderr, "write\n" );
+			//fprintf( stderr, "Wrote %d bytes of data\n", (int)event.data.write.buffer_used );
+			n = zs_write( fd, conn_data[fd].wbuf, conn_data[fd].wsize );
+			free( conn_data[fd].wbuf );
+			conn_data[fd].wbuf = NULL;
+
+			if ( n == -1 ) {
+				perror( "exsock_event_hdlr() error: zs_write" );
+				zs_clr_read( fd );
+				zs_close( fd );
+				msg_close( inconnfd, fd );
+				msg_clr_read( inconnfd, fd );
+				msg_clr_write( inconnfd, fd );
+			} else
+				msg_set_read( inconnfd, fd );
 
 			//if ( PACK_IS_LAST( packet ) )
 			//	close( sockfd );
@@ -110,21 +188,21 @@ void exsock_event_hdlr( int fd, zsocket_event_t event ) {
 }
 
 int main( int argc, char* argv[] ) {
-	zsocket_init();
+	memset( conn_data, 0, sizeof( conn_data ) );
+	zs_init();
 
-	//zfd_register_type( EXLISN, ZFD_R, ZFD_TYPE_HDLR exlisn );
-	//zfd_register_type( EXREAD, ZFD_R, ZFD_TYPE_HDLR exread );
-	//zfd_register_type( EXWRIT, ZFD_W, ZFD_TYPE_HDLR exwrit );
+	int insock = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_LISTEN, insock_event_hdlr, false );
+	int exsock = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), 8080, ZSOCK_LISTEN, exsock_event_hdlr, false );
 
-	int insockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_LISTEN, insock_event_hdlr, false );
-	int exsockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), 8080, ZSOCK_LISTEN, exsock_event_hdlr, false );
+	zs_set_read( insock );
+	zs_set_read( exsock );
 
-	zaccept( insockfd, true );
-	zaccept( exsockfd, true );
-	//zfd_set( exsockfd, EXLISN, NULL );
 	do {
-		msg_switch_fire_all_events();
-	} while( zfd_select(0) );
+		do {
+			msg_switch_select();
+			zs_select();
+		} while ( msg_switch_need_select() || zs_need_select() );
+	} while ( zfd_select(2) );
 
 	return 0;
 }
