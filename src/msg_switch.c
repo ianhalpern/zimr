@@ -578,66 +578,46 @@ ssize_t msg_read( int fd, int msgid, void* buf, size_t size ) {
 		return -1;
 	}
 
-	msg_packet_t* packet = msg_get_read_packet( msg_switch, msgid );
+	msg_packet_t* packet = NULL;
 
 	size_t orig_size = size;
 	int chunk = 0;
 	while ( size ) {
 
-		if ( msg->cur_read_packet_pos == packet->header.size ) {
-			msg_pop_read_packet( msg_switch, msgid );
-			if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
-				return orig_size - size;
-
+		if ( !packet )
 			packet = msg_get_read_packet( msg_switch, msgid );
-		}
 
-		if ( ( packet->header.size - msg->cur_read_packet_pos ) > size )
+		if ( packet->header.size - msg->cur_read_packet_pos > size )
 			chunk = size;
 		else
-			chunk = ( packet->header.size - msg->cur_read_packet_pos );
+			chunk = packet->header.size - msg->cur_read_packet_pos;
 
 		memcpy( buf + ( orig_size - size ), packet->data + msg->cur_read_packet_pos, chunk );
 
 		size -= chunk;
 		msg->cur_read_packet_pos += chunk;
+
+		if ( msg->cur_read_packet_pos == packet->header.size ) {
+			msg_pop_read_packet( msg_switch, msgid );
+			packet = NULL;
+			if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
+				break;
+
+		}
 	}
+
+	if ( orig_size - size == 0 )
+		fprintf( stderr, "problem %d %d\n", orig_size, size );
 
 	return orig_size - size;
 }
-
-////////////////////////////////////////////////////////////////////////
-
-/*
-void msg_destroy( int fd, int msgid ) {
-	msg_switch_t* msg_switch;
-	assert( msg_switch = msg_switch_get_by_fd( fd ) );
-
-	msg_t* msg;
-	assert( msg = msg_get( msg_switch, msgid ) );
-	if( FL_ISSET( msg->status, MSG_STAT_DESTROY_SENT ) ) return;
-
-	msg_send_resp( msg_switch, msgid, MSG_RESP_DESTROY );
-	msg_update_status( msg_switch, msgid, SET, MSG_STAT_DESTROY_SENT );
-
-	msg_clear( msg_switch, msgid );
-	//msg_destroy( msg_switch->sockfd, msgid );
-}
-
-void msg_want_data( int fd, int msgid ) {
-	msg_switch_t* msg_switch;
-	assert( msg_switch = msg_switch_get_by_fd( fd ) );
-	if ( !msg_get( msg_switch, msgid ) ) return;
-
-	msg_update_status( msg_switch, msgid, SET, MSG_STAT_WANT_PACK );
-}*/
 
 /////////////////////////////////////////////////////////////////////////////////////
 // MSG_SWITCH functions /////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////
 
 static void msg_switch_failed( msg_switch_t* msg_switch, int code, const char* info ) {
-	printf( "msg_switch_failed() on %d: %d %s\n", msg_switch->sockfd, code, info );
+	//printf( "msg_switch_failed() on %d: %d %s\n", msg_switch->sockfd, code, info );
 	zs_clr_read( msg_switch->sockfd );
 	zs_clr_write( msg_switch->sockfd );
 	msg_switch->connected = false;

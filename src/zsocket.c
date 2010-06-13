@@ -265,11 +265,17 @@ static void zs_accepter( int fd, void* udata ) {
 		}
 	}
 
+	if ( FD_ISSET( zs_parent->general.sockfd, &active_read_fd_set ) && !FL_ISSET( zs_parent->general.status, ZS_STAT_READABLE ) )
+		n_selectable++;
+
 	FL_SET( zs_parent->general.status, ZS_STAT_READABLE );
 	FL_CLR( zs_parent->general.status, ZS_STAT_ACCEPTING );
 
-	if ( zs_parent->listen.accepted_fd != -1 )
+	if ( zs_parent->listen.accepted_fd != -1 ) {
+		if ( FD_ISSET( fd, &active_write_fd_set ) && !FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
+			n_selectable++;
 		FL_SET( zs->connect.status, ZS_STAT_CONNECTED | ZS_STAT_WRITABLE );
+	}
 
 	// Must call this inside zs_accepter because the
 	// parent zsocket's state update may not be called by
@@ -301,6 +307,9 @@ static void zs_connecter( int fd, void* udata ) {
 			zs->connect.write.rw_errno = EPROTO;
 		}
 	}
+
+	if ( FD_ISSET( fd, &active_write_fd_set ) && !FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
+		n_selectable++;
 
 	FL_SET( zs->connect.status, ZS_STAT_CONNECTED | ZS_STAT_WRITABLE );
 	FL_CLR( zs->general.status, ZS_STAT_CONNECTING );
@@ -387,6 +396,7 @@ static void zs_reader( int fd, void* udata ) {
 
 			zs->connect.read.rw_errno = EPROTO;
 		}
+
 	} else {
 		n = read( fd, zs->connect.read.buffer + zs->connect.read.used,
 		  zs->connect.read.size - zs->connect.read.used );
@@ -429,7 +439,6 @@ static void zs_internal_accept( int fd, void* udata ) {
 	if ( ( newsockfd = accept( fd, (struct sockaddr*) &cli_addr, &cli_len ) ) == -1 ) {
 		zs->listen.accepted_fd = -1;
 		zs->listen.accepted_errno = errno;
-		FL_SET( zs->general.status, ZS_STAT_READABLE );
 		FL_CLR( zs->general.status, ZS_STAT_ACCEPTING );
 		zs_update_fd_state( fd, NULL );
 		return;
@@ -441,7 +450,6 @@ static void zs_internal_accept( int fd, void* udata ) {
 	  zs->general.portno, zs->general.event_hdlr, zs->listen.ssl_ctx ) ) {
 		zs->listen.accepted_fd = -1;
 		zs->listen.accepted_errno = EPROTO;
-		FL_SET( zs->general.status, ZS_STAT_READABLE );
 		FL_CLR( zs->general.status, ZS_STAT_ACCEPTING );
 		zs_update_fd_state( fd, NULL );
 		return;
@@ -639,6 +647,9 @@ int zs_accept( int fd ) {
 		errno = EAGAIN;
 		return -1;
 	}
+
+	if ( FD_ISSET( fd, &active_read_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_READABLE ) )
+		n_selectable--;
 
 	FL_CLR( zs->listen.status, ZS_STAT_READABLE );
 	zs_update_fd_state( fd, NULL );
