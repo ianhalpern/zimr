@@ -96,7 +96,7 @@ int main( int argc, char **argv ) {
 
 	zs_init();
 
-	int fd = zsocket( inet_addr( "127.0.0.1" ), 8080, ZSOCK_CONNECT, zsocket_event_hdlr, false );
+	int fd = zsocket( inet_addr( "127.0.0.1" ), 8080, ZSOCK_CONNECT, zsocket_event_hdlr, true );
 	if ( fd < 0 ) {
 		perror( "ERROR" );
 		return EXIT_FAILURE;

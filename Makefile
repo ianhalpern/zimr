@@ -16,7 +16,7 @@ LDZIMR_LOCAL= -Wl,-rpath,`pwd`
 PYVERSION = 2.6
 
 OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
-			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o zerr.o\
+			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o\
 			  simclist.o msg_switch.o userdir.o cli.o dlog.o
 
 EXECS       = zimr-proxy zimr #zimr-app

@@ -41,6 +41,17 @@ rw_data_t conn_data[FD_SETSIZE];
 
 int inconnfd;
 
+void cleanup_connection( int fd ) {
+	if ( conn_data[fd].wbuf )
+		free( conn_data[fd].wbuf );
+	if ( conn_data[fd].rbuf )
+		free( conn_data[fd].rbuf );
+	conn_data[fd].wbuf = NULL;
+	conn_data[fd].rbuf = NULL;
+	msg_close( inconnfd, fd );
+	zs_close( fd );
+}
+
 void msg_event_handler( int fd, int msgid, int event ) {
 	char buf[1024];
 	int n;
@@ -61,8 +72,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 
 			if ( n == -1 ) {
 				perror( "msg_event_handler() error: msg_write" );
-				zs_close( msgid );
-				msg_close( inconnfd, msgid );
+				cleanup_connection( msgid );
 			} else
 				zs_set_read( msgid );
 			break;
@@ -77,8 +87,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 					perror( "msg_event_handler() error: msg_read...closing" );
 				} else
 					fprintf( stderr, "%d: EOF...closing\n", fd );
-				zs_close( msgid );
-				msg_close( inconnfd, msgid );
+				cleanup_connection( msgid );
 			} else {
 				conn_data[msgid].wbuf = malloc( n );
 				conn_data[msgid].wsize = n;
@@ -89,14 +98,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 		case MSG_SWITCH_EVT_IO_ERROR:
 			for ( n = 0; n < FD_SETSIZE; n++ ) {
 				if ( msg_exists( inconnfd, n ) ) {
-					if ( conn_data[n].wbuf ) 
-						free( conn_data[n].wbuf );
-					if ( conn_data[n].rbuf ) 
-						free( conn_data[n].rbuf );
-					conn_data[n].wbuf = NULL;
-					conn_data[n].rbuf = NULL;
-					msg_close( inconnfd, n );
-					zs_close( n );
+					cleanup_connection( n );
 				}
 			}
 			msg_switch_destroy( inconnfd );
@@ -152,9 +154,7 @@ void exsock_event_hdlr( int fd, int event ) {
 					fprintf( stderr, "%d: exsock_event_hdlr() error: zs_read...closing\n", fd );
 				} else
 					fprintf( stderr, "%d: EOF...closing\n", fd );
-				zs_clr_write( fd );
-				zs_close( fd );
-				msg_close( inconnfd, fd );
+				cleanup_connection( fd );
 			} else {
 				conn_data[fd].rbuf = malloc( n );
 				conn_data[fd].rsize = n;
@@ -173,11 +173,7 @@ void exsock_event_hdlr( int fd, int event ) {
 
 			if ( n == -1 ) {
 				perror( "exsock_event_hdlr() error: zs_write" );
-				zs_clr_read( fd );
-				zs_close( fd );
-				msg_close( inconnfd, fd );
-				msg_clr_read( inconnfd, fd );
-				msg_clr_write( inconnfd, fd );
+				cleanup_connection( fd );
 			} else
 				msg_set_read( inconnfd, fd );
 
@@ -192,7 +188,7 @@ int main( int argc, char* argv[] ) {
 	zs_init();
 
 	int insock = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_LISTEN, insock_event_hdlr, false );
-	int exsock = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), 8080, ZSOCK_LISTEN, exsock_event_hdlr, false );
+	int exsock = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), 8080, ZSOCK_LISTEN, exsock_event_hdlr, true );
 
 	zs_set_read( insock );
 	zs_set_read( exsock );
