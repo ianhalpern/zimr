@@ -338,7 +338,7 @@ void cleanup_fileread( website_data_t* website_data, int sockfd ) {
 }
 
 void cleanup_connection( int fd, int msgid ) {
-	printf( "cleanup %d %d\n", fd, msgid );
+//	printf( "cleanup %d %d\n", fd, msgid );
 	website_t* website = website_get_by_sockfd( fd );
 	website_data_t* website_data = website->udata;
 
@@ -399,12 +399,15 @@ bool zimr_website_enable( website_t* website ) {
 		return false;
 	}
 
-	website_data->status = WS_STATUS_ENABLING;
+	website_data->status = WS_STATUS_WANT_ENABLE;
+
 	website->sockfd = zsocket( inet_addr( website_data->proxy.ip ), website_data->proxy.port, ZSOCK_CONNECT, NULL, false );
 
 	if ( website->sockfd == -1 ) {
 		return false;
 	}
+
+	website_data->status = WS_STATUS_ENABLING;
 
 	msg_switch_create( website->sockfd, msg_event_handler );
 
@@ -453,23 +456,31 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 
 	if ( !website_data->connections[ msgid ] ) {
 		website_data->connections[ msgid ] = (conn_data_t*) malloc( sizeof( conn_data_t ) );
-		website_data->connections[ msgid ]->data = strdup( "" );
-		website_data->connections[ msgid ]->size = 0;
 		website_data->connections[ msgid ]->fileread_data.fd = -1;
-	} else return false;
+		website_data->connections[ msgid ]->data = strdup( "" );
+		website_data->connections[ msgid ]->size_received = 0;
+		website_data->connections[ msgid ]->size = *(size_t*)buf;
+		buf += sizeof( size_t );
+		len -= sizeof( size_t );
+	}
 
 	conn_data = website_data->connections[ msgid ];
+	if ( conn_data->size_received >= conn_data->size ) return false;
 
 	char* tmp;
 	tmp = conn_data->data;
-	conn_data->data = (char*) malloc( len + conn_data->size );
-	memset( conn_data->data, 0, len + conn_data->size );
-	memcpy( conn_data->data, tmp, conn_data->size );
-	memcpy( conn_data->data + conn_data->size, buf, len );
-	conn_data->size = len + conn_data->size;
+	conn_data->data = (char*) malloc( len + conn_data->size_received );
+	memset( conn_data->data, 0, len + conn_data->size_received );
+	memcpy( conn_data->data, tmp, conn_data->size_received );
+	memcpy( conn_data->data + conn_data->size_received, buf, len );
+	conn_data->size_received += len;
 	free( tmp );
 
-//	if ( PACK_IS_LAST( packet ) ) {
+	if ( conn_data->size_received > conn_data->size ) return false;
+
+//	printf( "%zu of %zu received\n", conn_data->size_received, conn_data->size );
+
+	if ( conn_data->size_received == conn_data->size ) {
 		conn_data->connection = connection_create( website, msgid, conn_data->data, conn_data->size );
 
 		if ( !conn_data->connection ) {
@@ -501,7 +512,7 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 
 		else
 			zimr_website_default_connection_handler( conn_data->connection );
-//	}
+	}
 
 	return true;
 }
@@ -560,7 +571,6 @@ void zimr_connection_send( connection_t* connection, void* message, int size ) {
 	zimr_connection_send_headers( connection );
 
 	msg_write( connection->website->sockfd, connection->sockfd, (void*) message, size );
-	cleanup_connection( connection->website->sockfd, connection->sockfd );
 
 	cleanup_connection( connection->website->sockfd, connection->sockfd );
 }
@@ -584,7 +594,6 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 		zimr_connection_send_error( connection, 404, NULL, 0 );
 		return;
 	}
-	printf( "1: %s\n", connection->request.full_url );
 
 	if ( S_ISDIR( file_stat.st_mode ) ) {
 		if ( connection->request.full_url[ strlen( connection->request.full_url ) - 1 ] != '/' ) {

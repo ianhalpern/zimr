@@ -146,6 +146,7 @@ void zs_clr_write( int fd );
 bool zs_isset_write( int fd );
 
 bool zs_is_ssl( int fd );
+struct sockaddr_in* zs_get_addr( int fd );
 zsocket_t* zs_get_by_info( in_addr_t addr, int portno );
 zsocket_t* zs_get_by_fd( int sockfd );
 void zs_set_event_hdlr( int fd, void (*zs_event_hdlr)( int fd, int event ) );

@@ -54,7 +54,7 @@ typedef struct {
 	struct sockaddr_in addr;
 	int website_sockfd;
 	int request_type;
-	int postlen;
+	size_t postlen;
 	int is_https;
 } conn_data_t;
 
@@ -442,7 +442,7 @@ void exsock_event_hdlr( int fd, int event ) {
 			// pass the connection information along...
 			connections[ newfd ] = (conn_data_t*) malloc( sizeof( conn_data_t ) );
 			connections[ newfd ]->exlisnfd = fd;
-			//conn_data->addr = event.data.conn.addr;
+			connections[ newfd ]->addr = *zs_get_addr( newfd );
 			connections[ newfd ]->website_sockfd = -1;
 			connections[ newfd ]->request_type = 0;
 			connections[ newfd ]->postlen = 0;
@@ -531,26 +531,20 @@ cleanup:
 			goto cleanup;
 		}
 
-		if ( !strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) {
+		char* endofhdrs;
+		if ( !( endofhdrs = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
 			/* If the end of the headers was not found the request was either
 			   malformatted or too long, DO NOT send to website. */
 			syslog( LOG_WARNING, "exread: headers to long" );
 			goto cleanup;
 		}
+		endofhdrs += sizeof( HTTP_HDR_ENDL HTTP_HDR_ENDL ) - 1;
 
 		/* Create a new message to send the request to the corresponding
 		   website. The msgid should be set to the external file descriptor
 		   to send the response back to. */
 		msg_open( website->sockfd, sockfd );
 		zs_set_write( sockfd );
-
-		// Write the ip address and hostname of the request
-		if ( msg_write( website->sockfd, sockfd, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) ) == -1 )
-			goto cleanup;
-		if ( hp && msg_write( website->sockfd, sockfd, (void*) hp->h_name, strlen( hp->h_name ) ) == -1 )
-			goto cleanup;
-		if ( msg_write( website->sockfd, sockfd, (void*) "\0", 1 ) == -1 )
-			goto cleanup;
 
 		// If request_type is POST check if there is content after the HTTP header
 		char postlenbuf[ 32 ];
@@ -560,9 +554,22 @@ cleanup:
 			conn_data->postlen = atoi( postlenbuf );
 		}
 
+		// Write the message length
+		size_t msglen = ( endofhdrs - buffer ) + conn_data->postlen + sizeof( conn_data->addr.sin_addr ) + 1;
+		if ( hp ) msglen += strlen( hp->h_name );
+		if ( msg_write( website->sockfd, sockfd, (void*) &msglen, sizeof( size_t ) ) == -1 )
+			goto cleanup;
+
+		// Write the ip address and hostname of the request
+		if ( msg_write( website->sockfd, sockfd, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) ) == -1 )
+			goto cleanup;
+		if ( hp && msg_write( website->sockfd, sockfd, (void*) hp->h_name, strlen( hp->h_name ) ) == -1 )
+			goto cleanup;
+		if ( msg_write( website->sockfd, sockfd, (void*) "\0", 1 ) == -1 )
+			goto cleanup;
+
 		// Send the whole header to the website
-		ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) + strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-		if ( msg_write( website->sockfd, sockfd, (void*) buffer, ( ptr - (void*)buffer ) ) == -1 )
+		if ( msg_write( website->sockfd, sockfd, (void*) buffer, ( endofhdrs - buffer ) ) == -1 )
 			goto cleanup;
 	}
 

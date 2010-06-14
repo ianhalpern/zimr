@@ -209,6 +209,13 @@ bool zs_is_ssl( int fd ) {
 	else abort();
 }
 
+struct sockaddr_in* zs_get_addr( int fd ) {
+	zsocket_t* zs = zs_get_by_fd( fd );
+	if ( !zs ) return NULL;
+
+	return &zs->general.addr;
+}
+
 zsocket_t* zs_get_by_info( in_addr_t addr, int portno ) {
 	assert( initialized );
 

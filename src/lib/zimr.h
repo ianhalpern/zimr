@@ -54,7 +54,8 @@ typedef struct {
 } fileread_data_t;
 
 typedef struct {
-	int size;
+	size_t size_received;
+	size_t size;
 	char* data;
 	connection_t* connection;
 	fileread_data_t fileread_data;
