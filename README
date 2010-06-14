@@ -26,8 +26,8 @@ Installation
 
 How To
 
-  To use zimr you must first start the zimr-proxy daemon:
-  $ sudo zimr-proxy start
+  To use zimr you must first start the zimrd daemon:
+  $ sudo zimrd start
 
   Then create a zimr.cnf file in the desired website directories.
   Example zimr.cnf:
@@ -35,8 +35,8 @@ How To
     websites:
     - url: zimr.org
 
-  Then start the zimr application:
-  $ zimr start
+  Then add the zimr application:
+  $ zimr add
 
   For more information please refer to < http://Zimr.org/#documentation >
 
@@ -48,14 +48,14 @@ Known Issues
   are handled by the linux kernel. The main thing is it works. The speed issue will be address
   soon.
 
-  There have been reports that for big files, the internel IPC socket connections between zimr-proxy
+  There have been reports that for big files, the internel IPC socket connections between zimrd
   and zimr-app falter occasionally by zimr-app receiving a "Connection reset by peer" interrupt. The
   cause is unknown but this will cause zimr to kill all open connections and reset.
 
 About
 
   Created by Ian Halpern
-  Copyright (c) 2009 Ian Halpern
+  Copyright (c) 2010 Ian Halpern
   Website: http://Zimr.org
   License: GNU GPL v3
   Contact: ian@ian-halpern.com

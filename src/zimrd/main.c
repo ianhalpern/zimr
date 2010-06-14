@@ -36,7 +36,7 @@
 #include "daemon.h"
 #include "zcnf.h"
 
-#define DAEMON_NAME "zimr-proxy"
+#define DAEMON_NAME "zimrd"
 
 #define INLISN 0x01
 #define INREAD 0x02
@@ -60,11 +60,11 @@ typedef struct {
 
 conn_data_t* connections[ FD_SETSIZE ];
 
-void insock_event_hdlr( int fd, zsocket_event_t event );
-void exsock_event_hdlr( int fd, zsocket_event_t event );
-void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet );
+void insock_event_hdlr( int fd, int event );
+void exsock_event_hdlr( int fd, int event );
+void command_handler( int fd, int msgid, void* buf, size_t len );
 void cleanup_connection( int sockfd );
-void exread( int sockfd, void* buffer, ssize_t len, size_t size );
+void exread( int sockfd );
 
 void signal_handler( int sig ) {
 	switch( sig ) {
@@ -77,9 +77,9 @@ void signal_handler( int sig ) {
 }
 
 void print_usage() {
-	printf( "Zimr Proxy " ZIMR_VERSION " (" BUILD_DATE ") - "  ZIMR_WEBSITE "\n" );
+	printf( "Zimr Daemon " ZIMR_VERSION " (" BUILD_DATE ") - "  ZIMR_WEBSITE "\n" );
 	printf(
-"\nUsage: zimr-proxy [OPTIONS] {start|stop|restart}\n\
+"\nUsage: zimrd [OPTIONS] {start|stop|restart}\n\
 	-h --help\n\
 	--no-daemon\n\
 	--no-lockfile\n\
@@ -156,7 +156,7 @@ int main( int argc, char* argv[ ] ) {
 
 	// call any needed library init functions
 	website_init();
-	zsocket_init();
+	zs_init();
 
 	memset( connections, 0, sizeof( connections ) );
 
@@ -168,7 +168,7 @@ int main( int argc, char* argv[ ] ) {
 			goto quit;
 		}
 
-		zaccept( sockfd, true );
+		zs_set_read( sockfd );
 		printf( " * started listening on %s:%d\n", proxy_cnf->proxies[ i ].ip, proxy_cnf->proxies[ i ].port );
 	}
 
@@ -200,8 +200,12 @@ int main( int argc, char* argv[ ] ) {
 	// starts a select() loop and calls
 	// the associated file descriptor handlers
 	// when they are ready to read/write
-	do { msg_switch_fire_all_events(); }
-	while ( zfd_select(0) ); // The loop is only broken by interrupt
+	do {
+		do {
+			msg_switch_select();
+			zs_select();
+		} while ( msg_switch_need_select() || zs_need_select() );
+	} while ( zfd_select(2) );
 
 quit:
 	// cleanup
@@ -288,10 +292,10 @@ int get_port_from_url( char* url ) {
 	return atoi( port_str );
 }
 
-int remove_website( msg_switch_t* msg_switch ) {
+int remove_website( int fd ) {
 	website_t* website;
 
-	if ( !( website = website_get_by_sockfd( msg_switch->sockfd ) ) ) {
+	if ( !( website = website_get_by_sockfd( fd ) ) ) {
 		syslog( LOG_WARNING, "stop_website: tried to stop a nonexisting website" );
 		return 0;
 	}
@@ -299,18 +303,18 @@ int remove_website( msg_switch_t* msg_switch ) {
 	syslog( LOG_INFO, "website: stopping \"%s\"", website->full_url );
 	website_data_t* website_data = (website_data_t*) website->udata;
 
-	/*int i;
+	int i;
 	for ( i = 0; i < FD_SETSIZE; i++ ) {
 		if ( connections[ i ] && connections[ i ]->website_sockfd == website->sockfd )
 			cleanup_connection( i );
-	}*/
-
-	if ( website_data->exlisnfd != -1 ) {
-		zclose( website_data->exlisnfd );
 	}
 
-	msg_switch_destroy( website->sockfd );
-	zclose( website->sockfd );
+	msg_switch_destroy( fd );
+	zs_close( fd );
+
+	if ( website_data->exlisnfd != -1 ) {
+		zs_close( website_data->exlisnfd );
+	}
 
 	free( website_data );
 	website_remove( website );
@@ -318,7 +322,7 @@ int remove_website( msg_switch_t* msg_switch ) {
 	return 1;
 }
 
-const char* start_website( char* url, msg_switch_t* msg_switch ) {
+const char* start_website( char* url, int fd ) {
 	static char error_msg[64] = "";
 	website_t* website;
 	website_data_t* website_data;
@@ -333,7 +337,7 @@ const char* start_website( char* url, msg_switch_t* msg_switch ) {
 		return error_msg;
 	}
 
-	website = website_add( msg_switch->sockfd, url );
+	website = website_add( fd, url );
 
 	syslog( LOG_INFO, "website: starting \"%s\"", website->full_url );
 
@@ -342,155 +346,148 @@ const char* start_website( char* url, msg_switch_t* msg_switch ) {
 
 	website_data->exlisnfd = exlisnfd;
 
-	zaccept( website_data->exlisnfd, true );
+	zs_set_read( website_data->exlisnfd );
 	return "OK";
 }
 
 // Handlers ////////////////////////////////////////////
 
-void msg_event_handler( msg_switch_t* msg_switch, msg_event_t* event ) {
-	//printf( "event 0x%03x for msg %d\n", event->type, event->data.msgid );
-	switch ( event->type ) {
-		case MSG_EVT_READ_START:
-			msg_want_data( msg_switch->sockfd, event->data.msgid );
+void msg_event_handler( int fd, int msgid, int event ) {
+	char buf[PACK_DATA_SIZE];
+	ssize_t n;
+//	printf( "event 0x%03x for msg %d\n", event, msgid );
+	switch ( event ) {
+		case MSG_EVT_ACCEPT_READY:
+			if ( msg_accept( fd, msgid ) )
+				msg_set_read( fd, msgid );
+			// These are commands
 			break;
-		case MSG_EVT_WRITE_START:
-			break;
-		case MSG_EVT_READ_END:
-			//zpause( event->data.msgid, true );
-			break;
-		case MSG_EVT_COMPLETE:
-			break;
-		case MSG_EVT_WRITE_END:
-			if ( event->data.msgid >= 0 ) {
-				zread( event->data.msgid, false );
+		case MSG_EVT_READ_READY:
+			msg_clr_read( fd, msgid );
+
+			n = msg_read( fd, msgid, buf, sizeof( buf ) );
+			if ( n <= 0 ) {
+				cleanup_connection( msgid );
+				break;
 			}
-			break;
-		case MSG_EVT_DESTROYED:
-			if ( event->data.msgid >= 0 ) {
-				cleanup_connection( event->data.msgid );
-			}
-			break;
-		case MSG_EVT_WRITE_SPACE_FULL:
-			if ( event->data.msgid >= 0 ) {
-				zread( event->data.msgid, false );
-			}
-			break;
-		case MSG_EVT_WRITE_SPACE_AVAIL:
-			if ( event->data.msgid >= 0 ) {
-				zread( event->data.msgid, true );
-			}
-			break;
-		case MSG_EVT_RECVD_DATA:
-			if ( event->data.packet.header.msgid < 0 ) {
+
+			if ( msgid < 0 ) {
 				/* If the msgid is less than zero, it refers to a command and
 				   the message should not be routed to a file descriptor. */
 
 				// the entire command must fit inside one transport
-				if ( PACK_IS_FIRST( &event->data.packet ) && PACK_IS_LAST( &event->data.packet ) )
-					command_handler( msg_switch, &event->data.packet );
-				else
-					syslog( LOG_WARNING, "received a command that is to long...ignoring." );
+				command_handler( fd, msgid, buf, n );
 
 			} else {
+				zs_set_write( msgid );
 				/* if msgid is zero or greater it refers to a socket file
 				   descriptor that the message should be routed to. */
-				zwrite( event->data.packet.header.msgid, event->data.packet.data, event->data.packet.header.size );
+				if ( zs_write( msgid, buf, n ) == -1 )
+					cleanup_connection( msgid );
 			}
 			break;
-		case MSG_SWITCH_EVT_IO_FAILED:
+		case MSG_EVT_WRITE_READY:
+			if ( msgid < 0 ) break;
+			zs_set_read( msgid );
+			msg_clr_write( fd, msgid );
+			break;
+		case MSG_SWITCH_EVT_IO_ERROR:
 			//zclose( msg_switch->sockfd );
-			if ( website_get_by_sockfd( msg_switch->sockfd ) )
-				remove_website( msg_switch );
+			if ( website_get_by_sockfd( fd ) )
+				remove_website( fd );
 			else {
-				int sockfd = msg_switch->sockfd;
-				msg_switch_destroy( sockfd );
-				zclose( sockfd );
+				for ( n = 0; n < FD_SETSIZE; n++ ) {
+					if ( msg_exists( fd, n ) ) {
+						cleanup_connection( n );
+					}
+				}
+				msg_switch_destroy( fd );
+				zs_close( fd );
 			}
-			break;
-		case MSG_SWITCH_EVT_NEW:
-		case MSG_SWITCH_EVT_DESTROY:
 			break;
 	}
 }
 
-void insock_event_hdlr( int fd, zsocket_event_t event ) {
-	switch ( event.type ) {
-		case ZSE_ACCEPT_ERR:
-			fprintf( stderr, "New Connection Failed\n" );
+void insock_event_hdlr( int fd, int event ) {
+	int newfd;
+	switch ( event ) {
+		case ZS_EVT_ACCEPT_READY:
+			newfd = zs_accept( fd );
+			if ( newfd == -1 )
+				fprintf( stderr, "New Connection Failed\n" );
+			else
+				msg_switch_create( newfd, msg_event_handler );
 			break;
-		case ZSE_ACCEPTED_CONNECTION:
-			msg_switch_create( event.data.conn.fd, msg_event_handler );
-			break;
-		case ZSE_READ_DATA:
-		case ZSE_WROTE_DATA:
+		case ZS_EVT_READ_READY:
+		case ZS_EVT_WRITE_READY:
 			fprintf( stderr, "Should not be reading or writing in this zsocket_hdlr\n" );
 			break;
 	}
 }
 
-void exsock_event_hdlr( int fd, zsocket_event_t event ) {
-	conn_data_t* conn_data;
+void exsock_event_hdlr( int fd, int event ) {
+	int newfd;
 
-	switch ( event.type ) {
-		case ZSE_ACCEPT_ERR:
-			fprintf( stderr, "New Connection Failed\n" );
-			break;
-		case ZSE_ACCEPTED_CONNECTION:
+	switch ( event ) {
+		case ZS_EVT_ACCEPT_READY:
+			newfd = zs_accept( fd );
+			if ( newfd == -1 ) {
+				perror( "New Connection Failed" );
+				//zs_close( fd );
+				break;
+			}
+			assert( !connections[ newfd ] );
+			//msg_open( inconnfd, n );
+			//msg_set_read( inconnfd, n );
 			// pass the connection information along...
-			conn_data = (conn_data_t*) malloc( sizeof( conn_data_t ) );
-			conn_data->exlisnfd = fd;
-			conn_data->addr = event.data.conn.addr;
-			conn_data->website_sockfd = -1;
-			conn_data->request_type = 0;
-			conn_data->postlen = 0;
-			conn_data->is_https = zsocket_is_ssl( conn_data->exlisnfd );
+			connections[ newfd ] = (conn_data_t*) malloc( sizeof( conn_data_t ) );
+			connections[ newfd ]->exlisnfd = fd;
+			//conn_data->addr = event.data.conn.addr;
+			connections[ newfd ]->website_sockfd = -1;
+			connections[ newfd ]->request_type = 0;
+			connections[ newfd ]->postlen = 0;
+			connections[ newfd ]->is_https = zs_is_ssl( connections[ newfd ]->exlisnfd );
 
-			assert( !connections[ event.data.conn.fd ] );
-			connections[ event.data.conn.fd ] = conn_data;
-
-			zread( event.data.conn.fd, true );
+			zs_set_read( newfd );
 			//msg_start( inconnfd, event.data.conn.fd );
 			break;
-		case ZSE_READ_DATA:
-			exread( fd, event.data.read.buffer, event.data.read.buffer_used, event.data.read.buffer_size );
+		case ZS_EVT_READ_READY:
+			zs_clr_read( fd );
+			exread( fd );
 			break;
-		case ZSE_WROTE_DATA:
-			if ( event.data.write.buffer_used <= 0 ) {
-				zpause( fd, true );
-				msg_destroy( connections[ fd ]->website_sockfd, fd );
-			}
-			msg_want_data( connections[ fd ]->website_sockfd, fd );
-			//if ( PACK_IS_LAST( packet ) )
-			//	close( sockfd );
+		case ZS_EVT_WRITE_READY:
+			zs_clr_write( fd );
+			msg_set_read( connections[ fd ]->website_sockfd, fd );
 			break;
 	}
 }
 
 void cleanup_connection( int sockfd ) {
-	zclose( sockfd );
+	if ( connections[ sockfd ]->website_sockfd != -1
+	  && msg_exists( connections[ sockfd ]->website_sockfd, sockfd ) )
+		msg_close( connections[ sockfd ]->website_sockfd, sockfd );
+	zs_close( sockfd );
 	free( connections[ sockfd ] );
 	connections[ sockfd ] = NULL;
 }
 
-void exread( int sockfd, void* buffer, ssize_t len, size_t size ) {
+void exread( int sockfd ) {
+	char buffer[PACK_DATA_SIZE];
 	void* ptr;
 	conn_data_t* conn_data = connections[ sockfd ];
 	website_t* website;
+
+	ssize_t len = zs_read( sockfd, buffer, sizeof( buffer ) );
 
 	// TODO: wait for entire header before looking up website
 	if ( len <= 0 ) {
 cleanup:
 		// cleanup
-		website = website_get_by_sockfd( conn_data->website_sockfd );
-		if ( website && msg_exists( website->sockfd, sockfd ) ) {
-			zpause( sockfd, true );
-			msg_destroy( website->sockfd, sockfd );
-		} else cleanup_connection( sockfd );
+		cleanup_connection( sockfd );
 		return;
 	}
 
-	memset( buffer + len, 0, size - len );
+	memset( buffer + len, 0, sizeof( buffer ) - len );
 
 	ptr = buffer;
 
@@ -544,12 +541,16 @@ cleanup:
 		/* Create a new message to send the request to the corresponding
 		   website. The msgid should be set to the external file descriptor
 		   to send the response back to. */
-		msg_start( website->sockfd, sockfd );
+		msg_open( website->sockfd, sockfd );
+		zs_set_write( sockfd );
 
 		// Write the ip address and hostname of the request
-		msg_send( website->sockfd, sockfd, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) );
-		if ( hp ) msg_send( website->sockfd, sockfd, (void*) hp->h_name, strlen( hp->h_name ) );
-		msg_send( website->sockfd, sockfd, (void*) "\0", 1 );
+		if ( msg_write( website->sockfd, sockfd, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) ) == -1 )
+			goto cleanup;
+		if ( hp && msg_write( website->sockfd, sockfd, (void*) hp->h_name, strlen( hp->h_name ) ) == -1 )
+			goto cleanup;
+		if ( msg_write( website->sockfd, sockfd, (void*) "\0", 1 ) == -1 )
+			goto cleanup;
 
 		// If request_type is POST check if there is content after the HTTP header
 		char postlenbuf[ 32 ];
@@ -561,48 +562,49 @@ cleanup:
 
 		// Send the whole header to the website
 		ptr = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) + strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-		msg_send( website->sockfd, sockfd, (void*) buffer, ( ptr - buffer ) );
+		if ( msg_write( website->sockfd, sockfd, (void*) buffer, ( ptr - (void*)buffer ) ) == -1 )
+			goto cleanup;
 	}
 
 	else {
 		if ( !( website = website_get_by_sockfd( conn_data->website_sockfd ) ) ) {
-			syslog( LOG_WARNING, "exread: no website to service request" );
+		//	syslog( LOG_WARNING, "exread: no website to service request" );
 			goto cleanup;
 		}
 	}
 
 	if ( conn_data->request_type == HTTP_POST_TYPE && conn_data->postlen ) {
-		int left = len - ( ptr - buffer );
+		int left = len - ( ptr - (void*)buffer );
 
 		if ( left > conn_data->postlen )
 			conn_data->postlen = left;
 
-		msg_send( website->sockfd, sockfd, (void*) ptr, left );
+		if ( msg_write( website->sockfd, sockfd, (void*) ptr, left ) == -1 )
+			goto cleanup;
 
 		conn_data->postlen -= left;
 	}
 
-	if ( !conn_data->postlen ) { /* If there isn't still data coming, */
-		msg_end( website->sockfd, sockfd );
+	if ( !conn_data->postlen ) { /* If there isn't more data coming, */
+		msg_flush( website->sockfd, sockfd );
 		//zread( sockfd, false );
-	}
+	} else
+		msg_set_write( website->sockfd, sockfd );
 
 }
 
-void command_handler( msg_switch_t* msg_switch, msg_packet_t* packet ) {
+void command_handler( int fd, int msgid, void* buf, size_t len ) {
 	const char* ret_msg;
-
-	switch ( packet->header.msgid ) {
+	switch ( msgid ) {
 
 		case ZM_CMD_WS_START:
-			ret_msg = start_website( packet->data, msg_switch );
-			msg_start( msg_switch->sockfd, ZM_CMD_WS_START );
-			msg_send( msg_switch->sockfd, ZM_CMD_WS_START, ret_msg, strlen( ret_msg ) );
-			msg_end( msg_switch->sockfd, ZM_CMD_WS_START );
+			ret_msg = start_website( buf, fd );
+			msg_write( fd, ZM_CMD_WS_START, ret_msg, strlen( ret_msg ) + 1 );
+			msg_close( fd, ZM_CMD_WS_START );
 			break;
 
 		case ZM_CMD_WS_STOP:
-			remove_website( msg_switch );
+			remove_website( fd );
 			break;
 
 		/*case ZM_CMD_STATUS:

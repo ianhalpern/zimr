@@ -28,9 +28,10 @@
 #include "simclist.h"
 #include "general.h"
 
-#define WS_STATUS_ENABLED   0x01
-#define WS_STATUS_DISABLED  0x02
-#define WS_STATUS_ENABLING  0x03
+#define WS_STATUS_ENABLED       0x01
+#define WS_STATUS_WANT_ENABLE   0x02
+#define WS_STATUS_DISABLED      0x03
+#define WS_STATUS_ENABLING      0x04
 
 typedef struct website {
 	char* url;

@@ -44,10 +44,6 @@
 #include "zcnf.h"
 #include "dlog.h"
 
-#define INREAD 0x01
-#define INWRIT 0x02
-#define FILEREAD 0x03
-
 #define DAEMON_NAME ZM_APP_EXEC
 #define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
 
@@ -104,7 +100,7 @@ module_t* zimr_load_module( const char* module_name );
 module_t* (*zimr_get_module)( const char* module_name );
 void  zimr_unload_module( module_t* );
 
-bool zimr_connection_handler( website_t* website, msg_packet_t* packet );
+bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t len );
 void zimr_file_handler( int fd, connection_t* connection );
 
 website_t* zimr_website_create( char* url );

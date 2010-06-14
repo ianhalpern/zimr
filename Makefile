@@ -19,7 +19,7 @@ OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o\
 			  simclist.o msg_switch.o userdir.o cli.o dlog.o
 
-EXECS       = zimr-proxy zimr #zimr-app
+EXECS       = zimrd zimr #zimr-app
 TEST_EXECS  = test-zsocket-client test-zsocket-server test-strnstr test-client test-server
 SHARED_OBJS = libzimr.so
 PYMOD_OBJS  = zimr.so
@@ -88,7 +88,7 @@ install:
 zimr: $(EXEC_DEPENDS) libzimr.so userdir.o cli.o
 	$(EXEC_COMPILE) $(LDZIMR)
 
-zimr-proxy: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zcnf.o
+zimrd: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zcnf.o
 	$(EXEC_COMPILE) -lyaml -lssl
 
 ##### SHARED OBJS #####

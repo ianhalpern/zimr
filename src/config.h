@@ -37,7 +37,7 @@
 
 #define SMALLEST( X, Y ) ( (X)<=(Y) ? (X) : (Y) )
 
-#define D_LOCKFILE_PATH "/var/run/zimr-proxy.pid" // used by daemon.c
+#define D_LOCKFILE_PATH "/var/run/zimrd.pid" // used by daemon.c
 #define ZM_APP_CNF_FILE "zimr.cnf"
 #define ZM_USR_DIR "~/.zimr/"
 #define ZM_USR_STATE_FILE ZM_USR_DIR "state"
@@ -45,15 +45,15 @@
 #define ZM_REQ_LOGFILE "zimr.request.log"
 #define ZM_OUT_LOGFILE "zimr.log"
 #define ZM_ERR_LOGFILE "zimr.log"
-#define ZM_APP_EXEC "zimr-app"
-#define ZM_PROXY_CNF_FILE "/etc/zimr/zimr-proxy.cnf"
+#define ZM_APP_PROC_NAME "zimr-webapp"
+#define ZM_PROXY_CNF_FILE "/etc/zimr/zimrd.cnf"
 
 #define ZM_PROXY_DEFAULT_ADDR "127.0.0.1"
 #define ZM_PROXY_DEFAULT_PORT 7672
 #define ZM_PROXY_MAX_PROXIES 64
 
-#define ZM_NUM_PROXY_DEATH_RETRIES 1000 // set to 0(ZERO) for infinite retries
-#define ZM_PROXY_DEATH_RETRY_DELAY 2
+//#define ZM_NUM_PROXY_DEATH_RETRIES 1000 // set to 0(ZERO) for infinite retries
+//#define ZM_PROXY_DEATH_RETRY_DELAY 2
 
 #define ZM_MODULE_NAME_MAX_LEN 100
 #define ZM_MODULE_MAX_ARGS 20

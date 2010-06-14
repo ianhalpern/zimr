@@ -1,9 +1,9 @@
 #! /bin/sh
-# /etc/init.d/zimr-proxy
+# /etc/init.d/zimrd
 #
 
 ### BEGIN INIT INFO
-# Provides:          zimr-proxy
+# Provides:          zimrd
 # Required-Start:    $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Should-Start:      $networking $named $time
@@ -11,7 +11,7 @@
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: virtual http host proxy
-# Description:       zimr-proxy is a specialized http proxy to route
+# Description:       zimrd is a specialized http proxy to route
 #                    http(s) requests to internally or externally connected applications.
 ### END INIT INFO
 
@@ -20,19 +20,19 @@ exitval=0
 
 case "$1" in
 	start)
-		zimr-proxy start
+		zimrd start
 		#exitval=$?
 	;;
 	stop)
-		zimr-proxy stop
+		zimrd stop
 		#exitval=$?
 	;;
 	restart)
-		zimr-proxy restart
+		zimrd restart
 		#exitval=$?
 	;;
 	*)
-		echo "Usage: /etc/init.d/zimr-proxy {start|stop}"
+		echo "Usage: /etc/init.d/zimrd {start|stop}"
 		exit 1
 	;;
 esac

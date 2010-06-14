@@ -29,6 +29,7 @@ static int n_selectable = 0;
 static void msg_update_status( msg_switch_t* msg_switch, int msgid );
 static void msg_switch_push_resp( msg_switch_t* msg_switch, msg_resp_t* resp );
 static void msg_switch_push_writ_msg( msg_switch_t* msg_switch, int msgid );
+static void msg_check_selectability( msg_switch_t* msg_switch, int msgid );
 
 msg_switch_t* msg_switch_get_by_fd( int sockfd ) {
 	zsocket_t* zs = zs_get_by_fd( sockfd );
@@ -40,11 +41,11 @@ msg_switch_t* msg_switch_get_by_fd( int sockfd ) {
 /////////////////////////////////////////////////////////////////////////////////////
 
 static msg_t* msg_get( msg_switch_t* msg_switch, int msgid ) {
-	return msg_switch->msgs[ msgid ];
+	return msg_switch->msgs[ msgid + FD_SETSIZE ];
 }
 
 static void msg_set( msg_switch_t* msg_switch, int msgid, msg_t* msg ) {
-	msg_switch->msgs[ msgid ] = msg;
+	msg_switch->msgs[ msgid + FD_SETSIZE ] = msg;
 }
 
 static bool msg_has_available_writ_packets( msg_switch_t* msg_switch, int msgid, int n ) {
@@ -67,36 +68,19 @@ static msg_t* msg_create( msg_switch_t* msg_switch, int msgid ) {
 	msg->n_read = 0;
 	msg->cur_read_packet_pos = 0;
 	msg->incomplete_writ_packet = NULL;
+	msg->selectable = false;
 	list_init( &msg->read_queue );
 	list_init( &msg->writ_queue );
 
 	msg_set( msg_switch, msgid, msg );
 
-	n_selectable++;
+	msg_check_selectability( msg_switch, msgid );
 
 	return msg;
 }
 
 static void msg_clear( msg_switch_t* msg_switch, int msgid ) {
 	msg_t* msg = msg_get( msg_switch, msgid );
-
-	if ( !FL_ISSET( msg->status, MSG_STAT_CONNECTED ) )
-		n_selectable--;
-
-	if ( FD_ISSET( msgid, &msg_switch->active_read_fd_set ) && FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
-		n_selectable--;
-
-	if ( FD_ISSET( msgid, &msg_switch->active_write_fd_set ) && FL_ISSET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT ) )
-		n_selectable--;
-
-	FL_CLR( msg->status,
-		MSG_STAT_PACKET_AVAIL_TO_READ|
-		MSG_STAT_PACKET_AVAIL_TO_WRIT|
-		MSG_STAT_SPACE_AVAIL_FOR_READ|
-		MSG_STAT_SPACE_AVAIL_FOR_WRIT|
-		MSG_STAT_WAITING_FOR_RESP    |
-		MSG_STAT_NEED_TO_SEND_RESP
-	);
 
 	while ( list_size( &msg->writ_queue ) )
 		free( list_fetch( &msg->writ_queue ) );
@@ -109,6 +93,18 @@ static void msg_clear( msg_switch_t* msg_switch, int msgid ) {
 		if ( ( i = list_locate( &msg_switch->pending_msgs, msg ) ) >= 0 )
 			list_delete_at( &msg_switch->pending_msgs, i );
 	}
+
+	FL_CLR( msg->status,
+		MSG_STAT_PACKET_AVAIL_TO_READ |
+		MSG_STAT_PACKET_AVAIL_TO_WRIT |
+		MSG_STAT_SPACE_AVAIL_FOR_READ |
+		MSG_STAT_SPACE_AVAIL_FOR_WRIT |
+		MSG_STAT_WAITING_FOR_RESP     |
+		MSG_STAT_WRITING              |
+		MSG_STAT_NEED_TO_SEND_RESP
+	);
+
+	msg_check_selectability( msg_switch, msgid );
 }
 
 static void msg_free( msg_switch_t* msg_switch, int msgid ) {
@@ -121,6 +117,9 @@ static void msg_free( msg_switch_t* msg_switch, int msgid ) {
 
 	if ( msg->incomplete_writ_packet )
 		free( msg->incomplete_writ_packet );
+
+	if ( msg->selectable )
+		n_selectable--;
 
 	free( msg );
 	msg_set( msg_switch, msgid, NULL );
@@ -153,7 +152,6 @@ static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp 
 			msg_send_resp( msg_switch, msgid, MSG_RESP_DISCON );
 			FL_SET( msg->status, MSG_STAT_DISCONNECTED );
 			msg_clear( msg_switch, msgid );
-			n_selectable++;
 		} else msg_free( msg_switch, msgid );
 		return;
 	}
@@ -169,6 +167,7 @@ static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp 
 			msg_send_resp( msg_switch, msgid, MSG_RESP_DISCON );
 	}
 
+	msg_check_selectability( msg_switch, msgid );
 	msg_update_status( msg_switch, msgid );
 }
 
@@ -187,13 +186,10 @@ static void msg_push_writ_packet( msg_switch_t* msg_switch, int msgid ) {
 	FL_SET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT );
 
 	if ( msg_has_available_writ_packets( msg_switch, msgid, MSG_N_BUFF_PACKETS_ALLOWED ) ) {
-
-		if ( FD_ISSET( msgid, &msg_switch->active_write_fd_set ) && FL_ISSET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT ) )
-			n_selectable--;
-
 		FL_CLR( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT );
 	}
 
+	msg_check_selectability( msg_switch, msgid );
 	msg_update_status( msg_switch, msgid );
 }
 
@@ -203,15 +199,13 @@ static msg_packet_t msg_pop_writ_packet( msg_switch_t* msg_switch, int msgid ) {
 
 	//printf( "pop writ packet %d %d, %d packets \n", msg_switch->sockfd, msgid, list_size( &msg->writ_queue ) );
 	msg_packet_t packet = *(msg_packet_t*) list_get_at( &msg->writ_queue, 0 );
-	free( list_fetch( &msg->writ_queue ) );
+	void* ptr = list_fetch( &msg->writ_queue );
+	free( ptr );
 
 	FL_SET( msg->status, MSG_STAT_WAITING_FOR_RESP );
 	FL_CLR( msg->status, MSG_STAT_WRITING );
 
 	if ( !msg_has_available_writ_packets( msg_switch, msg->msgid, MSG_N_BUFF_PACKETS_ALLOWED ) ) {
-
-		if ( FD_ISSET( msgid, &msg_switch->active_write_fd_set ) && !FL_ISSET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT ) )
-			n_selectable++;
 
 		FL_SET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT );
 	}
@@ -220,6 +214,7 @@ static msg_packet_t msg_pop_writ_packet( msg_switch_t* msg_switch, int msgid ) {
 		FL_CLR( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT );
 	}
 
+	msg_check_selectability( msg_switch, msgid );
 	msg_update_status( msg_switch, msgid );
 	return packet;
 }
@@ -235,13 +230,11 @@ static void msg_push_read_packet( msg_switch_t* msg_switch, int msgid, msg_packe
 	if ( !FL_ISSET( msg->status, MSG_STAT_CLOSED ) )
 		list_append( &msg->read_queue, memdup( packet, sizeof( msg_packet_t ) ) );
 
-	if ( FD_ISSET( msgid, &msg_switch->active_read_fd_set ) && !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
-		n_selectable++;
-
 	FL_SET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ );
 	if ( msg_has_available_read_packets( msg_switch, msg->msgid, MSG_N_BUFF_PACKETS_ALLOWED ) )
 		FL_CLR( msg->status, MSG_STAT_SPACE_AVAIL_FOR_READ );
 
+	msg_check_selectability( msg_switch, msgid );
 	msg_update_status( msg_switch, msgid );
 }
 
@@ -264,12 +257,10 @@ static void msg_pop_read_packet( msg_switch_t* msg_switch, int msgid ) {
 		FL_SET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_READ );
 	if ( !msg_has_available_read_packets( msg_switch, msg->msgid, 1 ) ) {
 
-		if ( FD_ISSET( msgid, &msg_switch->active_read_fd_set ) && FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
-			n_selectable--;
-
 		FL_CLR( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ );
 	}
 
+	msg_check_selectability( msg_switch, msgid );
 	msg_update_status( msg_switch, msgid );
 }
 
@@ -304,6 +295,36 @@ static void msg_update_status( msg_switch_t* msg_switch, int msgid ) {
 
 }
 
+static void msg_check_selectability( msg_switch_t* msg_switch, int msgid ) {
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+
+	if ( !msg->selectable && !FL_ISSET( msg->status, MSG_STAT_CONNECTED ) ) {
+		n_selectable++;
+		msg->selectable = true;
+		return;
+	}
+
+	if ( !msg->selectable && FD_ISSET( abs(msgid), &msg_switch->active_read_fd_set[msgid>=0] )
+	  && FL_ARESOMESET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ | MSG_STAT_DISCONNECTED ) ) {
+		n_selectable++;
+		msg->selectable = true;
+		return;
+	}
+
+	if ( !msg->selectable && FD_ISSET( abs(msgid), &msg_switch->active_write_fd_set[msgid>=0] )
+	  && FL_ARESOMESET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT | MSG_STAT_DISCONNECTED ) ) {
+		n_selectable++;
+		msg->selectable = true;
+		return;
+	}
+
+	if ( msg->selectable ) {
+		msg->selectable = false;
+		n_selectable--;
+	}
+}
+
 // External MSG functions /////////////////////////////////////////////////////////////
 void msg_set_read( int fd, int msgid ) {
 	msg_switch_t* msg_switch;
@@ -312,10 +333,8 @@ void msg_set_read( int fd, int msgid ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
 
-	if ( !FD_ISSET( msgid, &msg_switch->active_read_fd_set ) && FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
-		n_selectable++;
-
-	FD_SET( msgid, &msg_switch->active_read_fd_set );
+	FD_SET( abs(msgid), &msg_switch->active_read_fd_set[msgid>=0] );
+	msg_check_selectability( msg_switch, msgid );
 }
 
 void msg_clr_read( int fd, int msgid ) {
@@ -325,17 +344,15 @@ void msg_clr_read( int fd, int msgid ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
 
-	if ( FD_ISSET( msgid, &msg_switch->active_read_fd_set ) && FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
-		n_selectable--;
-
-	FD_CLR( msgid, &msg_switch->active_read_fd_set );
+	FD_CLR( abs(msgid), &msg_switch->active_read_fd_set[msgid>=0] );
+	msg_check_selectability( msg_switch, msgid );
 }
 
 bool msg_isset_read( int fd, int msgid ) {
 	msg_switch_t* msg_switch;
 	assert( msg_switch = msg_switch_get_by_fd( fd ) );
 
-	return FD_ISSET( msgid, &msg_switch->active_read_fd_set );
+	return FD_ISSET( abs(msgid), &msg_switch->active_read_fd_set[msgid>=0] );
 }
 
 void msg_set_write( int fd, int msgid ) {
@@ -345,10 +362,8 @@ void msg_set_write( int fd, int msgid ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
 
-	if ( !FD_ISSET( msgid, &msg_switch->active_write_fd_set ) && FL_ISSET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT ) )
-		n_selectable++;
-
-	FD_SET( msgid, &msg_switch->active_write_fd_set );
+	FD_SET( abs(msgid), &msg_switch->active_write_fd_set[msgid>=0] );
+	msg_check_selectability( msg_switch, msgid );
 }
 
 void msg_clr_write( int fd, int msgid ) {
@@ -358,17 +373,15 @@ void msg_clr_write( int fd, int msgid ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
 
-	if ( FD_ISSET( msgid, &msg_switch->active_write_fd_set ) && FL_ISSET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT ) )
-		n_selectable--;
-
-	FD_CLR( msgid, &msg_switch->active_write_fd_set );
+	FD_CLR( abs(msgid), &msg_switch->active_write_fd_set[msgid>=0] );
+	msg_check_selectability( msg_switch, msgid );
 }
 
 bool msg_isset_write( int fd, int msgid ) {
 	msg_switch_t* msg_switch;
 	assert( msg_switch = msg_switch_get_by_fd( fd ) );
 
-	return FD_ISSET( msgid, &msg_switch->active_write_fd_set );
+	return FD_ISSET( abs(msgid), &msg_switch->active_write_fd_set[msgid>=0] );
 }
 
 bool msg_exists( int sockfd, int msgid ) {
@@ -394,8 +407,8 @@ int msg_open( int fd, int msgid ) {
 
 	msg = msg_create( msg_switch, msgid );
 	FL_SET( msg->status, MSG_STAT_CONNECTED );
-	n_selectable--;
 
+	msg_check_selectability( msg_switch, msgid );
 	return 0;
 }
 
@@ -404,29 +417,29 @@ int msg_accept( int fd, int msgid ) {
 
 	if ( !msg_switch ) {
 		errno = EINVAL;
-		return -1;
+		return 0;
 	}
 
 	msg_t* msg = msg_get( msg_switch, msgid );
 	if ( !msg || FL_ISSET( msg->status, MSG_STAT_CLOSED ) ) {
 		errno = EBADMSG;
-		return -1;
+		return 0;
 	}
 
 	if ( FL_ISSET( msg->status, MSG_STAT_CONNECTED ) ) {
 		errno = EEXIST;
-		return -1;
+		return 0;
 	}
 
 	if ( FL_ISSET( msg->status, MSG_STAT_DISCONNECTED ) ) {
 		errno = ECONNABORTED;
 		msg_free( msg_switch, msgid );
-		return -1;
+		return 0;
 	}
 
 	FL_SET( msg->status, MSG_STAT_CONNECTED );
-	n_selectable--;
 
+	msg_check_selectability( msg_switch, msgid );
 	return msg->msgid;
 }
 
@@ -448,14 +461,8 @@ int msg_close( int fd, int msgid ) {
 	msg_clr_read( msg_switch->sockfd, msgid );
 	msg_clr_write( msg_switch->sockfd, msgid );
 
-	if ( !msg_switch->connected ) {
-		msg_free( msg_switch, msgid );
-		return 0;
-	}
-
 	if ( FL_ISSET( msg->status, MSG_STAT_DISCONNECTED ) || !msg_switch->connected ) {
 		msg_free( msg_switch, msgid );
-		n_selectable--;
 		return 0;
 	}
 
@@ -605,9 +612,6 @@ ssize_t msg_read( int fd, int msgid, void* buf, size_t size ) {
 
 		}
 	}
-
-	if ( orig_size - size == 0 )
-		fprintf( stderr, "problem %d %d\n", orig_size, size );
 
 	return orig_size - size;
 }
@@ -806,8 +810,10 @@ int msg_switch_create( int fd, void (*event_handler)( int fd, int msgid, int eve
 	msg_switch->write.type = 0;
 	msg_switch->evt_hdlr = event_handler;
 
-	FD_ZERO( &msg_switch->active_read_fd_set );
-	FD_ZERO( &msg_switch->active_write_fd_set );
+	FD_ZERO( &msg_switch->active_read_fd_set[0] );
+	FD_ZERO( &msg_switch->active_read_fd_set[1] );
+	FD_ZERO( &msg_switch->active_write_fd_set[0] );
+	FD_ZERO( &msg_switch->active_write_fd_set[1] );
 
 	zs_set_event_hdlr( fd, msg_zsocket_event_hdlr );
 	zs_set_read( fd );
@@ -860,23 +866,27 @@ int msg_switch_select() {
 		msg_switch_t* msg_switch = msg_switch_get_by_fd( fd );
 		if ( !msg_switch ) continue;
 
-		fd_set read_fd_set  = msg_switch->active_read_fd_set;
-		fd_set write_fd_set = msg_switch->active_write_fd_set;
+		fd_set read_fd_set[2];
+		fd_set write_fd_set[2];
+		read_fd_set[0] = msg_switch->active_read_fd_set[0];
+		read_fd_set[1] = msg_switch->active_read_fd_set[1];
+		write_fd_set[0] = msg_switch->active_write_fd_set[0];
+		write_fd_set[1] = msg_switch->active_write_fd_set[1];
 
 		int msgid;
-		for ( msgid = 0; msgid < FD_SETSIZE; msgid++ ) {
+		for ( msgid = -FD_SETSIZE; msgid < FD_SETSIZE; msgid++ ) {
 			msg_t* msg = msg_get( msg_switch, msgid );
 
 			if ( msg && !FL_ISSET( msg->status, MSG_STAT_CONNECTED ) )
 				msg_switch->evt_hdlr( msg_switch->sockfd, msgid, MSG_EVT_ACCEPT_READY );
 
-			if ( FD_ISSET( msgid, &read_fd_set ) && FD_ISSET( msgid, &msg_switch->active_read_fd_set )
+			if ( FD_ISSET( abs(msgid), &read_fd_set[msgid>=0] ) && FD_ISSET( abs(msgid), &msg_switch->active_read_fd_set[msgid>=0] )
 			  && ( !msg || FL_ARESOMESET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ | MSG_STAT_DISCONNECTED ) ) ) {
 
 				msg_switch->evt_hdlr( msg_switch->sockfd, msgid, MSG_EVT_READ_READY );
 			}
 
-			if ( FD_ISSET( msgid, &write_fd_set ) && FD_ISSET( msgid, &msg_switch->active_write_fd_set )
+			if ( FD_ISSET( abs(msgid), &write_fd_set[msgid>=0] ) && FD_ISSET( abs(msgid), &msg_switch->active_write_fd_set[msgid>=0] )
 			  && ( !msg || FL_ARESOMESET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT | MSG_STAT_DISCONNECTED ) ) ) {
 				msg_switch->evt_hdlr( msg_switch->sockfd, msgid, MSG_EVT_WRITE_READY );
 			}

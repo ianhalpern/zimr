@@ -97,6 +97,7 @@ typedef struct {
 	int cur_read_packet_pos;
 	list_t read_queue;
 	list_t writ_queue;
+	bool selectable;
 } msg_t;
 
 typedef struct msg_switch {
@@ -104,9 +105,9 @@ typedef struct msg_switch {
 	bool connected;
 	list_t pending_resps;
 	list_t pending_msgs;
-	msg_t* msgs[ FD_SETSIZE ];
-	fd_set active_read_fd_set;
-	fd_set active_write_fd_set;
+	msg_t* msgs[ FD_SETSIZE*2 ];
+	fd_set active_read_fd_set[2];
+	fd_set active_write_fd_set[2];
 
 	struct {
 		int type;
