@@ -551,7 +551,7 @@ cleanup:
 		memset( postlenbuf, 0, sizeof( postlenbuf ) );
 		if ( conn_data->request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
 			memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
-			conn_data->postlen = atoi( postlenbuf );
+			conn_data->postlen = strtoumax( postlenbuf, NULL, 0 );
 		}
 
 		// Write the message length
@@ -571,6 +571,8 @@ cleanup:
 		// Send the whole header to the website
 		if ( msg_write( website->sockfd, sockfd, (void*) buffer, ( endofhdrs - buffer ) ) == -1 )
 			goto cleanup;
+
+		ptr = endofhdrs;
 	}
 
 	else {

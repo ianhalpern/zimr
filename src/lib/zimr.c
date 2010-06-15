@@ -456,6 +456,7 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 
 	if ( !website_data->connections[ msgid ] ) {
 		website_data->connections[ msgid ] = (conn_data_t*) malloc( sizeof( conn_data_t ) );
+		website_data->connections[ msgid ]->connection = NULL;
 		website_data->connections[ msgid ]->fileread_data.fd = -1;
 		website_data->connections[ msgid ]->data = strdup( "" );
 		website_data->connections[ msgid ]->size_received = 0;
@@ -465,6 +466,9 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 	}
 
 	conn_data = website_data->connections[ msgid ];
+
+//	printf( "1: %zu of %zu received\n", conn_data->size_received, conn_data->size );
+
 	if ( conn_data->size_received >= conn_data->size ) return false;
 
 	char* tmp;
@@ -476,9 +480,8 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 	conn_data->size_received += len;
 	free( tmp );
 
+//	printf( "2: %zu of %zu received\n", conn_data->size_received, conn_data->size );
 	if ( conn_data->size_received > conn_data->size ) return false;
-
-//	printf( "%zu of %zu received\n", conn_data->size_received, conn_data->size );
 
 	if ( conn_data->size_received == conn_data->size ) {
 		conn_data->connection = connection_create( website, msgid, conn_data->data, conn_data->size );
