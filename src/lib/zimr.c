@@ -351,6 +351,12 @@ void cleanup_connection( int fd, int msgid ) {
 	website_data->connections[ msgid ] = NULL;
 }
 
+bool zimr_website_connection_exists( int fd, int msgid ) {
+	website_t* website = website_get_by_sockfd( fd );
+	website_data_t* website_data = website->udata;
+	return website_data->connections[ msgid ];
+}
+
 void msg_event_handler( int fd, int msgid, int event ) {
 	website_t* website = website_get_by_sockfd( fd );
 	website_data_t* website_data = website->udata;
@@ -501,7 +507,8 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 			module_website_data_t* module_data = list_get_at( &website_data->module_data, i );
 			*(void **)(&modzimr_connection_new) = dlsym( module_data->module->handle, "modzimr_connection_new" );
 			if ( modzimr_connection_new ) (*modzimr_connection_new)( conn_data->connection, module_data->udata );
-			if ( FL_ISSET( conn_data->connection->status, CONN_STATUS_SENT_HEADERS ) ) return true;
+			if ( !zimr_website_connection_exists( website->sockfd, msgid )
+			  || FL_ISSET( conn_data->connection->status, CONN_STATUS_SENT_HEADERS ) ) return true;
 		}
 
 		if ( website_data->redirect_url ) {

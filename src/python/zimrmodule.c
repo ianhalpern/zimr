@@ -56,7 +56,8 @@ static void pyzimr_error_print( connection_t* connection ) {
 			PyErr_PrintEx(0);
 	}
 
-	zimr_connection_send_error( connection, 500, error_message, error_message_size );
+	if ( connection )
+		zimr_connection_send_error( connection, 500, error_message, error_message_size );
 
 	Py_XDECREF( err_type );
 	Py_XDECREF( err_value );
@@ -824,12 +825,14 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 	Py_INCREF( website );
 	connection->website = (PyObject*) website;
 
+	int connfd = _connection->sockfd;
+
 	PyObject_CallFunctionObjArgs( website->connection_handler, connection, NULL );
 
 	Py_DECREF( connection );
 
 	if ( PyErr_Occurred() )
-		pyzimr_error_print( _connection );
+		pyzimr_error_print( zimr_website_connection_exists( website->_website->sockfd, connfd ) ? _connection : NULL );
 
 //	PyEval_ReleaseLock();
 	PyGILState_Release( gstate );
