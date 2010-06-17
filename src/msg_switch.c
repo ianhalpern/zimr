@@ -125,52 +125,6 @@ static void msg_free( msg_switch_t* msg_switch, int msgid ) {
 	msg_set( msg_switch, msgid, NULL );
 }
 
-static void msg_send_resp( msg_switch_t* msg_switch, int msgid, char status ) {
-	msg_t* msg;
-	assert( msg = msg_get( msg_switch, msgid ) );
-	assert( status != MSG_RESP_OK || FL_ISSET( msg->status, MSG_STAT_NEED_TO_SEND_RESP ) );
-
-	msg_resp_t* resp = (msg_resp_t*) malloc( sizeof( msg_resp_t ) );
-	memset( resp, 0, sizeof( msg_resp_t ) ); // initializes all bytes including padded bytes
-
-	resp->msgid = msgid;
-	resp->status = status;
-
-	msg_switch_push_resp( msg_switch, resp );
-	//list_append( &msg_switch->pending_resps, resp );
-
-	if ( status == MSG_RESP_OK ) FL_CLR( msg->status, MSG_STAT_NEED_TO_SEND_RESP );
-}
-
-static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp ) {
-	msg_t* msg;
-	assert( msg = msg_get( msg_switch, msgid ) );
-
-	if ( resp.status == MSG_RESP_DISCON ) {
-		if ( !FL_ISSET( msg->status, MSG_STAT_CLOSED ) ) {
-			// if wasn't the sender of the disconnect must return a disconnect
-			msg_send_resp( msg_switch, msgid, MSG_RESP_DISCON );
-			FL_SET( msg->status, MSG_STAT_DISCONNECTED );
-			msg_clear( msg_switch, msgid );
-		} else msg_free( msg_switch, msgid );
-		return;
-	}
-
-	assert( FL_ISSET( msg->status, MSG_STAT_WAITING_FOR_RESP ) );
-
-	FL_CLR( msg->status, MSG_STAT_WAITING_FOR_RESP );
-
-	if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) ) {
-	// If nothing has become available since last write, flush whatever is available
-		msg_flush( msg_switch->sockfd, msgid );
-		if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) && FL_ISSET( msg->status, MSG_STAT_CLOSED ) )
-			msg_send_resp( msg_switch, msgid, MSG_RESP_DISCON );
-	}
-
-	msg_check_selectability( msg_switch, msgid );
-	msg_update_status( msg_switch, msgid );
-}
-
 static void msg_push_writ_packet( msg_switch_t* msg_switch, int msgid ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
@@ -255,10 +209,9 @@ static void msg_pop_read_packet( msg_switch_t* msg_switch, int msgid ) {
 
 	if ( !msg_has_available_read_packets( msg_switch, msg->msgid, MSG_N_BUFF_PACKETS_ALLOWED ) )
 		FL_SET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_READ );
-	if ( !msg_has_available_read_packets( msg_switch, msg->msgid, 1 ) ) {
 
+	if ( !msg_has_available_read_packets( msg_switch, msg->msgid, 1 ) )
 		FL_CLR( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ );
-	}
 
 	msg_check_selectability( msg_switch, msgid );
 	msg_update_status( msg_switch, msgid );
@@ -281,11 +234,63 @@ static msg_packet_t* msg_packet_new( msg_switch_t* msg_switch, int msgid ) {
 	return packet;
 }
 
+static void msg_send_resp( msg_switch_t* msg_switch, int msgid, char status ) {
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+	assert( status != MSG_RESP_OK || FL_ISSET( msg->status, MSG_STAT_NEED_TO_SEND_RESP ) );
+
+	msg_resp_t* resp = (msg_resp_t*) malloc( sizeof( msg_resp_t ) );
+	memset( resp, 0, sizeof( msg_resp_t ) ); // initializes all bytes including padded bytes
+
+	resp->msgid = msgid;
+	resp->status = status;
+
+	msg_switch_push_resp( msg_switch, resp );
+	//list_append( &msg_switch->pending_resps, resp );
+
+	if ( status == MSG_RESP_OK ) FL_CLR( msg->status, MSG_STAT_NEED_TO_SEND_RESP );
+}
+
+static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp ) {
+	msg_t* msg;
+	assert( msg = msg_get( msg_switch, msgid ) );
+
+	if ( resp.status == MSG_RESP_DISCON ) {
+		if ( !FL_ISSET( msg->status, MSG_STAT_CLOSED ) ) {
+			// if wasn't the sender of the disconnect must return a disconnect
+			msg_send_resp( msg_switch, msgid, MSG_RESP_DISCON );
+			FL_SET( msg->status, MSG_STAT_DISCONNECTED );
+
+			if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
+				msg_clear( msg_switch, msgid );
+			else while ( FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) )
+				msg_pop_writ_packet( msg_switch, msgid );
+
+		} else msg_free( msg_switch, msgid );
+		return;
+	}
+
+	assert( FL_ISSET( msg->status, MSG_STAT_WAITING_FOR_RESP ) );
+
+	FL_CLR( msg->status, MSG_STAT_WAITING_FOR_RESP );
+
+	if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) ) {
+	// If nothing has become available since last write, flush whatever is available
+		msg_flush( msg_switch->sockfd, msgid );
+		if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) && FL_ISSET( msg->status, MSG_STAT_CLOSED ) )
+			msg_send_resp( msg_switch, msgid, MSG_RESP_DISCON );
+	}
+
+	msg_check_selectability( msg_switch, msgid );
+	msg_update_status( msg_switch, msgid );
+}
+
 static void msg_update_status( msg_switch_t* msg_switch, int msgid ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
 
-	if ( FL_ISSET( msg->status, MSG_STAT_NEED_TO_SEND_RESP | MSG_STAT_SPACE_AVAIL_FOR_READ ) )
+	if ( FL_ISSET( msg->status, MSG_STAT_NEED_TO_SEND_RESP | MSG_STAT_SPACE_AVAIL_FOR_READ )
+	&& !FL_ISSET( msg->status, MSG_STAT_DISCONNECTED ) )
 		msg_send_resp( msg_switch, msgid, MSG_RESP_OK );
 
 	if ( FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) && !FL_ARESOMESET( msg->status, MSG_STAT_WAITING_FOR_RESP | MSG_STAT_WRITING ) ) {
@@ -576,7 +581,7 @@ ssize_t msg_read( int fd, int msgid, void* buf, size_t size ) {
 		return -1;
 	}
 
-	if ( FL_ISSET( msg->status, MSG_STAT_DISCONNECTED ) ) {
+	if ( FL_ISSET( msg->status, MSG_STAT_DISCONNECTED ) && !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) ) {
 		return 0; // EOF
 	}
 
