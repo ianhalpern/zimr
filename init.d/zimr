@@ -19,7 +19,7 @@ exitval=0
 
 case "$1" in
 	start)
-		zimr restart all users
+		zimr start all users -not-stopped
 	;;
 	restart)
 		zimr restart all users

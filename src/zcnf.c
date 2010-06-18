@@ -23,7 +23,7 @@
 #include "zcnf.h"
 
 // zcnf_walk is more to show an example of how to walk through a yaml config file
-int zcnf_walk( yaml_document_t* document, int index, int depth ) {
+/*int zcnf_walk( yaml_document_t* document, int index, int depth ) {
 	int i;
 	yaml_node_t *node = yaml_document_get_node( document, index );
 
@@ -52,7 +52,7 @@ int zcnf_walk( yaml_document_t* document, int index, int depth ) {
 	}
 
 	return 1;
-}
+}*/
 
 void zcnf_parse_proxy( zcnf_proxy_t* proxy, char* proxy_str ) {
 	memset( proxy->ip, 0, sizeof( proxy->ip ) );
@@ -240,6 +240,7 @@ bool zcnf_state_load_apps( zcnf_state_t* state, yaml_document_t* document, int i
 		list_append( &state->apps, app );
 		app->path = NULL;
 		app->pid = 0;
+		app->stopped = false;
 
 		for ( j = 0; j < app_node->data.mapping.pairs.top - app_node->data.mapping.pairs.start; j++ ) {
 			yaml_node_t* attr_key = yaml_document_get_node( document, app_node->data.mapping.pairs.start[ j ].key );
@@ -253,8 +254,10 @@ bool zcnf_state_load_apps( zcnf_state_t* state, yaml_document_t* document, int i
 
 			// path
 			if ( strcmp( "path", (char*) attr_key->data.scalar.value ) == 0 ) {
-				if ( attr_val->type != YAML_SCALAR_NODE )
-					continue;
+				if ( attr_val->type != YAML_SCALAR_NODE ) {
+					printf( "Invalid state file: the path attribute's value must be a valid file path.\n" );
+					return false;
+				}
 				app->path = strdup( (char*) attr_val->data.scalar.value );
 			}
 
@@ -263,6 +266,13 @@ bool zcnf_state_load_apps( zcnf_state_t* state, yaml_document_t* document, int i
 				if ( attr_val->type != YAML_SCALAR_NODE )
 					continue;
 				app->pid = atoi( (char*) attr_val->data.scalar.value );
+			}
+
+			// stopped
+			else if ( strcmp( "stopped", (char*) attr_key->data.scalar.value ) == 0 ) {
+				if ( attr_val->type != YAML_SCALAR_NODE )
+					continue;
+				app->stopped = atoi( (char*) attr_val->data.scalar.value );
 			}
 
 		}
@@ -315,7 +325,7 @@ zcnf_state_t* zcnf_state_load( uid_t uid ) {
 		}
 
 		if ( strcmp( "applications", (char*) node->data.scalar.value ) == 0 ) {
-			if ( ! zcnf_state_load_apps( state, &document, root->data.mapping.pairs.start[ i ].value ) ) {
+			if ( !zcnf_state_load_apps( state, &document, root->data.mapping.pairs.start[ i ].value ) ) {
 				continue;
 			}
 		}
@@ -452,7 +462,7 @@ quit:
 	return cnf;
 }
 
-void zcnf_state_set_app( zcnf_state_t* state, const char* path, pid_t pid ) {
+void zcnf_state_set_app( zcnf_state_t* state, const char* path, pid_t pid, bool stopped ) {
 	zcnf_state_app_t* app;
 
 	int i;
@@ -470,6 +480,7 @@ void zcnf_state_set_app( zcnf_state_t* state, const char* path, pid_t pid ) {
 	}
 
 	app->pid = pid;
+	app->stopped = stopped;
 
 }
 
@@ -509,22 +520,29 @@ void zcnf_state_save( zcnf_state_t* state ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		zcnf_state_app_t* app = list_get_at( &state->apps, i );
-		int app_map, path_name, path_value, pid_name, pid_value;
+		int app_map, name, value;
 
 		assert( ( app_map = yaml_document_add_mapping( &document, NULL, YAML_BLOCK_SEQUENCE_STYLE ) ) );
 
-		assert( ( path_name = yaml_document_add_scalar( &document, NULL,
+		assert( ( name = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) "path", 4, YAML_PLAIN_SCALAR_STYLE ) ) );
-		assert( ( path_value = yaml_document_add_scalar( &document, NULL,
+		assert( ( value = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) app->path, strlen( app->path ), YAML_PLAIN_SCALAR_STYLE ) ) );
-		assert( yaml_document_append_mapping_pair( &document, app_map, path_name, path_value ) );
+		assert( yaml_document_append_mapping_pair( &document, app_map, name, value ) );
 
 		sprintf( number, "%d", app->pid );
-		assert( ( pid_name = yaml_document_add_scalar( &document, NULL,
+		assert( ( name = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) "pid", 3, YAML_PLAIN_SCALAR_STYLE ) ) );
-		assert( ( pid_value = yaml_document_add_scalar( &document, NULL,
+		assert( ( value = yaml_document_add_scalar( &document, NULL,
 		  (unsigned char*) number, -1, YAML_PLAIN_SCALAR_STYLE ) ) );
-		assert( yaml_document_append_mapping_pair( &document, app_map, pid_name, pid_value ) );
+		assert( yaml_document_append_mapping_pair( &document, app_map, name, value ) );
+
+		sprintf( number, "%d", app->stopped );
+		assert( ( name = yaml_document_add_scalar( &document, NULL,
+		  (unsigned char*) "stopped", 7, YAML_PLAIN_SCALAR_STYLE ) ) );
+		assert( ( value = yaml_document_add_scalar( &document, NULL,
+		  (unsigned char*) number, -1, YAML_PLAIN_SCALAR_STYLE ) ) );
+		assert( yaml_document_append_mapping_pair( &document, app_map, name, value ) );
 
 		assert( yaml_document_append_sequence_item( &document, apps, app_map ) );
 

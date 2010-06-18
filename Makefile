@@ -86,7 +86,7 @@ install:
 #################
 
 zimr: $(EXEC_DEPENDS) libzimr.so userdir.o cli.o
-	$(EXEC_COMPILE) $(LDZIMR)
+	$(EXEC_COMPILE) $(LDZIMR) -lproc
 
 zimrd: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zcnf.o
 	$(EXEC_COMPILE) -lyaml -lssl

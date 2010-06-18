@@ -38,13 +38,6 @@
 
 #define DAEMON_NAME "zimrd"
 
-#define INLISN 0x01
-#define INREAD 0x02
-#define INWRIT 0x03
-#define EXLISN 0x04
-#define EXREAD 0x05
-#define EXWRIT 0x06
-
 typedef struct {
 	int exlisnfd;
 } website_data_t;

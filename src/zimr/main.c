@@ -29,17 +29,20 @@
 #include <pwd.h>
 #include <fcntl.h>
 #include <pwd.h>
+#include <time.h>
+#include <proc/readproc.h>
 
 #include "zimr.h"
 #include "cli.h"
 
 #define ADD     0x1
-#define STOP    0x2
-#define RESTART 0x3
-#define REMOVE  0x4
-#define STATUS  0x5
+#define START   0x2
+#define STOP    0x3
+#define RESTART 0x4
+#define REMOVE  0x5
+#define STATUS  0x6
 
-#define CMDSTR(X) (X==ADD?"Adding":X==STOP?"Stopping":X==RESTART?"Restarting":X==REMOVE?"Removing":NULL)
+#define CMDSTR(X) (X==ADD?"Adding":X==START?"Starting":X==STOP?"Stopping":X==RESTART?"Restarting":X==REMOVE?"Removing":X==STATUS?"Status":"Unknown")
 
 cli_cmd_t root_cmd;
 
@@ -76,7 +79,7 @@ void application_shutdown() {
 	zimr_shutdown();
 }
 
-pid_t application_exec( uid_t uid, char* path, bool nofork ) {
+pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 	pid_t pid = !nofork ? fork() : 0;
 	char dir[ PATH_MAX ],* ptr;
 
@@ -88,7 +91,7 @@ pid_t application_exec( uid_t uid, char* path, bool nofork ) {
 		chdir( dir );
 
 		setuid( uid );
-		setgid( uid );
+		setgid( gid );
 
 		zimr_init();
 
@@ -104,6 +107,7 @@ pid_t application_exec( uid_t uid, char* path, bool nofork ) {
 
 		zimr_start();
 
+		exit( EXIT_SUCCESS );
 	} else if ( pid == (pid_t) -1 ) {
 		// still in parent, but there is no child
 		puts( "parent error: no child" );
@@ -135,9 +139,8 @@ bool application_kill( pid_t pid, bool force ) {
 	return true;
 }
 
-bool application_function( uid_t uid, char* cnf_path, char type, bool force ) {
-	if ( CMDSTR( type ) )
-		printf( " * %s %s...", CMDSTR( type ), cnf_path ); fflush( stdout );
+bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool force ) {
+	printf( " * %s %s...\n", CMDSTR( type ), cnf_path ); //fflush( stdout );
 
 	userdir_init( uid );
 	zcnf_state_t* state = zcnf_state_load( uid );
@@ -156,7 +159,7 @@ bool application_function( uid_t uid, char* cnf_path, char type, bool force ) {
 		app = list_get_at( &state->apps, i );
 		if ( strcmp( app->path, cnf_path ) == 0 ) {
 			if ( type == ADD ) {
-				puts( "Failed: Already added" );
+				puts( "   Failed: Already added" );
 				retval = false;
 				goto quit;
 			}
@@ -166,7 +169,7 @@ bool application_function( uid_t uid, char* cnf_path, char type, bool force ) {
 	}
 
 	if ( type != ADD && !app ) {
-		puts( "Failed: not added" );
+		puts( " * Failed: webapp does not exist. Run 'zimr add' to add the webapp" );
 		retval = false;
 		goto quit;
 	}
@@ -175,28 +178,43 @@ bool application_function( uid_t uid, char* cnf_path, char type, bool force ) {
 		pid_t pid;
 		switch ( type ) {
 			case ADD:
-				if ( ( pid = application_exec( state->uid, cnf_path, false ) ) == -1 ) {
+				printf( " * Success. To start the webapp run 'zimr start'\n" );
+				zcnf_state_set_app( state, cnf_path, 0, true );
+				break;
+			case START:
+				if ( !app->stopped && app->pid && kill( app->pid, 0 ) != -1 ) { // process still running, not dead
 					retval = false;
-					printf( "Failed\n" );
+					printf( " * Failed: already running, try 'zimr restart' instead.\n" );
 					goto quit;
 				}
-				printf( "Success.\n" );
-				zcnf_state_set_app( state, cnf_path, pid );
+				if ( ( pid = application_exec( uid, gid, cnf_path, false ) ) == -1 ) {
+					retval = false;
+					printf( " * Failed\n" );
+					goto quit;
+				}
+				printf( " * Success.\n" );
+				zcnf_state_set_app( state, cnf_path, pid, false );
 				break;
 			case RESTART:
+				if ( app->stopped ) {
+					retval = false;
+					printf( " * Failed: Webapp is not running. To start a webapp run 'zimr start'\n" );
+					goto quit;
+				}
+
 				if ( !application_kill( app->pid, force ) ) {
 					retval = false;
-					printf( "Failed: %s\n", strerror( errno ) );
+					printf( " * Failed: %s\n", strerror( errno ) );
 					goto quit;
-				} else if ( ( pid = application_exec( state->uid, app->path, false ) ) == -1 ) {
+				} else if ( ( pid = application_exec( uid, gid, app->path, false ) ) == -1 ) {
 					retval = false;
-					printf( "Failed\n" );
+					printf( " * Failed\n" );
 					//print_errors( app->path );
 					goto quit;
 				}
-				printf( "Success.\n" );
+				printf( " * Success.\n" );
 				//print_errors( app->path );
-				zcnf_state_set_app( state, app->path, pid );
+				zcnf_state_set_app( state, app->path, pid, !retval );
 				break;
 			case STOP:
 				if ( !application_kill( app->pid, force ) ) {
@@ -204,27 +222,56 @@ bool application_function( uid_t uid, char* cnf_path, char type, bool force ) {
 					//printf( "Failed: %s\n", strerror( errno ) );
 					goto quit;
 				}
-				printf( "Success.\n" );
-				zcnf_state_set_app( state, app->path, 0 );
+				printf( " * Success.\n" );
+				zcnf_state_set_app( state, app->path, 0, true );
 				break;
 			case REMOVE:
 				if ( !application_kill( app->pid, force ) ) {
 					retval = false;
-					printf( "Failed: %s\n", strerror( errno ) );
+					printf( " * Failed: %s\n", strerror( errno ) );
 					//print_errors( cnf_path );
 					goto quit;
 				}
-				printf( "Success.\n" );
+				printf( " * Success.\n" );
 				list_delete_at( &state->apps, i );
 				zcnf_state_app_free( app );
 				break;
 			case STATUS:
-				printf( "%d: %s ", i, app->path );
+				if ( app->stopped )
+					printf( " * Stopped" );
+				else if ( !app->pid || kill( app->pid, 0 ) == -1 ) // process still running, not dead
+					printf( " * Error: Not Running" );
+				else {
+					// TODO: calculate CPU usage: http://stackoverflow.com/questions/1420426/calculating-cpu-usage-of-a-process-in-linux
+					FILE* kstat = fopen( "/proc/stat", "r" );
+					char buf[256], btime_s[32], *ptr;
+					time_t btime = 0;
 
-				if ( !app->pid || kill( app->pid, 0 ) == -1 ) // process still running, not dead
-					printf( "(*Stopped)" );
-				else printf( "%d", app->pid );
-				// TODO: proxy address, uptime, memory usage, running websites, etc
+					while ( kstat && fgets( buf, sizeof( buf ), kstat ) ) {
+						if ( startswith( buf, "btime" ) ) {
+							ptr = strchr( buf+6, '\n' );
+							strncpy( btime_s, buf+6, ( ptr - buf+6 ) );
+							btime_s[ ( ptr - buf+6 ) ] = 0;
+							btime = strtoumax( btime_s, NULL, 0 );
+							break;
+						}
+					}
+
+					PROCTAB* ptab = openproc( PROC_FILLMEM, &app->pid );
+					proc_t* proc = readproc( ptab, NULL );
+					get_proc_stats( app->pid, proc );
+
+					unsigned long long timediff = time( NULL ) - btime - proc->start_time / 100;
+					int hours = timediff / 3600;
+					int minutes = ( timediff - hours * 3600 ) / 60;
+					int seconds = ( timediff - hours * 3600 - minutes * 60 );
+
+					printf( " * Running  pid: %d  mem: %d  run time: %02d:%02d:%02d",
+					  app->pid, proc->size /*+ proc->share*/, hours, minutes, seconds );
+
+					freeproc( proc );
+					closeproc( ptab );
+				}
 
 				printf( "\n" );
 				break;
@@ -238,7 +285,7 @@ quit:
 	return retval;
 }
 
-bool state_function( uid_t uid, char type ) {
+bool state_function( uid_t uid, gid_t gid, char type, int optc, char* optv[] ) {
 	zcnf_state_t* state = zcnf_state_load( uid );
 	if ( !state ) {
 		puts( "failed to load state" );
@@ -252,7 +299,15 @@ bool state_function( uid_t uid, char type ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
-		if ( !application_function( uid, app->path, type, false ) ) {
+		if ( type == START ) {
+			if ( optc && strcmp( optv[0], "-not-stopped" ) == 0 && app->stopped ) continue;
+			else if ( app->pid && kill( app->pid, 0 ) != -1 ) {
+				printf( " * Starting %s...\n * Skipping: Already started.\n", app->path );
+				continue;
+			}
+		}
+
+		if ( !application_function( uid, gid, app->path, type, false ) ) {
 			//retval = false;
 			//goto quit;
 		}
@@ -263,7 +318,7 @@ bool state_function( uid_t uid, char type ) {
 	return retval;
 }
 
-bool state_all_function( char type ) {
+bool state_all_function( char type, int optc, char* optv[] ) {
 	/* yea...this whole bit is a hack */
 	if ( getuid() ) {
 		puts( "Failed: Must have superuser privileges" );
@@ -284,7 +339,7 @@ bool state_all_function( char type ) {
 
 		printf( "User: %s (%s)\n", p->pw_name, filepath );
 
-		state_function( p->pw_uid, type );
+		state_function( p->pw_uid, p->pw_gid, type, optc, optv );
 	}
 
 	endpwent();
@@ -295,6 +350,33 @@ bool state_all_function( char type ) {
 ///////////////////////////////////////////////////////
 
 void application_add_cmd( int optc, char* optv[] ) {
+	char cnf_path[ PATH_MAX ] = "";
+	getcwd( cnf_path, sizeof( cnf_path ) );
+	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
+
+
+	bool nostate = false;
+	int i;
+	for ( i = 0; i < optc; i++ ) {
+		/*if ( strcmp( optv[i], "-no-state" ) == 0 ) {
+			nostate = true;
+		} else */if ( !i ) {
+			realpath( optv[i], cnf_path );
+		} else {
+			print_usage();
+			return;
+		}
+	}
+
+//	if ( nostate )
+//		application_exec( getuid(), cnf_path, true );
+
+	if ( !application_function( getuid(), getgid(), cnf_path, ADD, false ) )
+		exit( EXIT_FAILURE );
+
+}
+
+void application_start_cmd( int optc, char* optv[] ) {
 	char cnf_path[ PATH_MAX ] = "";
 	getcwd( cnf_path, sizeof( cnf_path ) );
 	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
@@ -314,9 +396,9 @@ void application_add_cmd( int optc, char* optv[] ) {
 	}
 
 	if ( nostate )
-		application_exec( getuid(), cnf_path, true );
+		application_exec( getuid(), getgid(), cnf_path, true );
 
-	else if ( !application_function( getuid(), cnf_path, ADD, false ) )
+	else if ( !application_function( getuid(), getgid(), cnf_path, START, false ) )
 		exit( EXIT_FAILURE );
 
 }
@@ -339,7 +421,7 @@ void application_stop_cmd( int optc, char* optv[] ) {
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, STOP, force ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, STOP, force ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -361,7 +443,7 @@ void application_restart_cmd( int optc, char* optv[] ) {
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, RESTART, force ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, RESTART, force ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -383,7 +465,7 @@ void application_remove_cmd( int optc, char* optv[] ) {
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, REMOVE, force ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, REMOVE, force ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -402,47 +484,57 @@ void application_status_cmd( int optc, char* optv[] ) {
 		}
 	}
 
-	if ( !application_function( getuid(), cnf_path, STATUS, false ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, STATUS, false ) )
+		exit( EXIT_FAILURE );
+}
+
+void state_start_cmd( int optc, char* optv[] ) {
+	if ( !state_function( getuid(), getgid(), START, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_stop_cmd( int optc, char* optv[] ) {
-	if ( !state_function( getuid(), STOP ) )
+	if ( !state_function( getuid(), getgid(), STOP, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_restart_cmd( int optc, char* optv[] ) {
-	if ( !state_function( getuid(), RESTART ) )
+	if ( !state_function( getuid(), getgid(), RESTART, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_remove_cmd( int optc, char* optv[] ) {
-	if ( !state_function( getuid(), REMOVE ) )
+	if ( !state_function( getuid(), getgid(), REMOVE, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_status_cmd( int optc, char* optv[] ) {
-	if ( !state_function( getuid(), STATUS ) )
+	if ( !state_function( getuid(), getgid(), STATUS, optc, optv ) )
+		exit( EXIT_FAILURE );
+}
+
+void state_start_all_cmd( int optc, char* optv[] ) {
+	if ( !state_all_function( START, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_restart_all_cmd( int optc, char* optv[] ) {
-	if ( !state_all_function( RESTART ) )
+	if ( !state_all_function( RESTART, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_stop_all_cmd( int optc, char* optv[] ) {
-	if ( !state_all_function( STOP ) )
+	if ( !state_all_function( STOP, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_remove_all_cmd( int optc, char* optv[] ) {
-	if ( !state_all_function( REMOVE ) )
+	if ( !state_all_function( REMOVE, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
 void state_status_all_cmd( int optc, char* optv[] ) {
-	if ( !state_all_function( STATUS ) )
+	if ( !state_all_function( STATUS, optc, optv ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -495,13 +587,23 @@ int main( int argc, char* argv[] ) {
 		{ NULL }
 	};
 
+	cli_cmd_t start_all_commands[] = {
+		{ "users", "Start all users' stopped webapps. [ -not-stopped ]\n", NULL, &state_start_all_cmd },
+		{ NULL }
+	};
+
+	cli_cmd_t start_commands[] = {
+		{ "all", "Start all of the current user's stopped webapps. [ -not-stopped ]", &start_all_commands, &state_start_cmd },
+		{ NULL }
+	};
+
 	cli_cmd_t restart_all_commands[] = {
-		{ "users", "Restart all users' webapps.\n", NULL, &state_restart_all_cmd },
+		{ "users", "Restart all users' running webapps.\n", NULL, &state_restart_all_cmd },
 		{ NULL }
 	};
 
 	cli_cmd_t restart_commands[] = {
-		{ "all", "Restart all of the current user's webapps.", &restart_all_commands, &state_restart_cmd },
+		{ "all", "Restart all of the current user's running webapps.", &restart_all_commands, &state_restart_cmd },
 		{ NULL }
 	};
 
@@ -526,8 +628,9 @@ int main( int argc, char* argv[] ) {
 	};
 
 	cli_cmd_t zimr_commands[] = {
-		{ "add",     "Add a webapp. [ <config path>, -no-state ]\n", NULL, &application_add_cmd },
-		{ "restart", "Restart a webapp. [ <config path>, -force ]", &restart_commands, &application_restart_cmd },
+		{ "add",     "Add a webapp. [ <config path> ]\n", NULL, &application_add_cmd },
+		{ "start",   "Start a stopped webapp. [ <config path>, -no-state ]", &start_commands, &application_start_cmd },
+		{ "restart", "Restart a running webapp. [ <config path>, -force ]", &restart_commands, &application_restart_cmd },
 		{ "stop",    "Stop a webapp. [ <config path>, -force ]", &stop_commands, &application_stop_cmd },
 		{ "status",  "View the status of a webapp. [ <config path> ]", &status_commands, &application_status_cmd },
 		{ "remove",  "Remove a webapp. [ <config path>, -force ]", &remove_commands, &application_remove_cmd },
