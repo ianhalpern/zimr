@@ -1086,30 +1086,36 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 //	}
 
 	PyObject* page_handler = udata;
-	PyObject* result;
+	PyObject* result = NULL;
+	PyObject* args = NULL,* kwargs = NULL;
 	PyObject* connection_obj = connection->udata;
 	void* result_ptr;
 	Py_ssize_t result_len;
 
-
 	if ( !connection_obj ) connection_obj = Py_None;
 
-	result = PyObject_CallFunction( page_handler, "sO", filepath, connection_obj );
+	if (
+		( args = Py_BuildValue( "(s)", filepath ) ) &&
+		( kwargs = Py_BuildValue( "{s:O}", "connection", connection_obj ) ) &&
+		( result = PyObject_Call( page_handler, args, kwargs ) )
+	) {
 
-	if ( result != NULL ) {
 		if ( PyObject_AsReadBuffer( result, (const void**) &result_ptr, (Py_ssize_t*) &result_len ) ) {
 			PyErr_SetString( PyExc_TypeError, "result from page_handler invalid" );
 			return;
 		}
 		zimr_connection_send( connection, result_ptr, result_len );
 
-		Py_DECREF( result );
 	}
 
 	else {
 		if ( PyErr_Occurred() )
 			pyzimr_error_print( connection );
 	}
+
+	Py_XDECREF( result );
+	Py_XDECREF( args );
+	Py_XDECREF( kwargs );
 
 //	PyEval_ReleaseLock();
 	PyGILState_Release( gstate );

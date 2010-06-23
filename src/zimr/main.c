@@ -75,7 +75,7 @@ void sigquit() {
 }
 // Functions ////////////////////////////
 void application_shutdown() {
-	puts( "shutdown" );
+	//puts( "shutdown" );
 	zimr_shutdown();
 }
 
@@ -266,8 +266,8 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 					int minutes = ( timediff - hours * 3600 ) / 60;
 					int seconds = ( timediff - hours * 3600 - minutes * 60 );
 
-					printf( " * Running  pid: %d  mem: %d  run time: %02d:%02d:%02d",
-					  app->pid, proc->size /*+ proc->share*/, hours, minutes, seconds );
+					printf( " * Running  pid: %d  mem: %li  run time: %02d:%02d:%02d  num threads: %d",
+					  app->pid, proc->size /*+ proc->share*/, hours, minutes, seconds, proc->nlwp );
 
 					freeproc( proc );
 					closeproc( ptab );
@@ -299,6 +299,9 @@ bool state_function( uid_t uid, gid_t gid, char type, int optc, char* optv[] ) {
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
+
+		if ( i ) printf( "\n" );
+
 		if ( type == START ) {
 			if ( optc && strcmp( optv[0], "-not-stopped" ) == 0 && app->stopped ) continue;
 			else if ( app->pid && kill( app->pid, 0 ) != -1 ) {
