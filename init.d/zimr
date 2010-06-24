@@ -19,14 +19,14 @@ exitval=0
 
 case "$1" in
 	start)
-		zimr start all users -not-stopped
+		zimr start all users -ignore-disabled
 	;;
 	restart)
 		zimr restart all users
 		#exitval=$?
 	;;
 	stop)
-		zimr stop all users
+		zimr stop all users -no-disable
 		#exitval=$?
 	;;
 	remove)

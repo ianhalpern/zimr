@@ -114,7 +114,7 @@ pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 		return -1;
 	} else {
 		sleep( 1 );
-		int exitstat;
+		//int exitstat;
 		/*waitpid( pid, &exitstat, WNOHANG );
 		if ( exitstat ) {
 			//waitpid( pid, &exitstat, 0 );
@@ -139,7 +139,7 @@ bool application_kill( pid_t pid, bool force ) {
 	return true;
 }
 
-bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool force ) {
+bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool force, bool allow_disable ) {
 	printf( " * %s %s...\n", CMDSTR( type ), cnf_path ); //fflush( stdout );
 
 	userdir_init( uid );
@@ -223,7 +223,7 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 					goto quit;
 				}
 				printf( " * Success.\n" );
-				zcnf_state_set_app( state, app->path, 0, true );
+				zcnf_state_set_app( state, app->path, 0, allow_disable );
 				break;
 			case REMOVE:
 				if ( !application_kill( app->pid, force ) ) {
@@ -298,19 +298,25 @@ bool state_function( uid_t uid, gid_t gid, char type, int optc, char* optv[] ) {
 
 	int i;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
+		bool allow_disable = true;
+
 		app = list_get_at( &state->apps, i );
 
 		if ( i ) printf( "\n" );
 
 		if ( type == START ) {
-			if ( optc && strcmp( optv[0], "-not-stopped" ) == 0 && app->stopped ) continue;
+			if ( optc && strcmp( optv[0], "-ignore-disabled" ) == 0 && app->stopped ) continue;
 			else if ( app->pid && kill( app->pid, 0 ) != -1 ) {
 				printf( " * Starting %s...\n * Skipping: Already started.\n", app->path );
 				continue;
 			}
+		} else if ( type == STOP ) {
+			if ( app->stopped ) continue;
+			if ( optc && strcmp( optv[0], "-no-disable" ) == 0 )
+				allow_disable = false;
 		}
 
-		if ( !application_function( uid, gid, app->path, type, false ) ) {
+		if ( !application_function( uid, gid, app->path, type, false, allow_disable ) ) {
 			//retval = false;
 			//goto quit;
 		}
@@ -358,12 +364,9 @@ void application_add_cmd( int optc, char* optv[] ) {
 	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
 
 
-	bool nostate = false;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		/*if ( strcmp( optv[i], "-no-state" ) == 0 ) {
-			nostate = true;
-		} else */if ( !i ) {
+		if ( !i ) {
 			realpath( optv[i], cnf_path );
 		} else {
 			print_usage();
@@ -374,7 +377,7 @@ void application_add_cmd( int optc, char* optv[] ) {
 //	if ( nostate )
 //		application_exec( getuid(), cnf_path, true );
 
-	if ( !application_function( getuid(), getgid(), cnf_path, ADD, false ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, ADD, false, false ) )
 		exit( EXIT_FAILURE );
 
 }
@@ -388,7 +391,7 @@ void application_start_cmd( int optc, char* optv[] ) {
 	bool nostate = false;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
-		if ( strcmp( optv[i], "-no-state" ) == 0 ) {
+		if ( strcmp( optv[i], "-in-foreground" ) == 0 ) {
 			nostate = true;
 		} else if ( !i ) {
 			realpath( optv[i], cnf_path );
@@ -401,7 +404,7 @@ void application_start_cmd( int optc, char* optv[] ) {
 	if ( nostate )
 		application_exec( getuid(), getgid(), cnf_path, true );
 
-	else if ( !application_function( getuid(), getgid(), cnf_path, START, false ) )
+	else if ( !application_function( getuid(), getgid(), cnf_path, START, false, false ) )
 		exit( EXIT_FAILURE );
 
 }
@@ -412,10 +415,13 @@ void application_stop_cmd( int optc, char* optv[] ) {
 	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
 
 	bool force = false;
+	bool allow_disable = true;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
 		if ( strcmp( optv[i], "-force" ) == 0 ) {
 			force = true;
+		} else if ( strcmp( optv[i], "-no-disable" ) == 0 ) {
+			allow_disable = false;
 		} else if ( !i )
 			realpath( optv[i], cnf_path );
 		else {
@@ -424,7 +430,7 @@ void application_stop_cmd( int optc, char* optv[] ) {
 		}
 	}
 
-	if ( !application_function( getuid(), getgid(), cnf_path, STOP, force ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, STOP, force, allow_disable ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -446,7 +452,7 @@ void application_restart_cmd( int optc, char* optv[] ) {
 		}
 	}
 
-	if ( !application_function( getuid(), getgid(), cnf_path, RESTART, force ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, RESTART, force, false ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -468,7 +474,7 @@ void application_remove_cmd( int optc, char* optv[] ) {
 		}
 	}
 
-	if ( !application_function( getuid(), getgid(), cnf_path, REMOVE, force ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, REMOVE, force, false ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -487,7 +493,7 @@ void application_status_cmd( int optc, char* optv[] ) {
 		}
 	}
 
-	if ( !application_function( getuid(), getgid(), cnf_path, STATUS, false ) )
+	if ( !application_function( getuid(), getgid(), cnf_path, STATUS, false, false ) )
 		exit( EXIT_FAILURE );
 }
 
@@ -581,22 +587,22 @@ void proxy_status_cmd( int optc, char* optv[] ) {
 int main( int argc, char* argv[] ) {
 
 	cli_cmd_t stop_all_commands[] = {
-		{ "users", "Stop all users' webapps.\n", NULL, &state_stop_all_cmd },
+		{ "users", "Stop all users' webapps. [ -no-disable ]\n", NULL, &state_stop_all_cmd },
 		{ NULL }
 	};
 
 	cli_cmd_t stop_commands[] = {
-		{ "all", "Stop all of the current user's webapps.", &stop_all_commands, &state_stop_cmd },
+		{ "all", "Stop all of the current user's webapps. [ -no-disable ]", &stop_all_commands, &state_stop_cmd },
 		{ NULL }
 	};
 
 	cli_cmd_t start_all_commands[] = {
-		{ "users", "Start all users' stopped webapps. [ -not-stopped ]\n", NULL, &state_start_all_cmd },
+		{ "users", "Start all users' stopped webapps. [ -ignore-disabled ]\n", NULL, &state_start_all_cmd },
 		{ NULL }
 	};
 
 	cli_cmd_t start_commands[] = {
-		{ "all", "Start all of the current user's stopped webapps. [ -not-stopped ]", &start_all_commands, &state_start_cmd },
+		{ "all", "Start all of the current user's stopped webapps. [ -ignore-disabled ]", &start_all_commands, &state_start_cmd },
 		{ NULL }
 	};
 
@@ -632,9 +638,9 @@ int main( int argc, char* argv[] ) {
 
 	cli_cmd_t zimr_commands[] = {
 		{ "add",     "Add a webapp. [ <config path> ]\n", NULL, &application_add_cmd },
-		{ "start",   "Start a stopped webapp. [ <config path>, -no-state ]", &start_commands, &application_start_cmd },
+		{ "start",   "Start a stopped webapp. [ <config path>, -in-foreground ]", &start_commands, &application_start_cmd },
 		{ "restart", "Restart a running webapp. [ <config path>, -force ]", &restart_commands, &application_restart_cmd },
-		{ "stop",    "Stop a webapp. [ <config path>, -force ]", &stop_commands, &application_stop_cmd },
+		{ "stop",    "Stop a webapp. [ <config path>, -force, -no-disable ]", &stop_commands, &application_stop_cmd },
 		{ "status",  "View the status of a webapp. [ <config path> ]", &status_commands, &application_status_cmd },
 		{ "remove",  "Remove a webapp. [ <config path>, -force ]", &remove_commands, &application_remove_cmd },
 		{ "help",    "List all commands.", NULL, &help_cmd },
