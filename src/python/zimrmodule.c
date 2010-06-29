@@ -599,17 +599,32 @@ typedef struct {
 	PyObject* request;
 	PyObject* website;
 	PyObject* cookies;
+	PyObject* onClose;
 	connection_t* _connection;
 } pyzimr_connection_t;
 
 static void pyzimr_connection_dealloc( pyzimr_connection_t* self ) {
-	Py_XDECREF( self->client );
+	Py_DECREF( self->client );
 	Py_DECREF( self->response );
 	Py_DECREF( self->request );
 	Py_DECREF( self->website );
 	Py_DECREF( self->cookies );
+	Py_DECREF( self->onClose );
+	//printf( "dealloc connection 0x%x\n", self );
 	//connection_free( self->_connection );
 	self->ob_type->tp_free( (PyObject*) self );
+}
+
+static void pyzimr_connection_onclose_event( connection_t* _connection, pyzimr_connection_t* connection ) {
+	PyGILState_STATE gstate = PyGILState_Ensure();
+
+	if ( PyCallable_Check( connection->onClose ) ) {
+		PyObject_CallFunction( connection->onClose, "O", connection );
+	}
+		//PyObject_CallFunction( connection->onClose, NULL );
+
+	Py_DECREF( connection );
+	PyGILState_Release( gstate );
 }
 
 static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* args ) {
@@ -703,6 +718,7 @@ static PyMemberDef pyzimr_connection_members[] = {
 	{ "request", T_OBJECT_EX, offsetof( pyzimr_connection_t, request ), RO, "request object of this connection" },
 	{ "website", T_OBJECT_EX, offsetof( pyzimr_connection_t, website ), RO, "website object from which the request originated" },
 	{ "cookies", T_OBJECT_EX, offsetof( pyzimr_connection_t, cookies ), RO, "cookies object for the connection" },
+	{ "onClose", T_OBJECT_EX, offsetof( pyzimr_connection_t, onClose ), 0, "event to be fired when the connection is closed." },
 	{ NULL }  /* Sentinel */
 };
 
@@ -821,6 +837,14 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 	connection->response = (PyObject*) response;
 	response->headers    = (PyObject*) response_headers;
 	connection->cookies  = (PyObject*) cookies;
+
+	Py_INCREF( Py_None );
+	Py_INCREF( Py_None );
+	connection->client   = Py_None;
+	connection->onClose  = Py_None;
+
+	Py_INCREF( connection );
+	zimr_connection_set_onclose_event( _connection, pyzimr_connection_onclose_event, connection );
 
 	Py_INCREF( website );
 	connection->website = (PyObject*) website;

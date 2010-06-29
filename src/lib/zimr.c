@@ -38,6 +38,7 @@ static void  (*modzimr_destroy)();
 static void* (*modzimr_website_init)( website_t*, int, char** );
 static void  (*modzimr_website_destroy)( website_t*, void* );
 static void  (*modzimr_connection_new)( connection_t*, void* );
+static void  (*modzimr_connection_closed)( connection_t*, void* );
 /////////////////////////////////////////////////
 
 void command_response_handler( int fd, int msgid, void* buf, size_t len );
@@ -344,6 +345,17 @@ void cleanup_connection( int fd, int msgid ) {
 
 	msg_close( fd, msgid );
 	cleanup_fileread( website_data, msgid );
+
+	int i = 0;
+	for ( i = 0; i < list_size( &website_data->module_data ); i++ ) {
+		module_website_data_t* module_data = list_get_at( &website_data->module_data, i );
+		*(void **)(&modzimr_connection_closed) = dlsym( module_data->module->handle, "modzimr_connection_closed" );
+		if ( modzimr_connection_closed ) (*modzimr_connection_closed)( website_data->connections[ msgid ]->connection, module_data->udata );
+	}
+
+	website_data->connections[ msgid ]->onclose_event( website_data->connections[ msgid ]->connection,
+	  website_data->connections[ msgid ]->onclose_udata );
+
 	if ( website_data->connections[ msgid ]->connection )
 		connection_free( website_data->connections[ msgid ]->connection );
 	free( website_data->connections[ msgid ]->data );
@@ -463,6 +475,8 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 	if ( !website_data->connections[ msgid ] ) {
 		website_data->connections[ msgid ] = (conn_data_t*) malloc( sizeof( conn_data_t ) );
 		website_data->connections[ msgid ]->connection = NULL;
+		website_data->connections[ msgid ]->onclose_event = NULL;
+		website_data->connections[ msgid ]->onclose_udata = NULL;
 		website_data->connections[ msgid ]->fileread_data.fd = -1;
 		website_data->connections[ msgid ]->data = strdup( "" );
 		website_data->connections[ msgid ]->size_received = 0;
@@ -525,6 +539,14 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 	}
 
 	return true;
+}
+
+void zimr_connection_set_onclose_event( connection_t* connection, void (*onclose_event)( connection_t*, void* ), void* udata ) {
+	website_data_t* website_data = connection->website->udata;
+	int msgid = connection->sockfd;
+
+	website_data->connections[ msgid ]->onclose_event = onclose_event;
+	website_data->connections[ msgid ]->onclose_udata = udata;
 }
 
 void zimr_connection_send_status( connection_t* connection ) {

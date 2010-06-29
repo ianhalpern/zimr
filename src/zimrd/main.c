@@ -480,6 +480,9 @@ cleanup:
 		return;
 	}
 
+	if ( conn_data->postlen == -1 ) /* if we have received all the data already, ignore */
+		return;
+
 	memset( buffer + len, 0, sizeof( buffer ) - len );
 
 	ptr = buffer;
@@ -589,7 +592,11 @@ cleanup:
 
 	if ( !conn_data->postlen ) { /* If there isn't more data coming, */
 		msg_flush( website->sockfd, sockfd );
-		//zread( sockfd, false );
+
+		/* must make sure to keep socfd in read mode to detect a connection close from
+		   the other end */
+		conn_data->postlen = -1;
+		zs_set_read( sockfd );
 	} else
 		msg_set_write( website->sockfd, sockfd );
 

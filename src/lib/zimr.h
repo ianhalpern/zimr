@@ -58,6 +58,8 @@ typedef struct {
 	size_t size;
 	char* data;
 	connection_t* connection;
+	void (*onclose_event)( connection_t*, void* );
+	void* onclose_udata;
 	fileread_data_t fileread_data;
 } conn_data_t;
 
@@ -126,6 +128,7 @@ void zimr_connection_send( connection_t* connection, void* message, int size );
 void zimr_connection_send_error( connection_t* connection, short code, char* message, size_t message_size );
 void zimr_connection_send_redirect( connection_t* connection, char* url );
 void zimr_connection_default_page_handler( connection_t* connection, char* filepath );
+void zimr_connection_set_onclose_event( connection_t* connection, void (*onclose_handler)( connection_t*, void* ), void* );
 
 void zimr_website_register_page_handler( website_t*, const char* page_type, void (*page_handler)( connection_t*, const char*, void* ), void* udata );
 
