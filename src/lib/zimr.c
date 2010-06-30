@@ -353,8 +353,9 @@ void cleanup_connection( int fd, int msgid ) {
 		if ( modzimr_connection_closed ) (*modzimr_connection_closed)( website_data->connections[ msgid ]->connection, module_data->udata );
 	}
 
-	website_data->connections[ msgid ]->onclose_event( website_data->connections[ msgid ]->connection,
-	  website_data->connections[ msgid ]->onclose_udata );
+	if ( website_data->connections[ msgid ]->onclose_event )
+		website_data->connections[ msgid ]->onclose_event( website_data->connections[ msgid ]->connection,
+		  website_data->connections[ msgid ]->onclose_udata );
 
 	if ( website_data->connections[ msgid ]->connection )
 		connection_free( website_data->connections[ msgid ]->connection );
