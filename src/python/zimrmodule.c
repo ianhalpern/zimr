@@ -856,7 +856,7 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 	Py_DECREF( connection );
 
 	if ( PyErr_Occurred() )
-		pyzimr_error_print( zimr_website_connection_exists( website->_website->sockfd, connfd ) ? _connection : NULL );
+		pyzimr_error_print( !zimr_website_connection_sent( website->_website->sockfd, connfd ) ? _connection : NULL );
 
 //	PyEval_ReleaseLock();
 	PyGILState_Release( gstate );
@@ -1118,6 +1118,9 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 
 	if ( !connection_obj ) connection_obj = Py_None;
 
+	int websitefd = connection->website->sockfd;
+	int connfd    = connection->sockfd;
+
 	if (
 		( args = Py_BuildValue( "(s)", filepath ) ) &&
 		( kwargs = Py_BuildValue( "{s:O}", "connection", connection_obj ) ) &&
@@ -1128,13 +1131,15 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 			PyErr_SetString( PyExc_TypeError, "result from page_handler invalid" );
 			return;
 		}
-		zimr_connection_send( connection, result_ptr, result_len );
+
+		if ( !zimr_website_connection_sent( websitefd, connfd ) )
+			zimr_connection_send( connection, result_ptr, result_len );
 
 	}
 
 	else {
 		if ( PyErr_Occurred() )
-			pyzimr_error_print( connection );
+			pyzimr_error_print( !zimr_website_connection_sent( websitefd, connfd ) ? connection : NULL );
 	}
 
 	Py_XDECREF( result );

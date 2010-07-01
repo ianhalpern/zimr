@@ -120,6 +120,7 @@ void  zimr_website_unset_connection_handler( website_t* website );
 void  zimr_website_insert_default_page( website_t* website, const char* default_page, int pos );
 void  zimr_website_insert_ignored_regex( website_t* website, const char* ignored_regex );
 bool zimr_website_connection_exists( int fd, int msgid );
+bool zimr_website_connection_sent( int fd, int msgid );
 
 void zimr_connection_send_status( connection_t* connection );
 void zimr_connection_send_headers( connection_t* connection );
