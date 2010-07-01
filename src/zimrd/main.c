@@ -483,6 +483,8 @@ cleanup:
 	if ( conn_data->postlen == -1 ) /* if we have received all the data already, ignore */
 		return;
 
+	//printf( "%d: read %zu\n", sockfd, len );
+
 	memset( buffer + len, 0, sizeof( buffer ) - len );
 
 	ptr = buffer;
@@ -535,6 +537,7 @@ cleanup:
 			goto cleanup;
 		}
 		endofhdrs += sizeof( HTTP_HDR_ENDL HTTP_HDR_ENDL ) - 1;
+		//printf( "%s\n", buffer );
 
 		/* Create a new message to send the request to the corresponding
 		   website. The msgid should be set to the external file descriptor
@@ -600,6 +603,7 @@ cleanup:
 	} else
 		msg_set_write( website->sockfd, sockfd );
 
+	//printf( "%d: still needs %d post data\n", sockfd, conn_data->postlen );
 }
 
 void command_handler( int fd, int msgid, void* buf, size_t len ) {

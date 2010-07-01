@@ -396,7 +396,7 @@ static void zs_reader( int fd, void* udata ) {
 					FL_SET( zs->connect.status, ZS_STAT_WANT_READ_FROM_READ );
 					return;
 				case SSL_ERROR_WANT_WRITE:
-					FL_SET( zs->connect.status, ZS_STAT_WANT_READ_FROM_WRITE );
+					FL_SET( zs->connect.status, ZS_STAT_WANT_WRITE_FROM_READ );
 					return;
 			}
 			ERR_print_errors_fp( stderr );
@@ -712,6 +712,25 @@ quit:
 		zs->connect.read.pos = 0;
 		zs->connect.read.used = 0;
 		FL_CLR( zs->connect.status, ZS_STAT_READABLE );
+
+		//////////////////////////////////////////////////////////////////////////////////
+		/* This section is a fix for when the ssl lib has read more than the zsocket read buffer
+		   size and has data cached. The problem is that zsocket will go into the select loop
+		   before checking for more read data available. Since the data has already been read
+		   and cached, there is no data available and the select will hang. This is a fix to
+		   try and read data and setting things back after.
+		*/
+		bool want_read  = FL_ISSET( zs->general.status, ZS_STAT_WANT_READ_FROM_READ );
+		bool want_write = FL_ISSET( zs->general.status, ZS_STAT_WANT_WRITE_FROM_READ );
+		zs_reader( fd, NULL );
+
+		if ( want_read ) FL_SET( zs->general.status, ZS_STAT_WANT_READ_FROM_READ );
+		else FL_CLR( zs->general.status, ZS_STAT_WANT_READ_FROM_READ );
+
+		if ( want_write ) FL_SET( zs->general.status, ZS_STAT_WANT_WRITE_FROM_READ );
+		else FL_CLR( zs->general.status, ZS_STAT_WANT_WRITE_FROM_READ );
+		//////////////////////////////////////////////////////////////////////////////////
+
 		zs_update_fd_state( fd, NULL );
 	}
 
