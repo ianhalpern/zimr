@@ -23,6 +23,7 @@
 #include <Python.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "zimr.h"
 #include "dlog.h"
@@ -81,6 +82,7 @@ void modzimr_destroy() {
 void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	char* filepath;
 	FILE* fd;
+	struct stat file_stat;
 
 	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
 	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
@@ -94,36 +96,90 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 
 	if ( !argc ) {
-		filepath = "main.py";
+		filepath = strdup( "main.py" );
 		fd = fopen( filepath, "r" );
 	}
 
 	else {
 		filepath = NULL;
 		if ( !( fd = fopen( argv[0], "r" ) ) ) {
-			PyObject* imp_module = NULL,* find_module_func = NULL,* ret = NULL;
+			PyObject* imp_module = NULL,* find_module_func = NULL,* ret = NULL,* path = NULL;
 
 			if (
 			  !( imp_module = PyImport_ImportModule( "imp" ) ) ||
-			  !( find_module_func = PyObject_GetAttrString( imp_module, "find_module" ) ) ||
-			  !( ret = PyObject_CallFunction( find_module_func, "s", argv[0] ) ) ||
-			  !( module_path = PyTuple_GetItem( ret, 1 ) ) ||
-			  !( filepath = PyString_AsString( module_path ) )
-			);
+			  !( find_module_func = PyObject_GetAttrString( imp_module, "find_module" ) )
+			)
+				goto quit;
 
-			if ( module_path )
+			path = PySys_GetObject( "path" );
+			Py_INCREF( path );
+
+			char* ptr = argv[0],* ptr2 = NULL;
+			bool last = false;
+
+			while ( 1 ) {
+				ptr2 = strchr( ptr, '.' );
+				if ( !ptr2 ) {
+					last = true;
+					ptr2 = ptr + strlen( ptr );
+				}
+
+				*ptr2 = 0;
+
+				if (
+				  !( ret = PyObject_CallFunction( find_module_func, "sO", ptr, path ) ) ||
+				  !( module_path = PyTuple_GetItem( ret, 1 ) ) ||
+				  last
+				)
+					break;
+
+				Py_DECREF( path );
+
+				path = PyList_New(1);
 				Py_INCREF( module_path );
+				PyList_SetItem( path, 0, module_path );
+				module_path = NULL;
+
+				ptr = ptr2+1;
+			}
+
+			if ( module_path ) {
+				filepath = strdup( PyString_AsString( module_path ) );
+			}
 
 			Py_XDECREF( imp_module );
 			Py_XDECREF( find_module_func );
 			Py_XDECREF( ret );
+			Py_XDECREF( path );
 
-			if ( !filepath || !( fd = fopen( filepath, "r" ) ) ) {
-				fprintf( stderr, "Error: modpython could not open file or find module %s.\n", argv[0] );
+		//	if ( !filepath || !( fd = fopen( filepath, "r" ) ) ) {
+			if ( !filepath || stat( filepath, &file_stat ) ) {
+				fprintf( stderr, "Error: modpython could not open file or find module %s.\n", ptr );
 				goto quit;
 			}
 
-		} else filepath = argv[0];
+			if ( S_ISDIR( file_stat.st_mode ) ) {
+				char* tmp = filepath;
+				filepath = malloc( strlen( tmp ) + 12 );
+				strcpy( filepath, tmp );
+				strcat( filepath, "/__init__.so" );
+				free( tmp );
+
+				if ( stat( filepath, &file_stat ) ) {
+					strcpy( filepath + ( strlen( filepath ) - 2 ), "py" );
+					if ( stat( filepath, &file_stat ) ) {
+						fprintf( stderr, "Error: modpython could not open file or find module %s.\n", ptr );
+						goto quit;
+					}
+				}
+			}
+
+			if ( !filepath || !( fd = fopen( filepath, "r" ) ) ) {
+				fprintf( stderr, "Error: modpython could not open file or find module %s.\n", ptr );
+				goto quit;
+			}
+
+		} else filepath = strdup(argv[0]);
 	}
 
 	if (
@@ -185,6 +241,8 @@ quit:
 	Py_XDECREF( func2_ret );
 	Py_XDECREF( module_path );
 	Py_XDECREF( pyfilename );
+
+	if ( filepath ) free( filepath );
 
 	if ( PyErr_Occurred() )
 		PyErr_PrintEx(0);

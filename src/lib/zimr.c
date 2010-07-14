@@ -1006,7 +1006,7 @@ void zimr_log_request( connection_t* connection ) {
 	char now_str[ 80 ], buffer[ 1024 ];
 
 	time( &now );
-	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
+	strftime( now_str, 80, "%a %b %d %H:%M:%S %Z %Y", localtime( &now ) );
 
 	header_t* header = headers_get_header( &connection->request.headers, "User-Agent" );
 	header_t* referer = headers_get_header( &connection->request.headers, "Referer" );
