@@ -74,6 +74,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	connection->sockfd  = sockfd;
 	connection->udata   = NULL;
 	connection->request.post_body = NULL;
+	connection->request.charset = NULL;
 	connection->request.params = params_create();
 	connection->response.headers.num = 0;
 
@@ -168,6 +169,12 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 		header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
 		if ( header && startswith( header->value, "application/x-www-form-urlencoded" ) ) {
 			params_parse_qs( &connection->request.params, connection->request.post_body, size - (long) ( ptr - start ) );
+		}
+
+		char* charset;
+		if ( header && ( charset = strstr( header->value, "charset=" ) ) ) {
+			connection->request.charset = charset + 8;
+		//	printf( "charset=%s\n", connection->request.charset );
 		}
 	}
 	////////////////////////////////////////
