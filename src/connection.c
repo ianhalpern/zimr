@@ -74,6 +74,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	connection->sockfd  = sockfd;
 	connection->udata   = NULL;
 	connection->request.post_body = NULL;
+	connection->request.post_body_len = 0;
 	connection->request.charset = NULL;
 	connection->request.params = params_create();
 	connection->response.headers.num = 0;
@@ -163,18 +164,22 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	if ( connection->request.type == HTTP_POST_TYPE
 	 && ( ptr = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
 		ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-		connection->request.post_body = (char*) malloc( size - (long) ( ptr - start ) + 1 );
-		memset( connection->request.post_body, 0, size - (long) ( ptr - start ) + 1 );
-		strncpy( connection->request.post_body, ptr, size - (long) ( ptr - start ) );
+		connection->request.post_body_len = size - (long) ( ptr - start );
+		connection->request.post_body = (char*) malloc( connection->request.post_body_len + 1 );
+		memset( connection->request.post_body, 0, connection->request.post_body_len + 1 );
+		strncpy( connection->request.post_body, ptr, connection->request.post_body_len );
 		header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
 		if ( header && startswith( header->value, "application/x-www-form-urlencoded" ) ) {
-			params_parse_qs( &connection->request.params, connection->request.post_body, size - (long) ( ptr - start ) );
+			params_parse_qs( &connection->request.params, connection->request.post_body, connection->request.post_body_len );
 		}
 
 		char* charset;
 		if ( header && ( charset = strstr( header->value, "charset=" ) ) ) {
 			connection->request.charset = charset + 8;
 		//	printf( "charset=%s\n", connection->request.charset );
+		} else {
+			// ISO-8859-1 is the default charset for http defined by RFC
+			connection->request.charset = "ISO-8859-1";
 		}
 	}
 	////////////////////////////////////////

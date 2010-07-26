@@ -414,9 +414,9 @@ static PyObject* pyzimr_request_get_url( pyzimr_request_t* self, void* closure )
 
 static PyObject* pyzimr_request_get_post_body( pyzimr_request_t* self, void* closure ) {
 	if ( !self->_request->post_body ) Py_RETURN_NONE;
-	if ( self->_request->charset )
-		return PyUnicode_Decode( self->_request->post_body, strlen( self->_request->post_body ), self->_request->charset, "strict" );
-	return PyString_FromString( self->_request->post_body );
+	//if ( self->_request->charset )
+	return PyUnicode_Decode( self->_request->post_body, self->_request->post_body_len, self->_request->charset, "strict" );
+	//return PyString_FromString( self->_request->post_body );
 }
 
 static PyObject* pyzimr_request_get_method( pyzimr_request_t* self, void* closure ) {

@@ -41,6 +41,7 @@ typedef struct {
 	char full_url[ PATH_MAX ];
 	char* url;
 	char* post_body;
+	size_t post_body_len;
 	char* charset;
 	headers_t headers;
 	params_t params;
