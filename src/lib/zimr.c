@@ -575,7 +575,7 @@ void zimr_connection_send_status( connection_t* connection ) {
 
 void zimr_connection_send_headers( connection_t* connection ) {
 	time_t now;
-	char now_str[ 80 ];
+	char now_str[80];
 
 	time( &now );
 	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
@@ -848,6 +848,12 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 
 	if ( !headers_get_header( &connection->response.headers, "Accept-Ranges" ) )
 		headers_set_header( &connection->response.headers, "Accept-Ranges", "bytes" );
+
+	if ( !headers_get_header( &connection->response.headers, "Last-Modified" ) ) {
+		char mtime_str[80];
+		strftime( mtime_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &file_stat.st_mtime ) );
+		headers_set_header( &connection->response.headers, "Last-Modified", mtime_str );
+	}
 
 	header_t* range;
 	if ( ( range = headers_get_header( &connection->request.headers, "Range" ) ) ) {
