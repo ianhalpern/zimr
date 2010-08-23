@@ -17,7 +17,7 @@ PYVERSION = 2.6
 
 OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o\
-			  simclist.o msg_switch.o userdir.o cli.o dlog.o
+			  simclist.o msg_switch.o userdir.o cli.o dlog.o md5.o
 
 EXECS       = zimrd zimr #zimr-app
 TEST_EXECS  = test-zsocket-client test-zsocket-server test-strnstr test-client test-server
@@ -99,7 +99,7 @@ zimrd: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_swit
 
 libzimr.so: $(SHARED_OBJ_DEPENDS) general.o msg_switch.o zfildes.o website.o mime.o connection.o\
 			 					  headers.o params.o cookies.o zsocket.o urldecoder.o zcnf.o simclist.o userdir.o\
-								  dlog.o
+								  dlog.o md5.o
 	$(EXEC_COMPILE) $(SHARED) -lyaml -lssl -ldl -Wl,-rpath,$(INSTALL_MODDIR)/
 
 ##### PYTHON MODS #####

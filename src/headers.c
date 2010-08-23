@@ -79,7 +79,7 @@ char* headers_to_string( headers_t* headers, char* headers_str ) {
 	return headers_str;
 }
 
-void headers_set_header( headers_t* headers, char* name, char* value ) {
+header_t* headers_set_header( headers_t* headers, const char* name, const char* value ) {
 	header_t* header = headers_get_header( headers, name );
 
 	if ( !header ) {
@@ -89,9 +89,11 @@ void headers_set_header( headers_t* headers, char* name, char* value ) {
 	}
 
 	strcpy( header->value, value );
+
+	return header;
 }
 
-header_t* headers_get_header( headers_t* headers, char* orig_name ) {
+header_t* headers_get_header( headers_t* headers, const char* orig_name ) {
 	char name[ strlen( orig_name ) + 1 ];
 	strcpy( name, orig_name );
 	header_formatname( strtolower( name ) );

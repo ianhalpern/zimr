@@ -43,6 +43,7 @@
 #include "mime.h"
 #include "zcnf.h"
 #include "dlog.h"
+#include "md5.h"
 
 #define DAEMON_NAME ZM_APP_EXEC
 #define PAGE_HANDLER void (*)( connection_t*, const char*, void* )

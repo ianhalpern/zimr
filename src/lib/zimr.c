@@ -820,6 +820,26 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 
 }
 
+static const char* etag_gen( char* path, time_t* mtime ) {
+	md5_state_t state;
+	md5_byte_t digest[16];
+	static char hex_output[16*2 + 1 + 2];
+	int di;
+
+	md5_init( &state );
+	md5_append( &state, (const md5_byte_t*) path, strlen( path ) );
+	md5_append( &state, (const md5_byte_t*) mtime, sizeof( mtime ) );
+	md5_finish( &state, digest );
+
+	for ( di = 0; di < 16; ++di )
+	    sprintf( hex_output + ( di * 2 + 1 ), "%02x", digest[di] );
+
+	hex_output[0] = '"';
+	hex_output[16*2 + 1] = '"';
+
+	return hex_output;
+}
+
 void zimr_connection_default_page_handler( connection_t* connection, char* filepath ) {
 	int fd = -1, range_start = 0, range_end = 0;
 	struct stat file_stat;
@@ -849,10 +869,28 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 	if ( !headers_get_header( &connection->response.headers, "Accept-Ranges" ) )
 		headers_set_header( &connection->response.headers, "Accept-Ranges", "bytes" );
 
-	if ( !headers_get_header( &connection->response.headers, "Last-Modified" ) ) {
+	header_t* last_modified = headers_get_header( &connection->response.headers, "Last-Modified" );
+	if ( !last_modified ) {
 		char mtime_str[80];
 		strftime( mtime_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &file_stat.st_mtime ) );
-		headers_set_header( &connection->response.headers, "Last-Modified", mtime_str );
+		last_modified = headers_set_header( &connection->response.headers, "Last-Modified", mtime_str );
+	}
+
+	header_t* etag = headers_get_header( &connection->response.headers, "ETag" );
+	if ( !etag ) {
+		etag = headers_set_header( &connection->response.headers, "ETag", etag_gen( filepath, &file_stat.st_mtime ) );
+	}
+
+	header_t* cache_control = headers_get_header( &connection->request.headers, "Cache-Control" );
+	if ( !cache_control || ( !strstr( cache_control->value, "max-age=0" ) && !strstr( cache_control->value, "no-cache" ) ) ) {
+		header_t* if_modified_since = headers_get_header( &connection->request.headers, "If-Modified-Since" );
+		header_t* if_none_match     = headers_get_header( &connection->request.headers, "If-None-Match" );
+		if ( ( if_modified_since && strcmp( if_modified_since->value, last_modified->value ) == 0 )
+		 &&  ( if_none_match     && strcmp( if_none_match->value, etag->value ) == 0 ) ) {
+			response_set_status( &connection->response, 304 );
+			zimr_connection_send( connection, "", 0 );
+			return;
+		}
 	}
 
 	header_t* range;
