@@ -31,6 +31,7 @@
 #include "general.h"
 
 typedef struct {
+	int msgid;
 	char* rbuf;
 	size_t rsize;
 	char* wbuf;
@@ -48,7 +49,7 @@ void cleanup_connection( int fd ) {
 		free( conn_data[fd].rbuf );
 	conn_data[fd].wbuf = NULL;
 	conn_data[fd].rbuf = NULL;
-	msg_close( inconnfd, fd );
+	msg_close( inconnfd, conn_data[fd].msgid );
 	zs_close( fd );
 }
 
@@ -64,22 +65,22 @@ void msg_event_handler( int fd, int msgid, int event ) {
 		case MSG_EVT_WRITE_READY:
 			msg_clr_write( fd, msgid );
 
-			assert( conn_data[msgid].rbuf );
+			assert( conn_data[msg_get_type(fd, msgid )].rbuf );
 
-			n = msg_write( inconnfd, msgid, conn_data[msgid].rbuf, conn_data[msgid].rsize );
-			free( conn_data[msgid].rbuf );
-			conn_data[msgid].rbuf = NULL;
+			n = msg_write( inconnfd, msgid, conn_data[msg_get_type(fd, msgid )].rbuf, conn_data[msg_get_type(fd, msgid )].rsize );
+			free( conn_data[msg_get_type(fd, msgid )].rbuf );
+			conn_data[msg_get_type(fd, msgid )].rbuf = NULL;
 
 			if ( n == -1 ) {
 				perror( "msg_event_handler() error: msg_write" );
-				cleanup_connection( msgid );
+				cleanup_connection( msg_get_type(fd, msgid ) );
 			} else
-				zs_set_read( msgid );
+				zs_set_read( msg_get_type(fd, msgid ) );
 			break;
 		case MSG_EVT_READ_READY:
 			msg_clr_read( fd, msgid );
 
-			assert( !conn_data[msgid].wbuf );
+			assert( !conn_data[msg_get_type(fd, msgid )].wbuf );
 
 			n = msg_read( inconnfd, msgid, buf, sizeof( buf ) );
 			if ( n <= 0 ) {
@@ -87,12 +88,12 @@ void msg_event_handler( int fd, int msgid, int event ) {
 					perror( "msg_event_handler() error: msg_read...closing" );
 				} else
 					fprintf( stderr, "%d: EOF...closing\n", fd );
-				cleanup_connection( msgid );
+				cleanup_connection( msg_get_type(fd, msgid ) );
 			} else {
-				conn_data[msgid].wbuf = malloc( n );
-				conn_data[msgid].wsize = n;
-				memcpy( conn_data[msgid].wbuf, buf, n );
-				zs_set_write( msgid );
+				conn_data[msg_get_type(fd, msgid )].wbuf = malloc( n );
+				conn_data[msg_get_type(fd, msgid )].wsize = n;
+				memcpy( conn_data[msg_get_type(fd, msgid )].wbuf, buf, n );
+				zs_set_write( msg_get_type(fd, msgid ) );
 			}
 			break;
 		case MSG_SWITCH_EVT_IO_ERROR:
@@ -128,7 +129,7 @@ void insock_event_hdlr( int fd, int event ) {
 void exsock_event_hdlr( int fd, int event ) {
 	//printf( "%d exsock event on %d\n", event, fd );
 	char buf[1024];
-	int n;
+	int n, msgid;
 
 	switch ( event ) {
 		case ZS_EVT_ACCEPT_READY:
@@ -138,10 +139,11 @@ void exsock_event_hdlr( int fd, int event ) {
 				//zs_close( fd );
 				break;
 			}
-			fprintf( stderr, "Accepted External Connection #%d on #%d\n", n, fd );
-			msg_open( inconnfd, n );
+			msgid = msg_open( inconnfd, n );
+			fprintf( stderr, "Accepted External Connection #%d(%d) on #%d\n", msgid, n, fd );
+			conn_data[n].msgid = msgid;
 			zs_set_read( n );
-			msg_set_read( inconnfd, n );
+			msg_set_read( inconnfd, msgid );
 			break;
 		case ZS_EVT_READ_READY:
 			zs_clr_read( fd );
@@ -159,7 +161,7 @@ void exsock_event_hdlr( int fd, int event ) {
 				conn_data[fd].rbuf = malloc( n );
 				conn_data[fd].rsize = n;
 				memcpy( conn_data[fd].rbuf, buf, n );
-				msg_set_write( inconnfd, fd );
+				msg_set_write( inconnfd, conn_data[fd].msgid );
 			}
 			break;
 		case ZS_EVT_WRITE_READY:
@@ -175,7 +177,7 @@ void exsock_event_hdlr( int fd, int event ) {
 				perror( "exsock_event_hdlr() error: zs_write" );
 				cleanup_connection( fd );
 			} else
-				msg_set_read( inconnfd, fd );
+				msg_set_read( inconnfd, conn_data[fd].msgid );
 
 			//if ( PACK_IS_LAST( packet ) )
 			//	close( sockfd );

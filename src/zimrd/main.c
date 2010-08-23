@@ -46,6 +46,7 @@ typedef struct {
 	int exlisnfd;
 	struct sockaddr_in addr;
 	int website_sockfd;
+	int msgid;
 	int request_type;
 	size_t postlen;
 	int is_https;
@@ -351,7 +352,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 //	printf( "event 0x%03x for msg %d\n", event, msgid );
 	switch ( event ) {
 		case MSG_EVT_ACCEPT_READY:
-			if ( msg_accept( fd, msgid ) )
+			if ( msg_accept( fd, msgid ) != 0 )
 				msg_set_read( fd, msgid );
 			// These are commands
 			break;
@@ -360,11 +361,11 @@ void msg_event_handler( int fd, int msgid, int event ) {
 
 			n = msg_read( fd, msgid, buf, sizeof( buf ) );
 			if ( n <= 0 ) {
-				cleanup_connection( msgid );
+				cleanup_connection( msg_get_type( fd, msgid ) );
 				break;
 			}
 
-			if ( msgid < 0 ) {
+			if ( msg_get_type( fd, msgid ) < 0 ) {
 				/* If the msgid is less than zero, it refers to a command and
 				   the message should not be routed to a file descriptor. */
 
@@ -372,16 +373,16 @@ void msg_event_handler( int fd, int msgid, int event ) {
 				command_handler( fd, msgid, buf, n );
 
 			} else {
-				zs_set_write( msgid );
+				zs_set_write( msg_get_type( fd, msgid ) );
 				/* if msgid is zero or greater it refers to a socket file
 				   descriptor that the message should be routed to. */
-				if ( zs_write( msgid, buf, n ) == -1 )
-					cleanup_connection( msgid );
+				if ( zs_write( msg_get_type( fd, msgid ), buf, n ) == -1 )
+					cleanup_connection( msg_get_type( fd, msgid ) );
 			}
 			break;
 		case MSG_EVT_WRITE_READY:
 			if ( msgid < 0 ) break;
-			zs_set_read( msgid );
+			zs_set_read( msg_get_type( fd, msgid ) );
 			msg_clr_write( fd, msgid );
 			break;
 		case MSG_SWITCH_EVT_IO_ERROR:
@@ -391,7 +392,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 			else {
 				for ( n = 0; n < FD_SETSIZE; n++ ) {
 					if ( msg_exists( fd, n ) ) {
-						cleanup_connection( n );
+						cleanup_connection( msg_get_type( fd, msgid ) );
 					}
 				}
 				msg_switch_destroy( fd );
@@ -450,15 +451,15 @@ void exsock_event_hdlr( int fd, int event ) {
 			break;
 		case ZS_EVT_WRITE_READY:
 			zs_clr_write( fd );
-			msg_set_read( connections[ fd ]->website_sockfd, fd );
+			msg_set_read( connections[ fd ]->website_sockfd, connections[ fd ]->msgid );
 			break;
 	}
 }
 
 void cleanup_connection( int sockfd ) {
 	if ( connections[ sockfd ]->website_sockfd != -1
-	  && msg_exists( connections[ sockfd ]->website_sockfd, sockfd ) )
-		msg_close( connections[ sockfd ]->website_sockfd, sockfd );
+	  && msg_exists( connections[ sockfd ]->website_sockfd, connections[ sockfd ]->msgid ) )
+		msg_close( connections[ sockfd ]->website_sockfd, connections[ sockfd ]->msgid );
 	zs_close( sockfd );
 	free( connections[ sockfd ] );
 	connections[ sockfd ] = NULL;
@@ -542,7 +543,7 @@ cleanup:
 		/* Create a new message to send the request to the corresponding
 		   website. The msgid should be set to the external file descriptor
 		   to send the response back to. */
-		msg_open( website->sockfd, sockfd );
+		conn_data->msgid = msg_open( website->sockfd, sockfd );
 		zs_set_write( sockfd );
 
 		// If request_type is POST check if there is content after the HTTP header
@@ -556,19 +557,19 @@ cleanup:
 		// Write the message length
 		size_t msglen = ( endofhdrs - buffer ) + conn_data->postlen + sizeof( conn_data->addr.sin_addr ) + 1;
 		if ( hp ) msglen += strlen( hp->h_name );
-		if ( msg_write( website->sockfd, sockfd, (void*) &msglen, sizeof( size_t ) ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) &msglen, sizeof( size_t ) ) == -1 )
 			goto cleanup;
 
 		// Write the ip address and hostname of the request
-		if ( msg_write( website->sockfd, sockfd, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) ) == -1 )
 			goto cleanup;
-		if ( hp && msg_write( website->sockfd, sockfd, (void*) hp->h_name, strlen( hp->h_name ) ) == -1 )
+		if ( hp && msg_write( website->sockfd, conn_data->msgid, (void*) hp->h_name, strlen( hp->h_name ) ) == -1 )
 			goto cleanup;
-		if ( msg_write( website->sockfd, sockfd, (void*) "\0", 1 ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) "\0", 1 ) == -1 )
 			goto cleanup;
 
 		// Send the whole header to the website
-		if ( msg_write( website->sockfd, sockfd, (void*) buffer, ( endofhdrs - buffer ) ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) buffer, ( endofhdrs - buffer ) ) == -1 )
 			goto cleanup;
 
 		ptr = endofhdrs;
@@ -587,33 +588,33 @@ cleanup:
 		if ( left > conn_data->postlen )
 			conn_data->postlen = left;
 
-		if ( msg_write( website->sockfd, sockfd, (void*) ptr, left ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) ptr, left ) == -1 )
 			goto cleanup;
 
 		conn_data->postlen -= left;
 	}
 
 	if ( !conn_data->postlen ) { /* If there isn't more data coming, */
-		msg_flush( website->sockfd, sockfd );
+		msg_flush( website->sockfd, conn_data->msgid );
 
-		/* must make sure to keep socfd in read mode to detect a connection close from
+		/* must make sure to keep sockfd in read mode to detect a connection close from
 		   the other end */
 		conn_data->postlen = -1;
 		zs_set_read( sockfd );
 	} else
-		msg_set_write( website->sockfd, sockfd );
+		msg_set_write( website->sockfd, conn_data->msgid );
 
 	//printf( "%d: still needs %d post data\n", sockfd, conn_data->postlen );
 }
 
 void command_handler( int fd, int msgid, void* buf, size_t len ) {
 	const char* ret_msg;
-	switch ( msgid ) {
+	switch ( msg_get_type( fd, msgid ) ) {
 
 		case ZM_CMD_WS_START:
 			ret_msg = start_website( buf, fd );
-			msg_write( fd, ZM_CMD_WS_START, ret_msg, strlen( ret_msg ) + 1 );
-			msg_close( fd, ZM_CMD_WS_START );
+			msg_write( fd, msgid, ret_msg, strlen( ret_msg ) + 1 );
+			msg_close( fd, msgid );
 			break;
 
 		case ZM_CMD_WS_STOP:

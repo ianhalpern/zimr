@@ -48,7 +48,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 	switch ( event ) {
 		case MSG_EVT_ACCEPT_READY:
 			n = msg_accept( fd, msgid );
-			if ( n == -1 ) {
+			if ( !n ) {
 				fprintf( stderr, "Accept Failed #%d on #%d: %s\n", msgid, fd, strerror( errno ) );
 				break;
 			}

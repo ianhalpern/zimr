@@ -79,7 +79,7 @@ typedef struct {
 typedef struct {
 	int msgid;
 	int size;
-//	int flags;
+	int type;
 } msg_packet_header_t;
 
 typedef struct {
@@ -90,6 +90,8 @@ typedef struct {
 typedef struct {
 	int fd;
 	int msgid;
+	int imsgid;
+	int type;
 	int status;
 	int n_writ;
 	int n_read;
@@ -105,9 +107,10 @@ typedef struct msg_switch {
 	bool connected;
 	list_t pending_resps;
 	list_t pending_msgs;
-	msg_t* msgs[ FD_SETSIZE*2 ];
-	fd_set active_read_fd_set[2];
-	fd_set active_write_fd_set[2];
+	msg_t* msgs[ FD_SETSIZE ];
+	int imsgid_map[ FD_SETSIZE ];
+	fd_set active_read_fd_set;
+	fd_set active_write_fd_set;
 
 	struct {
 		int type;
@@ -133,11 +136,12 @@ typedef struct msg_switch {
 int msg_switch_create( int fd, void (*event_handler)( int fd, int msgid, int event ) );
 int msg_switch_destroy( int fd );
 bool msg_exists( int fd, int msgid );
+int msg_get_type( int sockfd, int msgid );
 
 void msg_switch_toggle_accept( bool );
 
 int     msg_accept( int fd, int i );
-int     msg_open( int fd, int msgid );
+int     msg_open( int fd, int type );
 ssize_t msg_write( int fd, int msgid, const void* buf, size_t size );
 ssize_t msg_read( int fd, int msgid, void* buf, size_t size );
 int     msg_flush( int fd, int msgid );

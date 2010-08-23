@@ -306,7 +306,7 @@ void zimr_website_destroy( website_t* website ) {
 void command_response_handler( int fd, int msgid, void* buf, size_t len ) {
 	website_t* website = website_get_by_sockfd( fd );
 	website_data_t* website_data = website->udata;
-	switch ( msgid ) {
+	switch ( msg_get_type( fd, msgid ) ) {
 		case ZM_CMD_WS_START:
 			if ( strcmp( buf, "OK" ) == 0 ) {
 				// Everything is good, start listening for requests.
@@ -390,7 +390,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 	switch ( event ) {
 		case MSG_EVT_ACCEPT_READY:
 			n = msg_accept( fd, msgid );
-			if ( n >=0 )
+			if ( n != 0 )
 				msg_set_read( fd, msgid );
 			break;
 		case MSG_EVT_WRITE_READY:
@@ -407,7 +407,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 				return;
 			}
 
-			if ( msgid < 0 )
+			if ( msg_get_type( fd, msgid ) < 0 )
 				command_response_handler( fd, msgid, buf, n );
 			else if ( !zimr_connection_handler( website, msgid, buf, n ) ) {
 				cleanup_connection( fd, msgid );
@@ -441,10 +441,10 @@ bool zimr_website_enable( website_t* website ) {
 	msg_switch_create( website->sockfd, msg_event_handler );
 
 	// send website enable command
-	msg_open( website->sockfd, ZM_CMD_WS_START );
-	msg_write( website->sockfd, ZM_CMD_WS_START, website->full_url, strlen( website->full_url ) + 1 );
-	msg_flush( website->sockfd, ZM_CMD_WS_START );
-	msg_set_read( website->sockfd, ZM_CMD_WS_START );
+	int msgid = msg_open( website->sockfd, ZM_CMD_WS_START );
+	msg_write( website->sockfd, msgid, website->full_url, strlen( website->full_url ) + 1 );
+	msg_flush( website->sockfd, msgid );
+	msg_set_read( website->sockfd, msgid );
 
 	return true;
 }
@@ -462,9 +462,9 @@ void zimr_website_disable( website_t* website ) {
 		}
 
 		if ( website_data->status == WS_STATUS_ENABLED ) {
-			msg_open( website->sockfd, ZM_CMD_WS_STOP );
-			msg_write( website->sockfd, ZM_CMD_WS_STOP, "STOP", 5 );
-			msg_close( website->sockfd, ZM_CMD_WS_STOP );
+			int msgid = msg_open( website->sockfd, ZM_CMD_WS_STOP );
+			msg_write( website->sockfd, msgid, "STOP", 5 );
+			msg_close( website->sockfd, msgid );
 		}
 
 		msg_switch_destroy( website->sockfd );
@@ -497,7 +497,6 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 	}
 
 	conn_data = website_data->connections[ msgid ];
-
 //	printf( "1: %zu of %zu received\n", conn_data->size_received, conn_data->size );
 
 	if ( conn_data->size_received >= conn_data->size ) return false;
@@ -696,12 +695,12 @@ void zimr_connection_send_error( connection_t* connection, short code, char* mes
 	response_set_status( &connection->response, code );
 	headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
 
-	char error_msg_top[] = 
+	char error_msg_top[] =
 	"<!doctype html>"
 	"<html>"
 	"<body>"
 	"<h1>";
-	char error_msg_middle[] = 
+	char error_msg_middle[] =
 	"</h1>"
 	"<div>";
 	char error_msg_bottom[] =
