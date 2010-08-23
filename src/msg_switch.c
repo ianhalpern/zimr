@@ -45,6 +45,7 @@ static msg_t* msg_get( msg_switch_t* msg_switch, int msgid ) {
 		return msg_switch->msgs[ msgid ];
 	else if ( msg_switch->imsgid_map[ abs(msgid) ] )
 		return msg_switch->msgs[ msg_switch->imsgid_map[ abs(msgid) ] ];
+	return NULL;
 }
 
 static void msg_set( msg_switch_t* msg_switch, int msgid, msg_t* msg ) {
@@ -301,13 +302,13 @@ static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp 
 
 	if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) ) {
 	// If nothing has become available since last write, flush whatever is available
-		msg_flush( msg_switch->sockfd, msgid );
+		msg_flush( msg_switch->sockfd, msg->msgid );
 		if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) && FL_ISSET( msg->status, MSG_STAT_CLOSED ) )
-			msg_send_resp( msg_switch, msgid, MSG_RESP_DISCON );
+			msg_send_resp( msg_switch, msg->msgid, MSG_RESP_DISCON );
 	}
 
-	msg_check_selectability( msg_switch, msgid );
-	msg_update_status( msg_switch, msgid );
+	msg_check_selectability( msg_switch, msg->msgid );
+	msg_update_status( msg_switch, msg->msgid );
 }
 
 static void msg_update_status( msg_switch_t* msg_switch, int msgid ) {
@@ -799,9 +800,10 @@ static void msg_switch_read( int fd ) {
 					msg = msg_create( msg_switch, msg_switch->read.data.packet.header.type );
 					msg->imsgid = abs(msg_switch->read.data.packet.header.msgid);
 					msg_switch->imsgid_map[msg->imsgid] = msg->msgid;
-				}
+				} else
+					msg = msg_get( msg_switch, msg_switch->read.data.packet.header.msgid );
 
-				msg_push_read_packet( msg_switch, msg_switch->read.data.packet.header.msgid, &msg_switch->read.data.packet );
+				msg_push_read_packet( msg_switch, msg->msgid, &msg_switch->read.data.packet );
 				break;
 		}
 
