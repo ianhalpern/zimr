@@ -30,6 +30,7 @@ static void msg_update_status( msg_switch_t* msg_switch, int msgid );
 static void msg_switch_push_resp( msg_switch_t* msg_switch, msg_resp_t* resp );
 static void msg_switch_push_writ_msg( msg_switch_t* msg_switch, int msgid );
 static void msg_check_selectability( msg_switch_t* msg_switch, int msgid );
+static bool msg_switch_has_avail_writs( msg_switch_t* msg_switch );
 
 msg_switch_t* msg_switch_get_by_fd( int sockfd ) {
 	zsocket_t* zs = zs_get_by_fd( sockfd );
@@ -107,8 +108,12 @@ static void msg_clear( msg_switch_t* msg_switch, int msgid ) {
 
 	int i=0;
 	if ( FL_ISSET( msg->status, MSG_STAT_WRITING ) ) {
-		if ( ( i = list_locate( &msg_switch->pending_msgs, msg ) ) >= 0 )
+		if ( ( i = list_locate( &msg_switch->pending_msgs, msg ) ) >= 0 ) {
 			list_delete_at( &msg_switch->pending_msgs, i );
+
+			if ( !msg_switch_has_avail_writs( msg_switch ) )
+				zs_clr_write( msg_switch->sockfd );
+		}
 	}
 
 	FL_CLR( msg->status,

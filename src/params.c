@@ -84,7 +84,6 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 		strcpy( param->name, name );
 		param->value = value;
 		list_append( params, param );
-		printf("%s=%s\n",name,value);
 	}
 }
 
