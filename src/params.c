@@ -34,7 +34,7 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 
 	char* ptr;
 	while ( size > 0 ) {
-		char* name;
+		unsigned char name[PARAMS_NAME_MAX_LEN];
 		char* value;
 
 		// name
@@ -50,8 +50,18 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 
 		len = ptr - raw;
 
-		name = (char*) malloc( len + 1 );
+		if ( len >= PARAMS_NAME_MAX_LEN ) break;
 		url_decode( name, raw, len );
+		int i = 0;
+		for ( ; i < len; i++ ) {
+			if ( !name[i] || name[i] > 127 )
+				break;
+		}
+		if ( i != len && name[i] ) {
+			//Not Ascii
+			break;
+		}
+
 		raw = ptr + 1;
 
 		// value
@@ -71,9 +81,10 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 		}
 
 		param = (param_t*) malloc( sizeof( param_t ) );
-		param->name = name;
+		strcpy( param->name, name );
 		param->value = value;
 		list_append( params, param );
+		printf("%s=%s\n",name,value);
 	}
 }
 
@@ -94,7 +105,7 @@ void params_free( list_t* params ) {
 	int i;
 	for ( i = 0; i < list_size( params ); i++ ) {
 		param = list_get_at( params, i );
-		free( param->name );
+		//free( param->name );
 		free( param->value );
 		free( param );
 	}

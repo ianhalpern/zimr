@@ -41,6 +41,7 @@ msg_switch_t* msg_switch_get_by_fd( int sockfd ) {
 /////////////////////////////////////////////////////////////////////////////////////
 
 static msg_t* msg_get( msg_switch_t* msg_switch, int msgid ) {
+	if ( !msgid ) return NULL;
 	if ( msgid > 0 )
 		return msg_switch->msgs[ msgid ];
 	else if ( msg_switch->imsgid_map[ abs(msgid) ] )

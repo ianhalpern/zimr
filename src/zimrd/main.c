@@ -440,6 +440,7 @@ void exsock_event_hdlr( int fd, int event ) {
 			connections[ newfd ]->website_sockfd = -1;
 			connections[ newfd ]->request_type = 0;
 			connections[ newfd ]->postlen = 0;
+			connections[ newfd ]->msgid = 0;
 			connections[ newfd ]->is_https = zs_is_ssl( connections[ newfd ]->exlisnfd );
 
 			zs_set_read( newfd );
@@ -534,7 +535,7 @@ cleanup:
 		if ( !( endofhdrs = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
 			/* If the end of the headers was not found the request was either
 			   malformatted or too long, DO NOT send to website. */
-			syslog( LOG_WARNING, "exread: headers to long" );
+			syslog( LOG_WARNING, "exread: headers to long for %s", website->url );
 			goto cleanup;
 		}
 		endofhdrs += sizeof( HTTP_HDR_ENDL HTTP_HDR_ENDL ) - 1;

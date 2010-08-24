@@ -33,7 +33,7 @@
 typedef list_t params_t;
 
 typedef struct {
-	char* name;
+	char name[PARAMS_NAME_MAX_LEN];
 	char* value;
 } param_t;
 

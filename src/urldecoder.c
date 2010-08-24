@@ -288,7 +288,7 @@ char* url_decode( char* buffer, char* raw_url, int url_len ) {
 	url_ptr = url;
 
 	char* ptr;
-	char hex[ 3 ];
+	char hex[3];
 	unsigned int i;
 
 	*buffer = 0;
