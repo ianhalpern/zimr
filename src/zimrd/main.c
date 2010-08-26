@@ -392,7 +392,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 			else {
 				for ( n = 0; n < FD_SETSIZE; n++ ) {
 					if ( msg_exists( fd, n ) ) {
-						cleanup_connection( msg_get_type( fd, msgid ) );
+						cleanup_connection( msg_get_type( fd, n ) );
 					}
 				}
 				msg_switch_destroy( fd );

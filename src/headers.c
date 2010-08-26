@@ -43,19 +43,21 @@ headers_t headers_parse( char* raw ) {
 		header = &headers.list[ headers.num ];
 
 		// name
-		ptr = strstr( raw, ": " );
+		ptr = strstr( raw, ":" );
 
 		if ( !ptr || !( ptr - raw ) )
 			break;
 
 		strncpy( header->name, raw, SMALLEST( ptr - raw, sizeof( header->name ) - 1 ) );
 		header_formatname( strtolower( headers.list[ headers.num ].name ) );
-		raw = ptr + 2;
+		raw = ptr + 1;
+
+		while ( *raw == ' ' ) raw++;
 
 		// value
-		ptr = strstr( raw, HTTP_HDR_ENDL );
+		if ( !( ptr = strstr( raw, HTTP_HDR_ENDL ) ) )
+			break;
 		strncpy( header->value, raw, SMALLEST( ptr - raw, sizeof( header->value ) - 1 ) );
-
 		raw = ptr + strlen( HTTP_HDR_ENDL );
 		headers.num++;
 	}
