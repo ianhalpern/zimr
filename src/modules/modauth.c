@@ -201,6 +201,7 @@ void modzimr_connection_new( connection_t* connection, void* udata ) {
 	auth_info_t* auth_info = (auth_info_t*) udata;
 	char user[256];
 
+	//printf( "in modauth connection @ 0x%x\n", &connection );
 	header_t* auth_header = headers_get_header( &connection->request.headers, "Authorization" );
 
 	if ( auth_header ) {

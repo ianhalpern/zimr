@@ -89,6 +89,7 @@ header_t* headers_set_header( headers_t* headers, const char* name, const char* 
 		strcpy( header->name, name );
 		header_formatname( strtolower( header->name ) );
 	}
+	//printf( "\n\nnum header %d\n", headers->num );
 
 	strcpy( header->value, value );
 
@@ -101,7 +102,10 @@ header_t* headers_get_header( headers_t* headers, const char* orig_name ) {
 	header_formatname( strtolower( name ) );
 
 	int i;
+
+//	printf( "get header %s from %d headers @ 0x%x\n", name, headers->num, &headers );
 	for ( i = 0; i < headers->num; i++ ) {
+	//	printf( "header %d: %s == %s\n", i, headers->list[ i ].name, name );
 		if ( strcmp( headers->list[ i ].name, name ) == 0 ) {
 			return &headers->list[ i ];
 		}
