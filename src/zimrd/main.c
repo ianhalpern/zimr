@@ -38,6 +38,11 @@
 
 #define DAEMON_NAME "zimrd"
 
+char html_error_400[] = "HTTP/1.1 400 Bad Request\r\nContent-Length: 65\r\n\r\n<!doctype html><html><body><h1>400 Bad Request</h1></body></html>";
+char html_error_404[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 63\r\n\r\n<!doctype html><html><body><h1>404 Not Found</h1></body></html>";
+char html_error_414[] = "HTTP/1.1 414 Request-URI Too Long\r\nContent-Length: 74\r\n\r\n<!doctype html><html><body><h1>414 Request-URI Too Long</h1></body></html>";
+char html_error_502[] = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 65\r\n\r\n<!doctype html><html><body><h1>502 Bad Gateway</h1></body></html>";
+
 typedef struct {
 	int exlisnfd;
 } website_data_t;
@@ -505,18 +510,24 @@ cleanup:
 			conn_data->request_type = HTTP_GET_TYPE;
 		else if ( startswith( buffer, HTTP_POST ) )
 			conn_data->request_type = HTTP_POST_TYPE;
-		else goto cleanup;
+		else {
+			zs_write( sockfd, html_error_400, sizeof( html_error_400 ) );
+			goto cleanup;
+		}
 
 		/* Find website for request from HTTP header */
 		char urlbuf[ PACK_DATA_SIZE ];
 		if ( !get_url_from_http_header( buffer, urlbuf, sizeof( urlbuf ) ) ) {
 			//syslog( LOG_WARNING, "exread: no url found in http request headers: %s %s",
 			//  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "" );
+			zs_write( sockfd, html_error_400, sizeof( html_error_400 ) );
 			goto cleanup;
 		}
+
 		if ( !( website = website_find( urlbuf, conn_data->is_https ? "https://" : "http://" ) ) ) {
 			//syslog( LOG_WARNING, "exread: no website to service request: %s %s %s",
 			//  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
+			zs_write( sockfd, html_error_404, sizeof( html_error_404 ) );
 			goto cleanup;
 		}
 
@@ -531,6 +542,7 @@ cleanup:
 		if ( website_data->exlisnfd != conn_data->exlisnfd ) {
 			//syslog( LOG_WARNING, "exread: no website to service request: %s %s %s",
 			//  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
+			zs_write( sockfd, html_error_404, sizeof( html_error_404 ) );
 			goto cleanup;
 		}
 
@@ -538,6 +550,7 @@ cleanup:
 		if ( !( endofhdrs = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
 			/* If the end of the headers was not found the request was either
 			   malformatted or too long, DO NOT send to website. */
+			zs_write( sockfd, html_error_414, sizeof( html_error_414 ) );
 			syslog( LOG_WARNING, "exread: headers to long for %s", website->url );
 			goto cleanup;
 		}
@@ -561,20 +574,24 @@ cleanup:
 		// Write the message length
 		size_t msglen = ( endofhdrs - buffer ) + conn_data->postlen + sizeof( conn_data->addr.sin_addr ) + 1;
 		if ( hp ) msglen += strlen( hp->h_name );
-		if ( msg_write( website->sockfd, conn_data->msgid, (void*) &msglen, sizeof( size_t ) ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) &msglen, sizeof( size_t ) ) == -1 ) {
+			zs_write( sockfd, html_error_502, sizeof( html_error_502 ) );
 			goto cleanup;
+		}
 
 		// Write the ip address and hostname of the request
-		if ( msg_write( website->sockfd, conn_data->msgid, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) &conn_data->addr.sin_addr, sizeof( conn_data->addr.sin_addr ) ) == -1
+		  || ( hp && msg_write( website->sockfd, conn_data->msgid, (void*) hp->h_name, strlen( hp->h_name ) ) == -1 )
+		  || msg_write( website->sockfd, conn_data->msgid, (void*) "\0", 1 ) == -1 ) {
+			zs_write( sockfd, html_error_502, sizeof( html_error_502 ) );
 			goto cleanup;
-		if ( hp && msg_write( website->sockfd, conn_data->msgid, (void*) hp->h_name, strlen( hp->h_name ) ) == -1 )
-			goto cleanup;
-		if ( msg_write( website->sockfd, conn_data->msgid, (void*) "\0", 1 ) == -1 )
-			goto cleanup;
+		}
 
 		// Send the whole header to the website
-		if ( msg_write( website->sockfd, conn_data->msgid, (void*) buffer, ( endofhdrs - buffer ) ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) buffer, ( endofhdrs - buffer ) ) == -1 ) {
+			zs_write( sockfd, html_error_502, sizeof( html_error_502 ) );
 			goto cleanup;
+		}
 
 		ptr = endofhdrs;
 	}
@@ -582,6 +599,7 @@ cleanup:
 	else {
 		if ( !( website = website_get_by_sockfd( conn_data->website_sockfd ) ) ) {
 		//	syslog( LOG_WARNING, "exread: no website to service request" );
+			zs_write( sockfd, html_error_502, sizeof( html_error_502 ) );
 			goto cleanup;
 		}
 	}
@@ -592,8 +610,10 @@ cleanup:
 		if ( left > conn_data->postlen )
 			conn_data->postlen = left;
 
-		if ( msg_write( website->sockfd, conn_data->msgid, (void*) ptr, left ) == -1 )
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) ptr, left ) == -1 ) {
+			zs_write( sockfd, html_error_502, sizeof( html_error_502 ) );
 			goto cleanup;
+		}
 
 		conn_data->postlen -= left;
 	}

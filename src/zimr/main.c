@@ -44,6 +44,8 @@
 
 #define CMDSTR(X) (X==ADD?"Adding":X==START?"Starting":X==STOP?"Stopping":X==RESTART?"Restarting":X==REMOVE?"Removing":X==STATUS?"Status":"Unknown")
 
+#define GETCNFARG(cnf_file) (strcmp( "/" ZM_APP_CNF_FILE, strrchr( cnf_path, '/' ) ) == 0 ? "" : " " ),(strcmp( "/" ZM_APP_CNF_FILE, strrchr( cnf_path, '/' ) ) == 0 ? "" : strrchr( cnf_path, '/' ) + 1 )
+
 cli_cmd_t root_cmd;
 
 void print_usage() {
@@ -52,27 +54,10 @@ void print_usage() {
 	cli_print( &root_cmd );
 }
 
-/*void print_errors( char* path ) {
-	char buff[ PATH_MAX ],* ptr;
-	ptr = strrchr( path, '/' ) + 1;
-	strncpy( buff, path, ptr - path );
-	buff[ ptr - path ] = 0;
-	strcat( buff, ZM_ERR_LOGFILE );
-
-	FILE* file;
-	file = fopen( buff, "r" );
-
-	if ( file == NULL ) return;
-
-	while ( fgets( buff, sizeof( buff ), file ) != NULL )
-		printf( "%s", buff );
-
-	fclose(file);
-}*/
-
 void sigquit() {
 	//exit(0);
 }
+
 // Functions ////////////////////////////
 void application_shutdown() {
 	//puts( "shutdown" );
@@ -140,7 +125,7 @@ bool application_kill( pid_t pid, bool force ) {
 }
 
 bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool force, bool allow_disable ) {
-	printf( " * %s %s...\n", CMDSTR( type ), cnf_path ); //fflush( stdout );
+	printf( " * %s %s\n", CMDSTR( type ), cnf_path ); //fflush( stdout );
 
 	userdir_init( uid );
 	zcnf_state_t* state = zcnf_state_load( uid );
@@ -169,7 +154,7 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 	}
 
 	if ( type != ADD && !app ) {
-		puts( " * Failed: webapp does not exist. Run 'zimr add' to add the webapp" );
+		printf( " * Failed: webapp does not exist. Run 'zimr add%s%s' to add the webapp\n", GETCNFARG( cnf_path ) );
 		retval = false;
 		goto quit;
 	}
@@ -178,13 +163,13 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 		pid_t pid;
 		switch ( type ) {
 			case ADD:
-				printf( " * Success. To start the webapp run 'zimr start'\n" );
+				printf( " * Success. To start the webapp run 'zimr start%s%s'\n", GETCNFARG( cnf_path ) );
 				zcnf_state_set_app( state, cnf_path, 0, true );
 				break;
 			case START:
 				if ( !app->stopped && app->pid && kill( app->pid, 0 ) != -1 ) { // process still running, not dead
 					retval = false;
-					printf( " * Failed: already running, try 'zimr restart' instead.\n" );
+					printf( " * Failed: already running, try 'zimr restart%s%s' instead.\n", GETCNFARG( cnf_path ) );
 					goto quit;
 				}
 				if ( ( pid = application_exec( uid, gid, cnf_path, false ) ) == -1 ) {
@@ -198,7 +183,7 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 			case RESTART:
 				if ( app->stopped ) {
 					retval = false;
-					printf( " * Failed: Webapp is not running. To start a webapp run 'zimr start'\n" );
+					printf( " * Failed: Webapp is not running. To start a webapp run 'zimr start%s%s'\n", GETCNFARG( cnf_path ) );
 					goto quit;
 				}
 
@@ -307,7 +292,7 @@ bool state_function( uid_t uid, gid_t gid, char type, int optc, char* optv[] ) {
 		if ( type == START ) {
 			if ( optc && strcmp( optv[0], "-ignore-disabled" ) == 0 && app->stopped ) continue;
 			else if ( app->pid && kill( app->pid, 0 ) != -1 ) {
-				printf( " * Starting %s...\n * Skipping: Already started.\n", app->path );
+				printf( " * Starting %s\n * Skipping: Already started.\n", app->path );
 				continue;
 			}
 		} else if ( type == STOP ) {
