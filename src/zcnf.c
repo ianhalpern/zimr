@@ -108,8 +108,8 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 
 		zcnf_website_t* website = (zcnf_website_t*) malloc( sizeof( zcnf_website_t ) );
 		website->url = NULL;
-		website->pubdir = NULL;
 		website->redirect_url = NULL;
+		list_init( &website->pubdirs );
 		list_init( &website->modules );
 		list_init( &website->ignore );
 
@@ -134,7 +134,22 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 			else if ( strcmp( "public directory", (char*) attr_key->data.scalar.value ) == 0 ) {
 				if ( attr_val->type != YAML_SCALAR_NODE )
 					continue;
-				website->pubdir = strdup( (char*) attr_val->data.scalar.value );
+				list_append( &website->pubdirs, strdup( (char*) attr_val->data.scalar.value ) );
+			}
+
+			// public directories
+			else if ( strcmp( "public directories", (char*) attr_key->data.scalar.value ) == 0 ) {
+				if ( !attr_val || attr_val->type != YAML_SEQUENCE_NODE )
+					continue;
+
+				for ( k = 0; k < attr_val->data.sequence.items.top - attr_val->data.sequence.items.start; k++ ) {
+					yaml_node_t* pubdir_node = yaml_document_get_node( document, attr_val->data.sequence.items.start[ k ] );
+
+					if ( pubdir_node->type != YAML_SCALAR_NODE )
+						continue;
+
+					list_append( &website->pubdirs, strdup( (char*) pubdir_node->data.scalar.value ) );
+				}
 			}
 
 			// redirect url
@@ -570,8 +585,11 @@ void zcnf_app_free( zcnf_app_t* cnf ) {
 	while ( cnf->website_node ) {
 		zcnf_website_t* website = cnf->website_node;
 		free( website->url );
-		free( website->pubdir );
 		free( website->redirect_url );
+		while( list_size( &website->pubdirs ) ) {
+			free( list_fetch( &website->pubdirs ) );
+		}
+		list_destroy( &website->pubdirs );
 		while( list_size( &website->modules ) ) {
 			zcnf_module_t* module = list_fetch( &website->modules );
 			int i;

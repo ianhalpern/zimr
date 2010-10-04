@@ -99,19 +99,22 @@ int zimr_cnf_load( char* cnf_path ) {
 	zcnf_website_t* website_cnf = cnf->website_node;
 
 	while ( website_cnf ) {
+		int i;
 		if ( website_cnf->url ) {
 
 			website_t* website = zimr_website_create( website_cnf->url );
 
 			zimr_website_set_proxy( website, cnf->proxy.ip, cnf->proxy.port );
 
-			if ( website_cnf->pubdir )
-				zimr_website_set_pubdir( website, website_cnf->pubdir );
+			if ( list_size( &website_cnf->pubdirs ) )
+				zimr_website_insert_pubdir( website, NULL, 0 );
+
+			for ( i = 0; i < list_size( &website_cnf->pubdirs ); i++ )
+				zimr_website_insert_pubdir( website, list_get_at( &website_cnf->pubdirs, i ), i );
 
 			if ( website_cnf->redirect_url )
 				zimr_website_set_redirect( website, website_cnf->redirect_url );
 
-			int i;
 			for ( i = 0; i < list_size( &website_cnf->modules ); i++ ) {
 				zcnf_module_t* module_cnf = list_get_at( &website_cnf->modules, i );
 				module_t* module = zimr_load_module( module_cnf->name );
@@ -255,7 +258,6 @@ website_t* zimr_website_create( char* url ) {
 	website->udata = (void*) website_data;
 
 	website_data->msg_switch = NULL;
-	website_data->pubdir = strdup( "./" );
 	website_data->status = WS_STATUS_DISABLED;
 	website_data->connection_handler = NULL;
 	website_data->conn_tries = 0; //ZM_NUM_PROXY_DEATH_RETRIES - 1;
@@ -263,12 +265,15 @@ website_t* zimr_website_create( char* url ) {
 	strcpy( website_data->proxy.ip, ZM_PROXY_DEFAULT_ADDR );
 	website_data->proxy.port = ZM_PROXY_DEFAULT_PORT;
 	memset( website_data->connections, 0, sizeof( website_data->connections ) );
+	list_init( &website_data->pubdirs );
 	list_init( &website_data->default_pages );
 	list_init( &website_data->ignored_regexs );
 	list_init( &website_data->page_handlers );
 	list_init( &website_data->module_data );
 
 	list_attributes_comparator( &website_data->ignored_regexs, (element_comparator) ignored_regex_check );
+
+	zimr_website_insert_pubdir( website, "./", 0 );
 
 	zimr_website_insert_default_page( website, "default.html", 0 );
 	zimr_website_insert_ignored_regex( website, "^zimr\\.cnf$" );
@@ -291,8 +296,10 @@ void zimr_website_destroy( website_t* website ) {
 	list_destroy( &website_data->module_data );
 
 
-	if ( website_data->pubdir )
-		free( website_data->pubdir );
+	while ( list_size( &website_data->pubdirs ) )
+		if ( list_get_at( &website_data->pubdirs, 0 ) )
+			free( list_fetch( &website_data->pubdirs ) );
+		else list_fetch( &website_data->pubdirs );
 
 	// TODO: free memory before destroying
 	list_destroy( &website_data->default_pages );
@@ -629,15 +636,19 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 
 	// if the filepath is relative to the specified public directory, initialize
 	// the filepath with the public directory.
-	if ( use_pubdir && filepath[ 0 ] != '/' )
-		strcpy( full_filepath, website_data->pubdir );
+	if ( use_pubdir && filepath[0] != '/' ) {
+		for ( i = 0; i < list_size( &website_data->pubdirs ); i++ ) {
+			strcpy( full_filepath, list_get_at( &website_data->pubdirs, i ) );
 
-	strcat( full_filepath, filepath );
-
-	if ( stat( full_filepath, &file_stat ) ) {
-		// Does not exist.
-		zimr_connection_send_error( connection, 404, NULL, 0 );
-		return;
+			strcat( full_filepath, filepath );
+			if ( stat( full_filepath, &file_stat ) ) {
+				if ( i == list_size( &website_data->pubdirs ) - 1 ) {
+					// Does not exist.
+					zimr_connection_send_error( connection, 404, NULL, 0 );
+					return;
+				}
+			} else break;
+		}
 	}
 
 	if ( S_ISDIR( file_stat.st_mode ) ) {
@@ -744,6 +755,14 @@ void zimr_connection_send_redirect( connection_t* connection, char* url ) {
 	cleanup_connection( connection->website->sockfd, connection->sockfd );
 }
 
+int directory_sort( const char* file1, const char* file2 ) {
+	int i, max = strlen( file1 ), tmp = strlen( file2 );
+	if ( tmp > max ) max = tmp;
+	for ( i = 0; file1[i] == file2[i]; i++ )
+		if ( i == max ) return 0;
+	return file1[i] > file2[i] ? -1 : 1;
+}
+
 void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 	website_data_t* website_data = connection->website->udata;
 	int i;
@@ -754,18 +773,20 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 		return;
 	}
 
-	int num = 0;
-	char* files[ 512 ];
+	list_t files;
+	list_init( &files );
+
+	list_attributes_comparator( &files, (element_comparator) directory_sort );
 
 	char html_header_fmt[] = "<html><style type=\"text/css\">html, body { font-family: sans-serif; }</style><body>\n<h1>%s</h1>\n";
 	char html_file_fmt[]   = "<a href=\"%s\">%s</a><br/>\n";
 	char html_dir_fmt[]    = "<a href=\"%s/\">%s/</a><br/>\n";
-	char html_header[ strlen( html_header_fmt ) + strlen( filepath ) - strlen( zimr_website_get_pubdir( connection->website ) ) ];
-	sprintf( html_header, html_header_fmt, filepath + strlen( zimr_website_get_pubdir( connection->website ) ) );
+	char html_header[ strlen( html_header_fmt ) + strlen( connection->request.url ) ];
+	sprintf( html_header, html_header_fmt, connection->request.url );
 	char html_footer[] = "<br/>"  "Zimr/" ZIMR_VERSION "\n</body></html>";
 
 	int size = strlen( html_header ) + strlen( html_footer );
-	while ( ( dp = readdir( dir ) ) != NULL && num < sizeof( files ) / sizeof( char* ) ) {
+	while ( ( dp = readdir( dir ) ) != NULL ) {
 		char fullpath[ strlen( filepath ) + strlen( dp->d_name ) + 1 ];
 		sprintf( fullpath, "%s%s", filepath, dp->d_name );
 
@@ -778,26 +799,17 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 		strcpy( externpath, connection->request.url );
 		strcat( externpath, dp->d_name );
 
-		if ( list_contains( &website_data->ignored_regexs, externpath ) )
+		if ( list_contains( &website_data->ignored_regexs, externpath ) || strcmp( dp->d_name, "." ) == 0 )
 			continue;
 
 		if ( S_ISDIR( file_stat.st_mode ) ) {
-			files[ num ] = (char*) malloc( strlen( dp->d_name ) * 2 + sizeof( html_dir_fmt ) + 1 );
-			sprintf( files[ num ], html_dir_fmt, dp->d_name, dp->d_name );
+			list_append( &files, malloc( strlen( dp->d_name ) * 2 + sizeof( html_dir_fmt ) + 1 ) );
+			sprintf( list_get_at( &files, list_size( &files ) - 1 ), html_dir_fmt, dp->d_name, dp->d_name );
 		} else {
-			files[ num ] = (char*) malloc( strlen( dp->d_name ) * 2 + sizeof( html_file_fmt ) + 1 );
-			sprintf( files[ num ], html_file_fmt, dp->d_name, dp->d_name );
+			list_append( &files, malloc( strlen( dp->d_name ) * 2 + sizeof( html_file_fmt ) + 1 ) );
+			sprintf( list_get_at( &files, list_size( &files ) - 1 ), html_file_fmt, dp->d_name, dp->d_name );
 		}
-		size += strlen( files[ num ] );
-		num++;
-
-		for ( i = num - 1; i > 0; i-- ) {
-			if ( files[ i ][ 10 ] < files[ i - 1 ][ 10 ] ) {
-				char* tmp = files[ i ];
-				files[ i ] = files[ i - 1 ];
-				files[ i - 1 ] = tmp;
-			} else break;
-		}
+		size += strlen( list_get_at( &files, list_size( &files ) - 1 ) );
 	}
 	closedir( dir );
 
@@ -812,9 +824,10 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 
 	msg_write( connection->website->sockfd, connection->sockfd, html_header, strlen( html_header ) );
 
-	for ( i = 0; i < num; i++ ) {
-		msg_write( connection->website->sockfd, connection->sockfd, files[ i ], strlen( files[ i ] ) );
-		free( files[ i ] );
+	list_sort( &files, 1 );
+	for ( i = 0; i < list_size( &files ); i++ ) {
+		msg_write( connection->website->sockfd, connection->sockfd, list_get_at( &files, i ), strlen( list_get_at( &files, i ) ) );
+		free( list_get_at( &files, i ) );
 	}
 
 	msg_write( connection->website->sockfd, connection->sockfd, html_footer, strlen( html_footer ) );
@@ -822,6 +835,7 @@ void zimr_connection_send_dir( connection_t* connection, char* filepath ) {
 	//msg_close( connection->website->sockfd, connection->sockfd );
 	cleanup_connection( connection->website->sockfd, connection->sockfd );
 
+	list_destroy( &files );
 }
 
 static const char* etag_gen( char* path, time_t* mtime ) {
@@ -982,22 +996,38 @@ void zimr_website_unset_connection_handler( website_t* website ) {
 	website_data->connection_handler = NULL;
 }
 
-void zimr_website_set_pubdir( website_t* website, const char* pubdir ) {
+void zimr_website_insert_pubdir( website_t* website, char* pubdir, int pos ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
-	if ( website_data->pubdir ) free( website_data->pubdir );
-	website_data->pubdir = (char*) malloc( strlen( pubdir + 2 ) );
-	strcpy( website_data->pubdir, pubdir );
+	if ( pos < 0 )
+		pos = list_size( &website_data->default_pages ) + pos + 1;
+
+	if ( pos > list_size( &website_data->default_pages ) )
+		pos = list_size( &website_data->default_pages );
+	else if ( pos < 0 )
+		pos = 0;
+
+	if ( !pubdir ) {
+		if ( list_get_at( &website_data->pubdirs, pos ) )
+			free( list_get_at( &website_data->pubdirs, pos ) );
+		list_delete_at( &website_data->pubdirs, pos );
+		return;
+	}
+
+	list_insert_at( &website_data->pubdirs, malloc( strlen( pubdir + 2 ) ), pos );
+	strcpy( list_get_at( &website_data->pubdirs, pos ), pubdir );
+	pubdir = list_get_at( &website_data->pubdirs, pos );
 
 	// we need the trailing forward slash
-	if ( website_data->pubdir[ strlen( website_data->pubdir ) ] != '/' )
-		strcat( website_data->pubdir, "/" );
+	if ( pubdir[ strlen( pubdir ) - 1 ] != '/' )
+		strcat( pubdir, "/" );
+
 }
 
-char* zimr_website_get_pubdir( website_t* website ) {
-	website_data_t* website_data = (website_data_t*) website->udata;
-	return website_data->pubdir;
-}
+/*char* zimr_website_get_pubdir( website_t* website ) {
+//	website_data_t* website_data = (website_data_t*) website->udata;
+//	return website_data->pubdir;
+}*/
 
 void zimr_website_register_page_handler( website_t* website, const char* page_type,
 										 void (*handler)( connection_t*, const char*, void* ), void* udata ) {
@@ -1021,6 +1051,9 @@ void zimr_website_insert_default_page( website_t* website, const char* default_p
 		pos = list_size( &website_data->default_pages );
 	else if ( pos < 0 )
 		pos = 0;
+
+	if ( list_get_at( &website_data->default_pages, pos ) )
+		free( list_get_at( &website_data->default_pages, pos ) );
 
 	list_insert_at( &website_data->default_pages, strdup( default_page ), pos );
 }

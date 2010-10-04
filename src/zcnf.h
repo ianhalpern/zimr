@@ -74,8 +74,8 @@ typedef struct zcnf_module {
 
 typedef struct zcnf_website {
 	char* url;
-	char* pubdir;
 	char* redirect_url;
+	list_t pubdirs;
 	list_t modules;
 	list_t ignore;
 	struct zcnf_website* next;

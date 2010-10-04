@@ -948,10 +948,10 @@ static PyObject* pyzimr_website_get_protocol( pyzimr_website_t* self, void* clos
 	return PyString_FromString( website_protocol( self->_website ) );
 }
 
-static PyObject* pyzimr_website_get_public_directory( pyzimr_website_t* self, void* closure ) {
+/*static PyObject* pyzimr_website_get_public_directory( pyzimr_website_t* self, void* closure ) {
 	if ( !zimr_website_get_pubdir( self->_website ) ) Py_RETURN_NONE;
 	return PyString_FromString( zimr_website_get_pubdir( self->_website ) );
-}
+}(*/
 
 static int pypdora_website_set_public_directory( pyzimr_website_t* self, PyObject* value, void* closure ) {
 	if ( value == NULL ) {
@@ -964,7 +964,7 @@ static int pypdora_website_set_public_directory( pyzimr_website_t* self, PyObjec
 		return -1;
 	}
 
-	zimr_website_set_pubdir( self->_website, PyString_AsString( value ) );
+	zimr_website_insert_pubdir( self->_website, PyString_AsString( value ), 0 );
 
 	Py_DECREF( value );
 	return 0;
@@ -1021,7 +1021,7 @@ static PyGetSetDef pyzimr_website_getseters[] = {
 	},
 	{
 	  "public_directory",
-	  (getter) pyzimr_website_get_public_directory,
+	  (getter) NULL,// pyzimr_website_get_public_directory,
 	  (setter) pypdora_website_set_public_directory,
 	  "the websites public directory", NULL
 	},
