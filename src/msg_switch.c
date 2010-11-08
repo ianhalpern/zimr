@@ -288,10 +288,12 @@ static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp 
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
 
+	printf( "%d: Status: 0x%x Resp: 0x%x\n", msg->msgid, msg->status, resp.status );
 	if ( resp.status == MSG_RESP_DISCON ) {
 		if ( !FL_ISSET( msg->status, MSG_STAT_CLOSED ) ) {
 			// if wasn't the sender of the disconnect must return a disconnect
 			msg_send_resp( msg_switch, msg->msgid, MSG_RESP_DISCON );
+			printf( "%d: DISCONNECTED!\n", msg->msgid );
 			FL_SET( msg->status, MSG_STAT_DISCONNECTED );
 			msg_switch->imsgid_map[ msg->imsgid ] = 0;
 			msg->imsgid = 0;
@@ -812,7 +814,7 @@ static void msg_switch_read( int fd ) {
 				break;
 			case MSG_TYPE_PACK:
 				if ( !msg_exists( msg_switch->sockfd, msg_switch->read.data.packet.header.msgid ) ) {
-					assert( msg_switch->read.data.packet.header.msgid < 0 );
+					assert( msg_switch->read.data.packet.header.msgid < 0 ); //TODO:
 					msg = msg_create( msg_switch, msg_switch->read.data.packet.header.type );
 					msg->imsgid = abs(msg_switch->read.data.packet.header.msgid);
 					msg_switch->imsgid_map[msg->imsgid] = msg->msgid;

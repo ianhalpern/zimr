@@ -588,7 +588,7 @@ void zimr_connection_send_headers( connection_t* connection ) {
 	char now_str[80];
 
 	time( &now );
-	strftime( now_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &now ) );
+	strftime( now_str, 80, "%a, %d %b %Y %I:%M:%S %Z", gmtime( &now ) );
 
 	headers_set_header( &connection->response.headers, "Date", now_str );
 	headers_set_header( &connection->response.headers, "Server", "Zimr/" ZIMR_VERSION );
@@ -890,7 +890,7 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 	header_t* last_modified = headers_get_header( &connection->response.headers, "Last-Modified" );
 	if ( !last_modified ) {
 		char mtime_str[80];
-		strftime( mtime_str, 80, "%a %b %d %I:%M:%S %Z %Y", localtime( &file_stat.st_mtime ) );
+		strftime( mtime_str, 80, "%a, %d %b %Y %I:%M:%S %Z", gmtime( &file_stat.st_mtime ) );
 		last_modified = headers_set_header( &connection->response.headers, "Last-Modified", mtime_str );
 	}
 

@@ -41,6 +41,9 @@ void fd_hash_add( fd_hash_t* hash, int fd ) {
 }
 
 void fd_hash_remove( fd_hash_t* hash, int fd ) {
+	if ( !hash->table[fd].next && !hash->table[fd].previous && &hash->table[fd] != hash->head )
+		return; // Not in the list, return
+
 	if ( hash->table[fd].previous )
 		hash->table[fd].previous->next = hash->table[fd].next;
 
