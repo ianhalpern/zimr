@@ -79,8 +79,8 @@ void zimr_shutdown() {
 	initialized = false;
 
 	int i;
-	for ( i = 0; i < list_size( &websites ); i++ ) {
-		zimr_website_destroy( list_get_at( &websites, i ) );
+	while ( list_size( &websites ) ) {
+		zimr_website_destroy( list_get_at( &websites, 0 ) );
 	}
 
 	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
@@ -161,7 +161,7 @@ void zimr_start() {
 				   requests or commands to this process. */
 				if ( !zimr_website_enable( website ) ) {
 					if ( website_data->conn_tries == 0 )
-						dlog( stderr, "%s could not connect to proxy...will retry.", website->url );
+						dlog( stderr, "%s could not connect to proxy...will retry.", website->full_url );
 
 
 					// giving up ...
@@ -294,7 +294,6 @@ void zimr_website_destroy( website_t* website ) {
 		free( module_data );
 	}
 	list_destroy( &website_data->module_data );
-
 
 	while ( list_size( &website_data->pubdirs ) )
 		if ( list_get_at( &website_data->pubdirs, 0 ) )
@@ -481,6 +480,7 @@ void zimr_website_disable( website_t* website ) {
 	}
 
 	website_data->status = WS_STATUS_DISABLED;
+	dlog( stderr, "%s is disabled.", website->full_url );
 }
 
 static void zimr_website_default_connection_handler( connection_t* connection ) {

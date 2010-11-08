@@ -111,6 +111,7 @@ typedef struct msg_switch {
 	int imsgid_map[ FD_SETSIZE ];
 	fd_set active_read_fd_set;
 	fd_set active_write_fd_set;
+	fd_hash_t active_hash;
 
 	struct {
 		int type;

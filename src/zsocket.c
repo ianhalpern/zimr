@@ -30,6 +30,7 @@ static int n_selectable = 0;
 
 static fd_set active_read_fd_set;
 static fd_set active_write_fd_set;
+static fd_hash_t active_hash;
 
 static bool initialized = false;
 static SSL_CTX* client_ctx;
@@ -55,6 +56,7 @@ void zs_init() {
 	memset( zsockets, 0, sizeof( zsockets ) );
 	FD_ZERO( &active_read_fd_set );
 	FD_ZERO( &active_write_fd_set );
+	fd_hash_init( &active_hash );
 }
 
 static zsocket_t* zs_type_init( int fd, int type, struct sockaddr_in* addr, int portno,
@@ -593,6 +595,7 @@ void zs_set_read( int fd ) {
 		n_selectable++;
 
 	FD_SET( fd, &active_read_fd_set );
+	fd_hash_add( &active_hash, fd );
 	zs_update_fd_state( fd, NULL );
 }
 
@@ -604,6 +607,8 @@ void zs_clr_read( int fd ) {
 		n_selectable--;
 
 	FD_CLR( fd, &active_read_fd_set );
+	if ( !FD_ISSET( fd, &active_read_fd_set ) && !FD_ISSET( fd, &active_write_fd_set ) )
+		fd_hash_remove( &active_hash, fd );
 	if ( zs_get_by_fd( fd ) ) zs_update_fd_state( fd, NULL );
 }
 
@@ -619,6 +624,7 @@ void zs_set_write( int fd ) {
 		n_selectable++;
 
 	FD_SET( fd, &active_write_fd_set );
+	fd_hash_add( &active_hash, fd );
 	zs_update_fd_state( fd, NULL );
 }
 
@@ -630,6 +636,8 @@ void zs_clr_write( int fd ) {
 		n_selectable--;
 
 	FD_CLR( fd, &active_write_fd_set );
+	if ( !FD_ISSET( fd, &active_read_fd_set ) && !FD_ISSET( fd, &active_write_fd_set ) )
+		fd_hash_remove( &active_hash, fd );
 	if ( zs_get_by_fd( fd ) ) zs_update_fd_state( fd, NULL );
 }
 
@@ -839,8 +847,8 @@ int zs_select() {
 	fd_set write_fd_set = active_write_fd_set;
 
 //	int rw_still_avail = 0;
-	int fd;
-	for ( fd = 0; fd < FD_SETSIZE; fd++ ) {
+	int fd = fd_hash_head( &active_hash );
+	while ( fd != -1 ) {
 		zsocket_t* zs;
 		if ( !( zs = zs_get_by_fd( fd ) ) ) continue;
 
@@ -861,6 +869,7 @@ int zs_select() {
 		( FD_ISSET( fd, &active_write_fd_set ) && FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
 		)
 			rw_still_avail++;*/
+		fd = fd_hash_next( &active_hash, fd );
 	}
 
 	return zs_need_select();

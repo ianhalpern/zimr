@@ -26,6 +26,9 @@
 
 static int n_selectable = 0;
 
+static fd_hash_t active_msg_switches;
+static bool initialized = false;
+
 static void msg_update_status( msg_switch_t* msg_switch, int msgid );
 static void msg_switch_push_resp( msg_switch_t* msg_switch, msg_resp_t* resp );
 static void msg_switch_push_writ_msg( msg_switch_t* msg_switch, int msgid );
@@ -371,6 +374,7 @@ void msg_set_read( int fd, int msgid ) {
 	assert( msg = msg_get( msg_switch, msgid ) );
 
 	FD_SET( msgid, &msg_switch->active_read_fd_set );
+	fd_hash_add( &msg_switch->active_hash, msgid );
 	msg_check_selectability( msg_switch, msgid );
 }
 
@@ -382,6 +386,8 @@ void msg_clr_read( int fd, int msgid ) {
 	assert( msg = msg_get( msg_switch, msgid ) );
 
 	FD_CLR( msgid, &msg_switch->active_read_fd_set );
+	if ( !FD_ISSET( msgid, &msg_switch->active_read_fd_set ) && !FD_ISSET( msgid, &msg_switch->active_write_fd_set ) )
+		fd_hash_remove( &msg_switch->active_hash, msgid );
 	msg_check_selectability( msg_switch, msgid );
 }
 
@@ -400,6 +406,7 @@ void msg_set_write( int fd, int msgid ) {
 	assert( msg = msg_get( msg_switch, msgid ) );
 
 	FD_SET( msgid, &msg_switch->active_write_fd_set );
+	fd_hash_add( &msg_switch->active_hash, msgid );
 	msg_check_selectability( msg_switch, msgid );
 }
 
@@ -411,6 +418,8 @@ void msg_clr_write( int fd, int msgid ) {
 	assert( msg = msg_get( msg_switch, msgid ) );
 
 	FD_CLR( msgid, &msg_switch->active_write_fd_set );
+	if ( !FD_ISSET( msgid, &msg_switch->active_read_fd_set ) && !FD_ISSET( msgid, &msg_switch->active_write_fd_set ) )
+		fd_hash_remove( &msg_switch->active_hash, msgid );
 	msg_check_selectability( msg_switch, msgid );
 }
 
@@ -482,6 +491,7 @@ int msg_accept( int fd, int msgid ) {
 	}
 
 	FL_SET( msg->status, MSG_STAT_CONNECTED );
+	fd_hash_remove( &msg_switch->active_hash, msgid );
 
 	msg_check_selectability( msg_switch, msgid );
 	return msg->msgid;
@@ -806,6 +816,7 @@ static void msg_switch_read( int fd ) {
 					msg = msg_create( msg_switch, msg_switch->read.data.packet.header.type );
 					msg->imsgid = abs(msg_switch->read.data.packet.header.msgid);
 					msg_switch->imsgid_map[msg->imsgid] = msg->msgid;
+					fd_hash_add( &msg_switch->active_hash, msg->msgid );
 				} else
 					msg = msg_get( msg_switch, msg_switch->read.data.packet.header.msgid );
 
@@ -839,6 +850,11 @@ void msg_switch_toggle_accept( bool toggle ) {
 }
 
 int msg_switch_create( int fd, void (*event_handler)( int fd, int msgid, int event ) ) {
+	if ( !initialized ) {
+		fd_hash_init( &active_msg_switches );
+		initialized = true;
+	}
+
 	if ( msg_switch_get_by_fd( fd ) ) {
 		errno = EEXIST;
 		return -1;
@@ -867,11 +883,14 @@ int msg_switch_create( int fd, void (*event_handler)( int fd, int msgid, int eve
 	//FD_ZERO( &msg_switch->active_read_fd_set[1] );
 	FD_ZERO( &msg_switch->active_write_fd_set );
 	//FD_ZERO( &msg_switch->active_write_fd_set[1] );
+	fd_hash_init( &msg_switch->active_hash );
 
 	zs_set_event_hdlr( fd, msg_zsocket_event_hdlr );
 	zs_set_read( fd );
 
 	zs->general.udata = msg_switch;
+
+	fd_hash_add( &active_msg_switches, fd );
 
 	return 0;
 }
@@ -906,6 +925,8 @@ int msg_switch_destroy( int fd ) {
 
 	free( msg_switch );
 
+	fd_hash_remove( &active_msg_switches, fd );
+
 	return 0;
 }
 
@@ -914,8 +935,8 @@ bool msg_switch_need_select() {
 }
 
 int msg_switch_select() {
-	int fd;
-	for ( fd = 0; fd < FD_SETSIZE; fd++ ) {
+	int fd = fd_hash_head( &active_msg_switches );
+	while ( fd != -1 ) {
 		msg_switch_t* msg_switch = msg_switch_get_by_fd( fd );
 		if ( !msg_switch ) continue;
 
@@ -926,8 +947,8 @@ int msg_switch_select() {
 		write_fd_set = msg_switch->active_write_fd_set;
 		//write_fd_set[1] = msg_switch->active_write_fd_set[1];
 
-		int msgid;
-		for ( msgid = 0; msgid < FD_SETSIZE; msgid++ ) {
+		int msgid = fd_hash_head( &msg_switch->active_hash );
+		while ( msgid != -1 ) {
 			msg_t* msg = msg_get( msg_switch, msgid );
 
 			if ( msg && !FL_ISSET( msg->status, MSG_STAT_CONNECTED ) )
@@ -949,7 +970,9 @@ int msg_switch_select() {
 			( FD_ISSET( msgid, &msg_switch->active_write_fd_set ) && FL_ISSET( msg->status, MSG_STAT_SPACE_AVAIL_FOR_WRIT ) )
 			)
 				rw_still_avail++;*/
+			msgid = fd_hash_next( &msg_switch->active_hash, msgid );
 		}
+		fd = fd_hash_next( &active_msg_switches, fd );
 	}
 
 	return msg_switch_need_select();

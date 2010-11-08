@@ -25,6 +25,7 @@
 static fd_set active_read_fd_set;
 static fd_set active_write_fd_set;
 static fd_info_t fd_data[ FD_SETSIZE ][2];
+static fd_hash_t active_hash;
 static bool first_set = true;
 static bool unblock = false;
 
@@ -33,6 +34,7 @@ void zfd_set( int fd, char io_type, void (*handler)( int, void* ), void* udata )
 		FD_ZERO( &active_read_fd_set );
 		FD_ZERO( &active_write_fd_set );
 		memset( fd_data, 0, sizeof( fd_data ) );
+		fd_hash_init( &active_hash );
 		first_set = false;
 	}
 
@@ -44,6 +46,8 @@ void zfd_set( int fd, char io_type, void (*handler)( int, void* ), void* udata )
 
 	else if ( io_type == ZFD_W )
 		FD_SET( fd, &active_write_fd_set );
+
+	fd_hash_add( &active_hash, fd );
 }
 
 void zfd_clr( int fd, char io_type ) {
@@ -54,6 +58,8 @@ void zfd_clr( int fd, char io_type ) {
 	else if ( io_type == ZFD_W )
 		FD_CLR( fd, &active_write_fd_set );
 
+	if ( !FD_ISSET( fd, &active_read_fd_set ) && !FD_ISSET( fd, &active_write_fd_set ) )
+		fd_hash_remove( &active_hash, fd );
 }
 
 bool zfd_isset( int fd, char io_type ) {
@@ -103,13 +109,16 @@ int zfd_select( int tv_sec ) {
 
 	}
 
-	for ( i = 0; i < FD_SETSIZE; i++ ) {
+	i = fd_hash_head( &active_hash );
+	while ( i != -1 ) {
 		if ( FD_ISSET( i, &read_fd_set ) && FD_ISSET( i, &active_read_fd_set ) )
 			fd_data[ i ][ ZFD_R - 1 ].handler( i, fd_data[ i ][ ZFD_R - 1 ].udata );
 
 		if ( /*FD_ISSET( i, &write_fd_set &&*/ FD_ISSET( i, &active_write_fd_set ) ) {
 			fd_data[ i ][ ZFD_W - 1 ].handler( i, fd_data[ i ][ ZFD_W - 1 ].udata );
 		}
+
+		i = fd_hash_next( &active_hash, i );
 	}
 
 	return 1;

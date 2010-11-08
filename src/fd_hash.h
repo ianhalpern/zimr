@@ -20,31 +20,29 @@
  *
  */
 
-#ifndef _ZM_PFILDES_H
-#define _ZM_PFILDES_H
-
-#define ZFD_HDLR (void (*)( int, void* ))
+#ifndef _ZM_FD_HASH_H
+#define _ZM_FD_HASH_H
 
 #include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
-#include <stdbool.h>
-#include "fd_hash.h"
 
-#define ZFD_R 0x01
-#define ZFD_W 0x02
+typedef struct fd_hash_el {
+	struct fd_hash_el* previous;
+	struct fd_hash_el* next;
+} fd_hash_el_t;
 
 typedef struct {
-	void (*handler)( int fd, void* udata );
-	void* udata;
-} fd_info_t;
+	fd_hash_el_t table[ FD_SETSIZE ];
+	fd_hash_el_t* head;
+	fd_hash_el_t* tail;
+} fd_hash_t;
 
-void zfd_set( int fd, char io_type, void (*handler)( int, void* ), void* udata );
-void zfd_clr( int fd, char io_type );
-bool zfd_isset( int fd, char io_type );
-int zfd_select();
-void zfd_unblock();
+void fd_hash_init( fd_hash_t* );
+void fd_hash_add( fd_hash_t*, int fd );
+void fd_hash_remove( fd_hash_t*, int fd );
+int fd_hash_head( fd_hash_t* );
+int fd_hash_next( fd_hash_t*, int fd );
 
 #endif

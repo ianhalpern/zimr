@@ -100,8 +100,8 @@ pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 	} else {
 		sleep( 1 );
 		//int exitstat;
-		/*waitpid( pid, &exitstat, WNOHANG );
-		if ( exitstat ) {
+		//waitpid( pid, &exitstat, WIFEXITED );
+		/*if ( exitstat ) {
 			//waitpid( pid, &exitstat, 0 );
 			return -1;
 		}*/
@@ -227,6 +227,7 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 				else if ( !app->pid || kill( app->pid, 0 ) == -1 ) // process still running, not dead
 					printf( " * Error: Not Running" );
 				else {
+					///////////////////// Proc Info /////////////////////////
 					// TODO: calculate CPU usage: http://stackoverflow.com/questions/1420426/calculating-cpu-usage-of-a-process-in-linux
 					FILE* kstat = fopen( "/proc/stat", "r" );
 					char buf[256], btime_s[32], *ptr;
@@ -256,6 +257,32 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 
 					freeproc( proc );
 					closeproc( ptab );
+
+					///////////////////// Webapp Info /////////////////////////
+					zcnf_app_t* cnf = zcnf_app_load( cnf_path );
+					assert( cnf );
+
+					zcnf_website_t* website_cnf = cnf->website_node;
+
+					while ( website_cnf ) {
+						printf( "\n * Url  " );
+						if ( !startswith( website_cnf->url, "https://" ) && !startswith( website_cnf->url, "http://" ) )
+							printf( "http://" );
+
+						printf( "%s", website_cnf->url );
+
+						if ( website_cnf->redirect_url )
+							printf( " -> %s", website_cnf->redirect_url );
+
+						if ( list_size( &website_cnf->modules ) ) {
+							printf( "  Modules:" );
+							for ( i = 0; i < list_size( &website_cnf->modules ); i++ ) {
+								zcnf_module_t* module_cnf = list_get_at( &website_cnf->modules, i );
+								printf( " %s", module_cnf->name );
+							}
+						}
+						website_cnf = website_cnf->next;
+					}
 				}
 
 				printf( "\n" );
@@ -313,7 +340,6 @@ bool state_function( uid_t uid, gid_t gid, char type, int optc, char* optv[] ) {
 }
 
 bool state_all_function( char type, int optc, char* optv[] ) {
-	/* yea...this whole bit is a hack */
 	if ( getuid() ) {
 		puts( "Failed: Must have superuser privileges" );
 		return false;

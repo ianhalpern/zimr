@@ -195,12 +195,13 @@ char* expand_tilde( char* path, char* buffer, int size, uid_t uid ) {
 }
 
 bool stopproc( pid_t pid ) {
-
 	if ( kill( pid, SIGTERM ) != 0 ) { // process not running
 		return false;
 	}
 
-	sleep( 1 );
+	int time = 0;
+	while ( kill( pid, 0 ) != -1 && ( time += 250000 ) <= 3 * 1000000 )
+		usleep( time );
 
 	if ( kill( pid, 0 ) != -1 ) { // process still running, not dead
 		errno = EBUSY;
@@ -220,7 +221,10 @@ bool killproc( pid_t pid ) {
 		return false;
 	}
 
-	sleep( 1 );
+
+	int time = 0;
+	while ( kill( pid, 0 ) != -1 && ( time += 250000 ) <= 3 * 1000000 )
+		usleep( time );
 
 	if ( kill( pid, 0 ) != -1 ) { // process still running, not dead
 		errno = EBUSY;
