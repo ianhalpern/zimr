@@ -37,6 +37,7 @@
 
 #define SMALLEST( X, Y ) ( (X)<=(Y) ? (X) : (Y) )
 
+//#define DEBUG_TRACE_ENABLED
 #define D_LOCKFILE_PATH "/var/run/zimrd.pid" // used by daemon.c
 #define ZM_APP_CNF_FILE "zimr.cnf"
 #define ZM_USR_DIR "~/.zimr/"

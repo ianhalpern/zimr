@@ -17,7 +17,7 @@ PYVERSION = 2.6
 
 OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o\
-			  simclist.o msg_switch.o userdir.o cli.o dlog.o md5.o fd_hash.o
+			  simclist.o msg_switch.o userdir.o cli.o dlog.o md5.o fd_hash.o trace.o
 
 EXECS       = zimrd zimr #zimr-app
 TEST_EXECS  = test-zsocket-client test-zsocket-server test-strnstr test-client test-server test-fd-hash
@@ -92,14 +92,14 @@ install:
 zimr: $(EXEC_DEPENDS) libzimr.so userdir.o cli.o
 	$(EXEC_COMPILE) $(LDZIMR) -lproc
 
-zimrd: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zcnf.o fd_hash.o
+zimrd: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zcnf.o fd_hash.o trace.o
 	$(EXEC_COMPILE) -lyaml -lssl
 
 ##### SHARED OBJS #####
 
 libzimr.so: $(SHARED_OBJ_DEPENDS) general.o msg_switch.o zfildes.o website.o mime.o connection.o\
 			 					  headers.o params.o cookies.o zsocket.o urldecoder.o zcnf.o simclist.o userdir.o\
-								  dlog.o md5.o fd_hash.o
+								  dlog.o md5.o fd_hash.o trace.o
 	$(EXEC_COMPILE) $(SHARED) -lyaml -lssl -ldl -Wl,-rpath,$(INSTALL_MODDIR)/
 
 ##### PYTHON MODS #####

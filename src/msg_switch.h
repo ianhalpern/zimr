@@ -34,6 +34,7 @@
 #include "simclist.h"
 #include "zsocket.h"
 #include "zfildes.h"
+#include "trace.h"
 
 #define MSG_STAT_CONNECTED            0x0001
 #define MSG_STAT_PACKET_AVAIL_TO_READ 0x0002
@@ -44,7 +45,8 @@
 #define MSG_STAT_NEED_TO_SEND_RESP    0x0040
 #define MSG_STAT_WRITING              0x0080
 #define MSG_STAT_CLOSED               0x0100
-#define MSG_STAT_DISCONNECTED         0x0200
+#define MSG_STAT_SENT_DISCONNECT      0x0200
+#define MSG_STAT_DISCONNECTED         0x0400
 
 //#define MSG_STAT_DESTROY_SENT         0x2000
 //#define MSG_STAT_WAITING_TO_FREE      0x4000

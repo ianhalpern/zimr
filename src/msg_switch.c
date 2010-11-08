@@ -97,6 +97,7 @@ static msg_t* msg_create( msg_switch_t* msg_switch, int type ) {
 
 	msg_check_selectability( msg_switch, msgid );
 
+	trace( "%d: created", msgid );
 	return msg;
 }
 
@@ -151,6 +152,7 @@ static void msg_free( msg_switch_t* msg_switch, int msgid ) {
 
 	free( msg );
 	msg_set( msg_switch, msgid, NULL );
+	trace( "%d: freed", msgid );
 }
 
 static void msg_push_writ_packet( msg_switch_t* msg_switch, int msgid ) {
@@ -178,6 +180,7 @@ static void msg_push_writ_packet( msg_switch_t* msg_switch, int msgid ) {
 static msg_packet_t msg_pop_writ_packet( msg_switch_t* msg_switch, int msgid ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
+	trace( "%d,%d: Status: 0x%x Send Data", msg->msgid, -msg->imsgid, msg->status );
 
 	//printf( "pop writ packet %d %d, %d packets \n", msg_switch->sockfd, msgid, list_size( &msg->writ_queue ) );
 	msg_packet_t packet = *(msg_packet_t*) list_get_at( &msg->writ_queue, 0 );
@@ -204,6 +207,7 @@ static msg_packet_t msg_pop_writ_packet( msg_switch_t* msg_switch, int msgid ) {
 static void msg_push_read_packet( msg_switch_t* msg_switch, int msgid, msg_packet_t* packet ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
+	trace( "%d,%d: Status: 0x%x Recv Data", msg->msgid, -msg->imsgid, msg->status );
 	//if ( !msg->n_read )
 	//	fprintf( stderr, "%d first read\n", msg->msgid );
 	msg->n_read++;
@@ -271,6 +275,7 @@ static void msg_send_resp( msg_switch_t* msg_switch, int msgid, char status ) {
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
 	assert( status != MSG_RESP_OK || FL_ISSET( msg->status, MSG_STAT_NEED_TO_SEND_RESP ) );
+	trace( "%d,%d: Status: 0x%x Send Resp: 0x%x", msg->msgid, -msg->imsgid, msg->status, status );
 
 	msg_resp_t* resp = (msg_resp_t*) malloc( sizeof( msg_resp_t ) );
 	memset( resp, 0, sizeof( msg_resp_t ) ); // initializes all bytes including padded bytes
@@ -288,12 +293,13 @@ static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp 
 	msg_t* msg;
 	assert( msg = msg_get( msg_switch, msgid ) );
 
-	printf( "%d: Status: 0x%x Resp: 0x%x\n", msg->msgid, msg->status, resp.status );
+	trace( "%d,%d: Status: 0x%x Recv Resp: 0x%x", msg->msgid, -msg->imsgid, msg->status, resp.status );
 	if ( resp.status == MSG_RESP_DISCON ) {
-		if ( !FL_ISSET( msg->status, MSG_STAT_CLOSED ) ) {
+		if ( !FL_ISSET( msg->status, MSG_STAT_SENT_DISCONNECT ) ) {
 			// if wasn't the sender of the disconnect must return a disconnect
 			msg_send_resp( msg_switch, msg->msgid, MSG_RESP_DISCON );
-			printf( "%d: DISCONNECTED!\n", msg->msgid );
+			FL_SET( msg->status, MSG_STAT_SENT_DISCONNECT );
+			trace( "%d,%d: DISCONNECTED!", msg->msgid, -msg->imsgid );
 			FL_SET( msg->status, MSG_STAT_DISCONNECTED );
 			msg_switch->imsgid_map[ msg->imsgid ] = 0;
 			msg->imsgid = 0;
@@ -307,6 +313,8 @@ static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp 
 		return;
 	}
 
+	if ( FL_ISSET( msg->status, MSG_STAT_SENT_DISCONNECT ) ) return; // ignore if disconnected
+
 	assert( FL_ISSET( msg->status, MSG_STAT_WAITING_FOR_RESP ) );
 
 	FL_CLR( msg->status, MSG_STAT_WAITING_FOR_RESP );
@@ -314,8 +322,10 @@ static void msg_recv_resp( msg_switch_t* msg_switch, int msgid, msg_resp_t resp 
 	if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) ) {
 	// If nothing has become available since last write, flush whatever is available
 		msg_flush( msg_switch->sockfd, msg->msgid );
-		if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) && FL_ISSET( msg->status, MSG_STAT_CLOSED ) )
+		if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) && FL_ISSET( msg->status, MSG_STAT_CLOSED ) ) {
 			msg_send_resp( msg_switch, msg->msgid, MSG_RESP_DISCON );
+			FL_SET( msg->status, MSG_STAT_SENT_DISCONNECT );
+		}
 	}
 
 	msg_check_selectability( msg_switch, msg->msgid );
@@ -529,8 +539,10 @@ int msg_close( int fd, int msgid ) {
 	if ( !FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_WRIT ) ) {
 		if ( !msg->n_writ && !msg->n_read )
 			msg_free( msg_switch, msgid );
-		else
+		else {
 			msg_send_resp( msg_switch, msgid, MSG_RESP_DISCON );
+			FL_SET( msg->status, MSG_STAT_SENT_DISCONNECT );
+		}
 	}
 
 	while ( FL_ISSET( msg->status, MSG_STAT_PACKET_AVAIL_TO_READ ) )
@@ -814,6 +826,7 @@ static void msg_switch_read( int fd ) {
 				break;
 			case MSG_TYPE_PACK:
 				if ( !msg_exists( msg_switch->sockfd, msg_switch->read.data.packet.header.msgid ) ) {
+					if ( msg_switch->read.data.packet.header.msgid >= 0 ) trace( "%d: ERROR!", msg_switch->read.data.packet.header.msgid );
 					assert( msg_switch->read.data.packet.header.msgid < 0 ); //TODO:
 					msg = msg_create( msg_switch, msg_switch->read.data.packet.header.type );
 					msg->imsgid = abs(msg_switch->read.data.packet.header.msgid);
