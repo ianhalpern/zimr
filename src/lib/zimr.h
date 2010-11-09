@@ -71,7 +71,8 @@ typedef struct website_data {
 		int port;
 	} proxy;
 	char  status;
-	void  (*connection_handler)( connection_t* connection );
+	void (*connection_handler)( connection_t* connection );
+	void (*error_handler)( connection_t*, int error_code, char* error_message, size_t len );
 	int   conn_tries;
 	list_t pubdirs;
 	list_t default_pages;
@@ -117,6 +118,7 @@ void  zimr_website_insert_pubdir( website_t* website, char* pubdir, int pos );
 //char* zimr_website_get_pubdir( website_t* website );
 void  zimr_website_set_proxy( website_t* website, char* ip, int port );
 void  zimr_website_set_connection_handler ( website_t* website, void (*connection_handler)( connection_t* ) );
+void  zimr_website_set_error_handler( website_t* website, void (*error_handler)( connection_t*, int error_code, char* error_message, size_t len ) );
 void  zimr_website_unset_connection_handler( website_t* website );
 void  zimr_website_insert_default_page( website_t* website, const char* default_page, int pos );
 void  zimr_website_insert_ignored_regex( website_t* website, const char* ignored_regex );
@@ -129,6 +131,8 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 void zimr_connection_send( connection_t* connection, void* message, int size );
 void zimr_connection_send_error( connection_t* connection, short code, char* message, size_t message_size );
 void zimr_connection_send_redirect( connection_t* connection, char* url );
+void zimr_connection_write( connection_t* connection, void* message, int size );
+void zimr_connection_close( connection_t* connection );
 void zimr_connection_default_page_handler( connection_t* connection, char* filepath );
 void zimr_connection_set_onclose_event( connection_t* connection, void (*onclose_handler)( connection_t*, void* ), void* );
 

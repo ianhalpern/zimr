@@ -62,6 +62,7 @@ typedef struct {
 	request_t  request;
 	response_t response;
 	cookies_t  cookies;
+	bool sending_error;
 	void* udata;
 } connection_t;
 

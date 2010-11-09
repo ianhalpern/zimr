@@ -260,6 +260,7 @@ website_t* zimr_website_create( char* url ) {
 	website_data->msg_switch = NULL;
 	website_data->status = WS_STATUS_DISABLED;
 	website_data->connection_handler = NULL;
+	website_data->error_handler = NULL;
 	website_data->conn_tries = 0; //ZM_NUM_PROXY_DEATH_RETRIES - 1;
 	website_data->redirect_url = NULL;
 	strcpy( website_data->proxy.ip, ZM_PROXY_DEFAULT_ADDR );
@@ -627,6 +628,15 @@ void zimr_connection_send( connection_t* connection, void* message, int size ) {
 	cleanup_connection( connection->website->sockfd, connection->sockfd );
 }
 
+void zimr_connection_write( connection_t* connection, void* message, int size ) {
+	msg_write( connection->website->sockfd, connection->sockfd, (void*) message, size );
+	msg_flush( connection->website->sockfd, connection->sockfd );
+}
+
+void zimr_connection_close( connection_t* connection ) {
+	cleanup_connection( connection->website->sockfd, connection->sockfd );
+}
+
 void zimr_connection_send_file( connection_t* connection, char* filepath, bool use_pubdir ) {
 	website_data_t* website_data = connection->website->udata;
 	struct stat file_stat;
@@ -649,6 +659,8 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 				}
 			} else break;
 		}
+	} else {
+		strcpy( full_filepath, filepath );
 	}
 
 	if ( S_ISDIR( file_stat.st_mode ) ) {
@@ -706,6 +718,13 @@ void zimr_connection_send_file( connection_t* connection, char* filepath, bool u
 void zimr_connection_send_error( connection_t* connection, short code, char* message, size_t message_size ) {
 	char sizebuf[10];
 
+	if ( !connection->sending_error && ((website_data_t*) connection->website->udata )->error_handler ) {
+		connection->sending_error = true; // Prevents recursively calling zimr_connection_send_error from the custom error_handler
+		int fd = connection->website->sockfd, msgid = connection->sockfd;
+		((website_data_t*) connection->website->udata )->error_handler( connection, code, message, message_size );
+		if ( zimr_website_connection_sent( fd, msgid ) ) return;
+	}
+
 	response_set_status( &connection->response, code );
 	//printf( "connection %d send error\n", connection->sockfd );
 	headers_set_header( &connection->response.headers, "Content-Type", mime_get_type( ".html" ) );
@@ -717,9 +736,9 @@ void zimr_connection_send_error( connection_t* connection, short code, char* mes
 	"<h1>";
 	char error_msg_middle[] =
 	"</h1>"
-	"<div>";
+	"<pre>";
 	char error_msg_bottom[] =
-	"</div>"
+	"</pre>"
 	"</body>"
 	"</html>";
 
@@ -989,6 +1008,11 @@ void zimr_website_set_proxy( website_t* website, char* ip, int port ) {
 void zimr_website_set_connection_handler( website_t* website, void (*connection_handler)( connection_t* connection ) ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 	website_data->connection_handler = connection_handler;
+}
+
+void zimr_website_set_error_handler( website_t* website, void (*error_handler)( connection_t*, int error_code, char* error_message, size_t len ) ) {
+	website_data_t* website_data = (website_data_t*) website->udata;
+	website_data->error_handler = error_handler;
 }
 
 void zimr_website_unset_connection_handler( website_t* website ) {

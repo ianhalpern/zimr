@@ -649,6 +649,27 @@ static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* ar
 	Py_RETURN_NONE;
 }
 
+static PyObject* pyzimr_connection_send_error( pyzimr_connection_t* self, PyObject* args ) {
+	PyObject* message;
+	void* message_ptr;
+	int error_code;
+	Py_ssize_t message_len;
+
+	if ( !PyArg_ParseTuple( args, "iO", &error_code, &message ) ) {
+		PyErr_SetString( PyExc_TypeError, "message paramater must be passed" );
+		return NULL;
+	}
+
+	if ( PyObject_AsReadBuffer( message, (const void**) &message_ptr, (Py_ssize_t*) &message_len ) ) {
+		PyErr_SetString( PyExc_TypeError, "invalid message paramater" );
+		return NULL;
+	}
+
+	zimr_connection_send_error( self->_connection, error_code, message_ptr, message_len );
+
+	Py_RETURN_NONE;
+}
+
 static PyObject* pyzimr_connection_send_file( pyzimr_connection_t* self, PyObject* args ) {
 	char* filename = self->_connection->request.url;
 	unsigned char use_pubdir = 1;
@@ -657,6 +678,7 @@ static PyObject* pyzimr_connection_send_file( pyzimr_connection_t* self, PyObjec
 		PyErr_SetString( PyExc_TypeError, "the filename paramater must be passed" );
 		return NULL;
 	}
+
 	zimr_connection_send_file( self->_connection, (char*) filename, use_pubdir );
 
 	Py_RETURN_NONE;
@@ -728,6 +750,7 @@ static PyMethodDef pyzimr_connection_methods[] = {
 	{ "setCookie", (PyCFunction) pyzimr_connection_set_cookie, METH_VARARGS | METH_KEYWORDS, "set a cookie" },
 	{ "getCookie", (PyCFunction) pyzimr_connection_get_cookie, METH_VARARGS, "get a value of a cookie" },
 	{ "send", (PyCFunction) pyzimr_connection_send, METH_VARARGS, "send a string as the response to the connection" },
+	{ "sendError", (PyCFunction) pyzimr_connection_send_error, METH_VARARGS, "send a string as the response to the connection" },
 	{ "sendFile", (PyCFunction) pyzimr_connection_send_file, METH_VARARGS, "send a file as a response to the connection" },
 	{ "redirect", (PyCFunction) pyzimr_connection_redirect, METH_VARARGS, "redirect the connection to a different url" },
 	{ NULL }  /* Sentinel */
@@ -798,6 +821,7 @@ static PyTypeObject pyzimr_connection_type = {
 typedef struct {
 	PyObject_HEAD
 	PyObject* connection_handler;
+	PyObject* error_handler;
 	website_t* _website;
 } pyzimr_website_t;
 
@@ -865,6 +889,28 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 //	Py_UNBLOCK_THREADS
 }
 
+static void pyzimr_website_error_handler( connection_t* _connection, int error_code, char* message, size_t len ) {
+	PyGILState_STATE gstate = PyGILState_Ensure();
+
+	pyzimr_website_t* website = (pyzimr_website_t*) ( (website_data_t*) _connection->website->udata )->udata;
+	pyzimr_connection_t* connection = (pyzimr_connection_t*)_connection->udata;
+
+	if ( website->error_handler ) {
+		int connfd = _connection->sockfd;
+
+		PyObject* py_error_code = PyInt_FromLong( error_code );
+		PyObject* py_message = PyString_FromStringAndSize( message, len );
+		PyObject_CallFunctionObjArgs( website->error_handler, connection, py_error_code, py_message, NULL );
+		Py_DECREF( py_message );
+		Py_DECREF( py_error_code );
+
+		if ( PyErr_Occurred() )
+			pyzimr_error_print( !zimr_website_connection_sent( website->_website->sockfd, connfd ) ? _connection : NULL );
+	}
+
+	PyGILState_Release( gstate );
+}
+
 static void pyzimr_website_dealloc( pyzimr_website_t* self ) {
 	( (website_data_t*) self->_website->udata )->udata = NULL;
 	zimr_website_destroy( self->_website );
@@ -891,7 +937,9 @@ static int pyzimr_website_init( pyzimr_website_t* self, PyObject* args, PyObject
 	( (website_data_t*) self->_website->udata )->udata = self;
 
 	self->connection_handler = PyObject_GetAttrString( m, "defaultConnectionHandler" );
+	self->error_handler = NULL;
 	zimr_website_set_connection_handler( self->_website, pyzimr_website_connection_handler );
+	zimr_website_set_error_handler( self->_website, pyzimr_website_error_handler );
 
 	return 0;
 }
@@ -994,6 +1042,31 @@ static int pypdora_website_set_connection_handler( pyzimr_website_t* self, PyObj
 	return 0;
 }
 
+static PyObject* pyzimr_website_get_error_handler( pyzimr_website_t* self, void* closure ) {
+	if ( self->error_handler ) {
+		Py_INCREF( self->error_handler );
+		return self->error_handler;
+	} else {
+		Py_INCREF( Py_None );
+		return Py_None;
+	}
+}
+
+static int pyzimr_website_set_error_handler( pyzimr_website_t* self, PyObject* value, void* closure ) {
+
+	if ( !PyCallable_Check( value ) ) {
+		PyErr_SetString( PyExc_TypeError, "The error_handler attribute value must be callable" );
+		return -1;
+	}
+
+	if ( self->error_handler ) Py_DECREF( self->error_handler );
+
+	Py_INCREF( value );
+	self->error_handler = value;
+
+	return 0;
+}
+
 static PyMethodDef pyzimr_website_methods[] = {
 	{ "enable", (PyCFunction) pyzimr_website_enable, METH_NOARGS, "enable the website" },
 	{ "disable", (PyCFunction) pyzimr_website_disable, METH_NOARGS, "disable the website" },
@@ -1030,6 +1103,12 @@ static PyGetSetDef pyzimr_website_getseters[] = {
 	  (getter) pyzimr_website_get_connection_handler,
 	  (setter) pypdora_website_set_connection_handler,
 	  "function to handle web connections", NULL
+	},
+	{
+	  "error_handler",
+	  (getter) pyzimr_website_get_error_handler,
+	  (setter) pyzimr_website_set_error_handler,
+	  "function to handle errors", NULL
 	},
 	{ NULL }  /* Sentinel */
 };
@@ -1102,6 +1181,18 @@ static PyObject* pyzimr_default_connection_handler( PyObject* self, PyObject* ar
 	Py_RETURN_NONE;
 }
 
+static PyObject* pyzimr_log( PyObject* self, PyObject* args, PyObject* kwargs ) {
+	char* message;
+
+	if ( !PyArg_ParseTuple( args, "s", &message ) ) {
+		PyErr_SetString( PyExc_TypeError, "message paramater must be passed" );
+		return NULL;
+	}
+
+	dlog( stderr, message );
+	Py_RETURN_NONE;
+}
+
 static void pyzimr_page_handler( connection_t* connection, const char* filepath, void* udata ) {
 	PyGILState_STATE gstate = PyGILState_Ensure();
 //	PyEval_AcquireLock();
@@ -1156,6 +1247,7 @@ static void pyzimr_page_handler( connection_t* connection, const char* filepath,
 static PyMethodDef pyzimr_methods[] = {
 	{ "version",  (PyCFunction) pyzimr_version, METH_NOARGS, "Returns the version of zimr." },
 	{ "start", (PyCFunction) pyzimr_start, METH_NOARGS, "Starts the zimr mainloop." },
+	{ "log", (PyCFunction) pyzimr_log, METH_VARARGS, "Write message to zimr.log." },
 	{ "defaultConnectionHandler", (PyCFunction) pyzimr_default_connection_handler, METH_VARARGS, "The zimr default connection handler." },
 	{ NULL }		/* Sentinel */
 };

@@ -78,6 +78,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	connection->request.charset = NULL;
 	connection->request.params = params_create();
 	connection->response.headers.num = 0;
+	connection->sending_error = false;
 
 	memcpy( &connection->ip, raw, sizeof( connection->ip ) );
 	raw += sizeof( connection->ip );

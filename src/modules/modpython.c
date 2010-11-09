@@ -229,6 +229,12 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 		Py_DECREF( connection_handler );
 	}
 
+	if ( PyObject_HasAttrString( main_module, "error_handler" ) ) {
+		PyObject* error_handler = PyObject_GetAttrString( main_module, "error_handler" );
+		PyObject_SetAttrString( website_obj, "error_handler", error_handler );
+		Py_DECREF( error_handler );
+	}
+
 quit:
 	//Py_XDECREF( website_obj );
 	Py_XDECREF( zimr_module );
