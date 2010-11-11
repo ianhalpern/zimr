@@ -1189,7 +1189,7 @@ static PyObject* pyzimr_log( PyObject* self, PyObject* args, PyObject* kwargs ) 
 		return NULL;
 	}
 
-	dlog( stderr, message );
+	dlog( stderr, "%s", message );
 	Py_RETURN_NONE;
 }
 
