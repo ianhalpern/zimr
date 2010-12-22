@@ -70,6 +70,7 @@ typedef struct website_data {
 		char ip[16];
 		int port;
 	} proxy;
+	char bind_addr[16];
 	char  status;
 	void (*connection_handler)( connection_t* connection );
 	void (*error_handler)( connection_t*, int error_code, char* error_message, size_t len );

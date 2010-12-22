@@ -109,6 +109,7 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 		zcnf_website_t* website = (zcnf_website_t*) malloc( sizeof( zcnf_website_t ) );
 		website->url = NULL;
 		website->redirect_url = NULL;
+		website->ip_address = NULL;
 		list_init( &website->pubdirs );
 		list_init( &website->modules );
 		list_init( &website->ignore );
@@ -150,6 +151,13 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 
 					list_append( &website->pubdirs, strdup( (char*) pubdir_node->data.scalar.value ) );
 				}
+			}
+
+			// ip address
+			else if ( strcmp( "ip address", (char*) attr_key->data.scalar.value ) == 0 ) {
+				if ( attr_val->type != YAML_SCALAR_NODE )
+					continue;
+				website->ip_address = strdup( (char*) attr_val->data.scalar.value );
 			}
 
 			// redirect url
@@ -586,6 +594,7 @@ void zcnf_app_free( zcnf_app_t* cnf ) {
 		zcnf_website_t* website = cnf->website_node;
 		free( website->url );
 		free( website->redirect_url );
+		free( website->ip_address );
 		while( list_size( &website->pubdirs ) ) {
 			free( list_fetch( &website->pubdirs ) );
 		}

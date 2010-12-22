@@ -44,6 +44,7 @@ char html_error_414[] = "HTTP/1.1 414 Request-URI Too Long\r\nContent-Length: 74
 char html_error_502[] = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 65\r\n\r\n<!doctype html><html><body><h1>502 Bad Gateway</h1></body></html>";
 
 typedef struct {
+	struct sockaddr_in exaddr;
 	int exlisnfd;
 } website_data_t;
 
@@ -321,7 +322,7 @@ int remove_website( int fd ) {
 	return 1;
 }
 
-const char* start_website( char* url, int fd ) {
+const char* start_website( int fd, char* url, char* ip ) {
 	static char error_msg[64] = "";
 	website_t* website;
 	website_data_t* website_data;
@@ -330,7 +331,7 @@ const char* start_website( char* url, int fd ) {
 		return "FAIL website already exists";
 	}
 
-	int exlisnfd = zsocket( INADDR_ANY, get_port_from_url( url ), ZSOCK_LISTEN, exsock_event_hdlr, startswith( url, "https://" ) );
+	int exlisnfd = zsocket( inet_addr( ip ), get_port_from_url( url ), ZSOCK_LISTEN, exsock_event_hdlr, startswith( url, "https://" ) );
 	if ( exlisnfd == -1 ) {
 		sprintf( error_msg, "FAIL error opening external socket: %s", strerror( errno ) );
 		return error_msg;
@@ -636,7 +637,7 @@ void command_handler( int fd, int msgid, void* buf, size_t len ) {
 	switch ( msg_get_type( fd, msgid ) ) {
 
 		case ZM_CMD_WS_START:
-			ret_msg = start_website( buf, fd );
+			ret_msg = start_website( fd, buf, buf + strlen( buf ) + 1 );
 			msg_write( fd, msgid, ret_msg, strlen( ret_msg ) + 1 );
 			msg_close( fd, msgid );
 			break;

@@ -115,6 +115,9 @@ int zimr_cnf_load( char* cnf_path ) {
 			if ( website_cnf->redirect_url )
 				zimr_website_set_redirect( website, website_cnf->redirect_url );
 
+			if ( website_cnf->ip_address )
+				strcpy( ((website_data_t*)(website->udata))->bind_addr, website_cnf->ip_address );
+
 			for ( i = 0; i < list_size( &website_cnf->modules ); i++ ) {
 				zcnf_module_t* module_cnf = list_get_at( &website_cnf->modules, i );
 				module_t* module = zimr_load_module( module_cnf->name );
@@ -263,6 +266,7 @@ website_t* zimr_website_create( char* url ) {
 	website_data->error_handler = NULL;
 	website_data->conn_tries = 0; //ZM_NUM_PROXY_DEATH_RETRIES - 1;
 	website_data->redirect_url = NULL;
+	strcpy( website_data->bind_addr, "0.0.0.0" );
 	strcpy( website_data->proxy.ip, ZM_PROXY_DEFAULT_ADDR );
 	website_data->proxy.port = ZM_PROXY_DEFAULT_PORT;
 	memset( website_data->connections, 0, sizeof( website_data->connections ) );
@@ -451,6 +455,7 @@ bool zimr_website_enable( website_t* website ) {
 	// send website enable command
 	int msgid = msg_open( website->sockfd, ZM_CMD_WS_START );
 	msg_write( website->sockfd, msgid, website->full_url, strlen( website->full_url ) + 1 );
+	msg_write( website->sockfd, msgid, website_data->bind_addr, strlen( website_data->bind_addr ) + 1 );
 	msg_flush( website->sockfd, msgid );
 	msg_set_read( website->sockfd, msgid );
 
