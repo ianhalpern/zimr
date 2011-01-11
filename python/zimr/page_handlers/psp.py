@@ -15,9 +15,10 @@ def render( path, **kwargs ):
 		template = Template( filename=path, module_directory='psp_cache/', lookup=lookup )
 
 		return template.render_unicode( **kwargs ).encode( 'utf-8', 'replace' )
-	except:# ( mako_exceptions.SyntaxException, mako_exceptions.CompileException ):
+	except ( mako_exceptions.SyntaxException, mako_exceptions.CompileException ):
 		if 'connection' in kwargs:
 			import zimr
 			kwargs['connection'].sendError( 500, mako_exceptions.text_error_template().render() )
 			zimr.log( mako_exceptions.text_error_template().render() )
 		else: raise
+
