@@ -37,16 +37,17 @@ typedef struct website {
 	char* url;
 	char* full_url;
 	int sockfd;
+	char ip[16];
 	void* udata;
 } website_t;
 
 list_t websites;
 
 void website_init();
-website_t* website_add ( int, char* );
+website_t* website_add ( int, char*, char* );
 void website_remove( website_t* );
-website_t* website_get_by_full_url( char* url );
+website_t* website_get_by_full_url( char* url, char* ip );
 website_t* website_get_by_sockfd( int );
-website_t* website_find( char* url, char* protocol );
+website_t* website_find( char* url, char* protocol, char* ip );
 const char* website_protocol( website_t* );
 #endif

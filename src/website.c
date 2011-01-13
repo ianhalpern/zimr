@@ -30,12 +30,15 @@ void website_init() {
 	list_init( &websites );
 }
 
-website_t* website_add( int sockfd, char* url ) {
+website_t* website_add( int sockfd, char* url, char* ip ) {
 	assert( initialized );
+
+	if ( !ip ) ip = "0.0.0.0";
 
 	website_t* w = (website_t*) malloc( sizeof( website_t ) );
 
 	w->sockfd = sockfd;
+	strcpy( w->ip, ip );
 
 	if ( startswith( url, "https://" ) ) {
 		w->full_url = strdup( url );
@@ -66,22 +69,25 @@ void website_remove( website_t* w ) {
 	free( w );
 }
 
-website_t* website_get_by_full_url( char* full_url ) {
+website_t* website_get_by_full_url( char* full_url, char* ip ) {
 	assert( initialized );
+
+	if ( !ip ) ip = "0.0.0.0";
 
 	int i;
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		website_t* w = list_get_at( &websites, i );
-		if ( strcmp( full_url, w->full_url ) == 0 ) return w;
+		if ( strcmp( full_url, w->full_url ) == 0 && strcmp( ip, w->ip ) == 0 ) return w;
 	}
 
 	return NULL;
 }
 
-website_t* website_find( char* url, char* protocol ) {
+website_t* website_find( char* url, char* protocol, char* ip ) {
 	assert( initialized );
 
 	if ( !protocol ) protocol = "http://";
+	if ( !ip ) ip = "0.0.0.0";
 
 	int len = 0;
 	int found = -1;
@@ -89,7 +95,7 @@ website_t* website_find( char* url, char* protocol ) {
 	int i;
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		website_t* w = list_get_at( &websites, i );
-		if ( startswith( url, w->url ) && strlen( w->url ) > len && startswith( w->full_url, protocol ) ) {
+		if ( startswith( url, w->url ) && strlen( w->url ) > len && startswith( w->full_url, protocol ) && strcmp( w->ip, ip ) == 0 ) {
 			len = strlen( w->url );
 			found = i;
 		}

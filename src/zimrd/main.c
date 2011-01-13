@@ -300,7 +300,7 @@ int remove_website( int fd ) {
 		return 0;
 	}
 
-	syslog( LOG_INFO, "website: stopping \"%s\"", website->full_url );
+	syslog( LOG_INFO, "website: stopping \"%s\" on \"%s\"", website->full_url, website->ip );
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	int i;
@@ -327,7 +327,7 @@ const char* start_website( int fd, char* url, char* ip ) {
 	website_t* website;
 	website_data_t* website_data;
 
-	if ( ( website = website_get_by_full_url( url ) ) ) {
+	if ( ( website = website_get_by_full_url( url, ip ) ) ) {
 		return "FAIL website already exists";
 	}
 
@@ -337,9 +337,9 @@ const char* start_website( int fd, char* url, char* ip ) {
 		return error_msg;
 	}
 
-	website = website_add( fd, url );
+	website = website_add( fd, url, ip );
 
-	syslog( LOG_INFO, "website: starting \"%s\"", website->full_url );
+	syslog( LOG_INFO, "website: starting \"%s\" on \"%s\"", website->full_url, website->ip );
 
 	website_data = (website_data_t*) malloc( sizeof( website_data_t ) );
 	website->udata = website_data;
@@ -525,7 +525,8 @@ cleanup:
 			goto cleanup;
 		}
 
-		if ( !( website = website_find( urlbuf, conn_data->is_https ? "https://" : "http://" ) ) ) {
+		if ( !( website = website_find( urlbuf, conn_data->is_https ? "https://" : "http://",
+		  inet_ntoa( zs_get_addr( conn_data->exlisnfd )->sin_addr ) ) ) ) {
 			//syslog( LOG_WARNING, "exread: no website to service request: %s %s %s",
 			//  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "", urlbuf );
 			zs_write( sockfd, html_error_404, sizeof( html_error_404 ) );

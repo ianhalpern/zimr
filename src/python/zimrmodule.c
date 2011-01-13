@@ -926,12 +926,13 @@ static PyObject* pyzimr_website_new( PyTypeObject* type, PyObject* args, PyObjec
 }
 
 static int pyzimr_website_init( pyzimr_website_t* self, PyObject* args, PyObject* kwargs ) {
-	char* kwlist[] = { "url", NULL };
+	char* kwlist[] = { "url", "ip", NULL };
 	char* url;
+	char* ip = NULL;
 
-	PyArg_ParseTupleAndKeywords( args, kwargs, "s", kwlist, &url );
+	PyArg_ParseTupleAndKeywords( args, kwargs, "s|s", kwlist, &url, &ip );
 
-	if ( !( self->_website = website_get_by_full_url( url ) ) )
+	if ( !( self->_website = website_get_by_full_url( url, ip ) ) )
 		self->_website = zimr_website_create( url );
 
 	( (website_data_t*) self->_website->udata )->udata = self;
