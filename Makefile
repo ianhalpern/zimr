@@ -74,7 +74,7 @@ install:
 	cp -u default-configs/* $(INSTALL_CNFDIR)
 	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
 	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
-	cp --remove-destination -r python/* $(INSTALL_PYDIR)
+	cd python && python setup.py $(VERSION) install
 	cp --remove-destination -r modules/* $(INSTALL_MODDIR)
 	@echo "--- Success ---";
 	@echo;
