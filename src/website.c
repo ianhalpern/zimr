@@ -95,8 +95,18 @@ website_t* website_find( char* url, char* protocol, char* ip ) {
 	int i;
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		website_t* w = list_get_at( &websites, i );
-		if ( startswith( url, w->url ) && strlen( w->url ) > len && startswith( w->full_url, protocol ) && strcmp( w->ip, ip ) == 0 ) {
-			len = strlen( w->url );
+
+		char* w_url_ptr = w->url,* url_ptr = url;
+
+		if ( w_url_ptr[0] == '*' ) { // Wildcard hostnames
+			w_url_ptr += 1;
+			url_ptr = strchr( url, ':' );
+			if ( !url_ptr ) url_ptr = strchr( url, '/' );
+			if ( !url_ptr ) url_ptr = url + strlen( url );
+		}
+
+		if ( ( !w_url_ptr || startswith( url_ptr, w_url_ptr ) ) && strlen( w_url_ptr ) >= len && startswith( w->full_url, protocol ) && strcmp( w->ip, ip ) == 0 ) {
+			len = strlen( w_url_ptr );
 			found = i;
 		}
 	}

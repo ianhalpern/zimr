@@ -18,6 +18,7 @@ setup(
 		'zimr.handlers',
 	),
 	data_files   = (
+		# TODO: this is a hack!
 		('/usr/local/lib/python2.6/dist-packages/zimr/', ['zimr/__init__.so']),
 	)
 )

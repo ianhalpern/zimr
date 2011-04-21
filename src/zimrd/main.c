@@ -333,7 +333,7 @@ const char* start_website( int fd, char* url, char* ip ) {
 
 	int exlisnfd = zsocket( inet_addr( ip ), get_port_from_url( url ), ZSOCK_LISTEN, exsock_event_hdlr, startswith( url, "https://" ) );
 	if ( exlisnfd == -1 ) {
-		sprintf( error_msg, "FAIL error opening external socket: %s", strerror( errno ) );
+		sprintf( error_msg, "FAIL error opening external socket: %s, %s", ip, strerror( errno ) );
 		return error_msg;
 	}
 
