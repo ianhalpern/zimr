@@ -53,6 +53,9 @@ website_t* website_add( int sockfd, char* url, char* ip ) {
 		w->url = w->full_url + 7;
 	}
 
+	w->path = strchr( w->url, '/' );
+	if ( !w->path ) w->path = w->url + strlen( w->url );
+
 	list_append( &websites, w );
 
 	return w;
@@ -96,7 +99,10 @@ website_t* website_find( char* url, char* protocol, char* ip ) {
 	for ( i = 0; i < list_size( &websites ); i++ ) {
 		website_t* w = list_get_at( &websites, i );
 
-		char* w_url_ptr = w->url,* url_ptr = url;
+		char* w_url_ptr = w->url,* path_ptr = url,* url_ptr = url;
+
+		path_ptr = strchr( url, '/' );
+		if ( !path_ptr ) path_ptr = url + strlen( url );
 
 		if ( w_url_ptr[0] == '*' ) { // Wildcard hostnames
 			w_url_ptr += 1;
@@ -105,8 +111,15 @@ website_t* website_find( char* url, char* protocol, char* ip ) {
 			if ( !url_ptr ) url_ptr = url + strlen( url );
 		}
 
-		if ( ( !w_url_ptr || startswith( url_ptr, w_url_ptr ) ) && strlen( w_url_ptr ) >= len && startswith( w->full_url, protocol ) && strcmp( w->ip, ip ) == 0 ) {
-			len = strlen( w_url_ptr );
+		int host_port_len = ( w->path - w_url_ptr ) > ( path_ptr - url_ptr ) ? w->path - w_url_ptr : path_ptr - url_ptr;
+
+		if ( strncmp( w_url_ptr, url_ptr, host_port_len ) == 0 // match hostname:port
+		&& ( !w->path || startswith( path_ptr, w->path ) ) // match path
+		&& strlen( w->path ) >= len // is most specific path matched
+		&& startswith( w->full_url, protocol ) // match protocol
+		&& strcmp( w->ip, ip ) == 0 // match ip
+		) {
+			len = strlen( w->path ) + ( w->url[0] != '*' ); // adds 1 if not * to the length b/c non-wildcard hostnames get priority
 			found = i;
 		}
 	}

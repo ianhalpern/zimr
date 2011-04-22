@@ -36,6 +36,7 @@
 typedef struct website {
 	char* url;
 	char* full_url;
+	char* path;
 	int sockfd;
 	char ip[16];
 	void* udata;
