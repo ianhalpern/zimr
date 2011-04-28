@@ -252,11 +252,13 @@ static void zs_accepter( int fd, void* udata ) {
 	zsocket_t* zs = zs_get_by_fd( fd );
 	zsocket_t* zs_parent = zs_get_by_fd( zs->connect.parent_fd );
 
+/*	printf( "zs_accepter: %d: START\n", zs->general.sockfd );
 	ssize_t n;
 	if ( zs->connect.ssl ) {
 		n = SSL_accept( zs->connect.ssl );
 		if ( n < 0 ) {
 			int err = SSL_get_error( zs->connect.ssl, n );
+			printf("zs_accepter: %d: SSL_accept error %d ( %d, %d )\n", zs->general.sockfd, err, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE );
 			switch ( err ) {
 				case SSL_ERROR_WANT_READ:
 					FL_SET( zs->connect.status, ZS_STAT_WANT_READ_FROM_ACCEPT );
@@ -272,7 +274,8 @@ static void zs_accepter( int fd, void* udata ) {
 			zs_parent->listen.accepted_fd = -1;
 			zs_parent->listen.accepted_errno = EPROTO;
 		}
-	}
+		printf( "zs_accepter: %d: SSL_accept accepted!\n", zs->general.sockfd );
+	}*/
 
 	if ( FD_ISSET( zs_parent->general.sockfd, &active_read_fd_set ) && !FL_ISSET( zs_parent->general.status, ZS_STAT_READABLE ) )
 		n_selectable++;
@@ -284,6 +287,8 @@ static void zs_accepter( int fd, void* udata ) {
 		if ( FD_ISSET( fd, &active_write_fd_set ) && !FL_ISSET( zs->general.status, ZS_STAT_WRITABLE ) )
 			n_selectable++;
 		FL_SET( zs->connect.status, ZS_STAT_CONNECTED | ZS_STAT_WRITABLE );
+		if ( zs_is_ssl( fd ) )
+			FL_SET( zs->connect.status, ZS_STAT_ACCEPTING );
 	}
 
 	// Must call this inside zs_accepter because the
@@ -329,8 +334,11 @@ static void zs_writer( int fd, void* udata ) {
 
 	ssize_t n;
 	if ( zs->connect.ssl ) {
-		n = SSL_write( zs->connect.ssl, zs->connect.write.buffer + zs->connect.write.pos,
-		  zs->connect.write.used - zs->connect.write.pos );
+		if ( FL_ISSET( zs->general.status, ZS_STAT_ACCEPTING ) )
+			n = SSL_accept( zs->connect.ssl );
+		else
+			n = SSL_write( zs->connect.ssl, zs->connect.write.buffer + zs->connect.write.pos,
+			  zs->connect.write.used - zs->connect.write.pos );
 		//fprintf( stderr, "%d of %d zs_writer\n", n, zs->connect.write.used - zs->connect.write.pos );
 
 		if ( n < 0 ) {
@@ -346,6 +354,15 @@ static void zs_writer( int fd, void* udata ) {
 			ERR_print_errors_fp( stderr );
 
 			zs->connect.write.rw_errno = EPROTO;
+		}
+
+		if ( FL_ISSET( zs->general.status, ZS_STAT_ACCEPTING ) ) {
+			FL_CLR( zs->general.status, ZS_STAT_ACCEPTING );
+			if ( FL_ISSET( zs->connect.status, ZS_STAT_READING ) )
+				FL_SET( zs->connect.status, ZS_STAT_WANT_READ_FROM_READ );
+			else if ( FL_ISSET( zs->connect.status, ZS_STAT_WRITING ) )
+				FL_SET( zs->connect.status, ZS_STAT_WANT_WRITE_FROM_WRITE );
+			return;
 		}
 	} else {
 		n = write( fd, zs->connect.write.buffer + zs->connect.write.pos,
@@ -387,10 +404,12 @@ static void zs_reader( int fd, void* udata ) {
 
 	ssize_t n;
 	if ( zs->connect.ssl ) {
-		n = SSL_read( zs->connect.ssl, zs->connect.read.buffer + zs->connect.read.used,
-		  zs->connect.read.size - zs->connect.read.used );
+		if ( FL_ISSET( zs->general.status, ZS_STAT_ACCEPTING ) )
+			n = SSL_accept( zs->connect.ssl );
+		else
+			n = SSL_read( zs->connect.ssl, zs->connect.read.buffer + zs->connect.read.used,
+			  zs->connect.read.size - zs->connect.read.used );
 		//fprintf( stderr, "%d of %d zs_reader\n", n, zs->connect.read.size - zs->connect.read.used );
-
 		if ( n < 0 ) {
 			int err = SSL_get_error( zs->connect.ssl, n );
 			switch ( err ) {
@@ -404,6 +423,15 @@ static void zs_reader( int fd, void* udata ) {
 			ERR_print_errors_fp( stderr );
 
 			zs->connect.read.rw_errno = EPROTO;
+		}
+
+		if ( FL_ISSET( zs->general.status, ZS_STAT_ACCEPTING ) ) {
+			FL_CLR( zs->general.status, ZS_STAT_ACCEPTING );
+			if ( FL_ISSET( zs->connect.status, ZS_STAT_READING ) )
+				FL_SET( zs->connect.status, ZS_STAT_WANT_READ_FROM_READ );
+			else if ( FL_ISSET( zs->connect.status, ZS_STAT_WRITING ) )
+				FL_SET( zs->connect.status, ZS_STAT_WANT_WRITE_FROM_WRITE );
+			return;
 		}
 
 	} else {
