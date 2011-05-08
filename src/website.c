@@ -124,7 +124,11 @@ website_t* website_find( char* url, char* protocol, char* ip ) {
 		}
 	}
 
-	if ( found != -1 ) return list_get_at( &websites, found );
+	if ( found != -1 ) {
+	//	website_t* w = list_get_at( &websites, found );
+	//	printf( "%s -> %s\n", url, w->full_url );
+		return list_get_at( &websites, found );
+	}
 
 	return NULL;
 }

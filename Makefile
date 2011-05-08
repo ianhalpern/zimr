@@ -13,7 +13,7 @@ PYMOD       = -shared -fPIC -Wl,-O1 -Wl,-Bsymbolic-functions $(LDPYTHON)
 LDZIMR      = -lzimr -L.
 LDZIMR_LOCAL= -Wl,-rpath,`pwd`
 
-PYVERSION = 2.6
+PYVERSION = 2.7
 
 OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o\
@@ -74,7 +74,7 @@ install:
 	cp -u default-configs/* $(INSTALL_CNFDIR)
 	cp --remove-destination $(EXECS) $(INSTALL_EXECDIR)
 	cp --remove-destination $(SHARED_OBJS) $(INSTALL_LIBDIR)
-	cd python && python setup.py $(VERSION) install
+	cd python && python setup.py $(VERSION) $(PYVERSION) install
 	cp --remove-destination -r modules/* $(INSTALL_MODDIR)
 	@echo "--- Success ---";
 	@echo;
