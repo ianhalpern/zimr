@@ -13,7 +13,7 @@ PYMOD       = -shared -fPIC -Wl,-O1 -Wl,-Bsymbolic-functions $(LDPYTHON)
 LDZIMR      = -lzimr -L.
 LDZIMR_LOCAL= -Wl,-rpath,`pwd`
 
-PYVERSION = 2.7
+PYVERSION = `bash -c "python --version |& sed 's/Python \(.*\)\..*/\1/'"`
 
 OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  mime.o headers.o params.o cookies.o urldecoder.o daemon.o zcnf.o\
@@ -93,7 +93,7 @@ zimr: $(EXEC_DEPENDS) libzimr.so userdir.o cli.o
 	$(EXEC_COMPILE) $(LDZIMR) -lproc
 
 zimrd: $(EXEC_DEPENDS) general.o zfildes.o website.o zsocket.o daemon.o msg_switch.o simclist.o zcnf.o fd_hash.o trace.o
-	$(EXEC_COMPILE) -lyaml -lssl
+	$(EXEC_COMPILE) -lyaml -lssl -lcrypto
 
 ##### SHARED OBJS #####
 
