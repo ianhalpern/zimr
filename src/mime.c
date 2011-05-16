@@ -203,6 +203,7 @@ const char mimetypes[ ][ 40 ] = {
 "wav", "audio/x-wav",
 "wcm", "application/vnd.ms-works",
 "wdb", "application/vnd.ms-works",
+"webm", "video/webm",
 "wks", "application/vnd.ms-works",
 "wmf", "application/x-msmetafile",
 "wps", "application/vnd.ms-works",

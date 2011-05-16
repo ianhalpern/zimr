@@ -553,8 +553,14 @@ bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t l
 		}
 
 		if ( website_data->redirect_url ) {
-			char buf[ strlen( website_data->redirect_url ) + strlen( conn_data->connection->request.url ) + 8 ];
+			size_t url_len = strlen( website_data->redirect_url ) + strlen( conn_data->connection->request.url );
+			size_t qs_len = params_qs_len( &conn_data->connection->request.params );
+			char buf[ url_len + qs_len + 9 ];
 			sprintf( buf, "%s%s", website_data->redirect_url, conn_data->connection->request.url );
+			if ( qs_len ) {
+				strcat( buf + url_len, "?" );
+				params_gen_qs( &conn_data->connection->request.params, buf + url_len + 1 );
+			}
 			zimr_connection_send_redirect( conn_data->connection, buf );
 		}
 

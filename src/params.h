@@ -35,10 +35,13 @@ typedef list_t params_t;
 typedef struct {
 	char name[PARAMS_NAME_MAX_LEN];
 	char* value;
+	size_t value_len;
 } param_t;
 
 params_t params_create( );
 void params_parse_qs( params_t* params, char* raw, int size );
+char* params_gen_qs( params_t* params, char* qs );
+size_t params_qs_len( list_t* params );
 param_t* params_get_param( params_t* params, const char* name );
 void params_free( params_t* params );
 
