@@ -116,7 +116,6 @@ header_t* headers_get_header( headers_t* headers, const char* orig_name ) {
 
 void headers_header_range_parse( header_t* header, int* range_start, int* range_end ) {
 	*range_start = 0; *range_end = -1;
-
 	char* ptr1,* ptr2;
 	if ( !( ptr1 = strstr( header->value, "bytes=" ) ) ) return;
 	ptr1 += 6;

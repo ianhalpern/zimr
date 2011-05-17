@@ -950,7 +950,10 @@ void zimr_connection_default_page_handler( connection_t* connection, char* filep
 
 		if ( tmp_end == -1 ) tmp_end = range_end;
 
-		if ( tmp_start < tmp_end && tmp_end <= range_end ) {
+		if ( tmp_start >=0 && tmp_end <= range_end && tmp_start <= tmp_end ) {
+			char rangebuf[ 100 ];
+			sprintf( rangebuf, "bytes %d-%d/%d", tmp_start, tmp_end, range_end );
+			headers_set_header( &connection->response.headers, "Content-Range", rangebuf );
 			range_start = tmp_start;
 			range_end = tmp_end;
 		}
