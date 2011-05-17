@@ -39,7 +39,7 @@
 
 //#define DEBUG_TRACE_ENABLED
 #define D_LOCKFILE_PATH "/var/run/zimrd.pid" // used by daemon.c
-#define ZM_APP_CNF_FILE "zimr.cnf"
+#define ZM_APP_CNF_FILE "zimr.webapp"
 #define ZM_USR_DIR "~/.zimr/"
 #define ZM_USR_STATE_FILE ZM_USR_DIR "state"
 #define ZM_USR_MODULE_DIR ZM_USR_DIR "modules/"

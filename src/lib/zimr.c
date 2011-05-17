@@ -280,8 +280,9 @@ website_t* zimr_website_create( char* url ) {
 	zimr_website_insert_pubdir( website, "./", 0 );
 
 	zimr_website_insert_default_page( website, "default.html", 0 );
-	zimr_website_insert_ignored_regex( website, "^zimr\\.cnf$" );
+	zimr_website_insert_ignored_regex( website, "^zimr\\.webapp$" );
 	zimr_website_insert_ignored_regex( website, "^zimr\\.log$" );
+	zimr_website_insert_ignored_regex( website, "^zimr\\.request\\.log$" );
 
 	return website;
 }
