@@ -1,24 +1,14 @@
 from mako.template  import Template
 from mako.lookup    import TemplateLookup
-from mako           import exceptions as mako_exceptions
+
+lookup = TemplateLookup(
+	directories=['.'],
+	module_directory='psp_cache/',
+	input_encoding='utf-8',
+	encoding_errors='replace'
+)
 
 def render( path, **kwargs ):
-
-	try:
-		lookup = TemplateLookup(
-			directories=['.'],
-			module_directory='psp_cache/',
-			input_encoding='utf-8',
-			encoding_errors='replace'
-		)
-
-		template = Template( filename=path, module_directory='psp_cache/', lookup=lookup )
-
-		return template.render_unicode( **kwargs ).encode( 'utf-8', 'replace' )
-	except ( mako_exceptions.SyntaxException, mako_exceptions.CompileException ):
-		if 'connection' in kwargs:
-			import zimr
-			kwargs['connection'].sendError( 500, mako_exceptions.text_error_template().render() )
-			zimr.log( mako_exceptions.text_error_template().render() )
-		else: raise
+	template = lookup.get_template( path )
+	return template.render_unicode( **kwargs ).encode( 'utf-8', 'replace' )
 

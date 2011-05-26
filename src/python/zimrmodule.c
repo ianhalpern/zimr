@@ -650,17 +650,17 @@ static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* ar
 }
 
 static PyObject* pyzimr_connection_send_error( pyzimr_connection_t* self, PyObject* args ) {
-	PyObject* message;
-	void* message_ptr;
+	PyObject* message = NULL;
+	void* message_ptr = NULL;
 	int error_code;
-	Py_ssize_t message_len;
+	Py_ssize_t message_len = 0;
 
-	if ( !PyArg_ParseTuple( args, "iO", &error_code, &message ) ) {
-		PyErr_SetString( PyExc_TypeError, "message paramater must be passed" );
+	if ( !PyArg_ParseTuple( args, "i|O", &error_code, &message ) ) {
+		PyErr_SetString( PyExc_TypeError, "html error code must be passed" );
 		return NULL;
 	}
 
-	if ( PyObject_AsReadBuffer( message, (const void**) &message_ptr, (Py_ssize_t*) &message_len ) ) {
+	if ( message && PyObject_AsReadBuffer( message, (const void**) &message_ptr, (Py_ssize_t*) &message_len ) ) {
 		PyErr_SetString( PyExc_TypeError, "invalid message paramater" );
 		return NULL;
 	}
