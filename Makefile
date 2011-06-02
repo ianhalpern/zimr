@@ -22,7 +22,7 @@ OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 EXECS       = zimrd zimr #zimr-app
 TEST_EXECS  = test-zsocket-client test-zsocket-server test-strnstr test-client test-server test-fd-hash
 SHARED_OBJS = libzimr.so
-PYMOD_OBJS  = zimr.so
+PYMOD_OBJS  = czimr.so
 MODULE_NAMES= modpython modtest modauth
 
 MODULES := $(addsuffix .so, $(addprefix modules/, $(MODULE_NAMES) ) )
@@ -104,9 +104,9 @@ libzimr.so: $(SHARED_OBJ_DEPENDS) general.o msg_switch.o zfildes.o website.o mim
 
 ##### PYTHON MODS #####
 
-zimr.so: $(PYMOD_DEPENDS) libzimr.so
+czimr.so: $(PYMOD_DEPENDS) libzimr.so
 	$(EXEC_COMPILE) $(PYMOD) $(LDZIMR)
-	cp $@ python/zimr/__init__.so
+	cp $@ python/zimr/czimr.so
 
 ##### MODULES #####
 
