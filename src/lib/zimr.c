@@ -41,8 +41,19 @@ static void  (*modzimr_connection_new)( connection_t*, void* );
 static void  (*modzimr_connection_closed)( connection_t*, void* );
 /////////////////////////////////////////////////
 
+static void (*event_handler)( int, va_list ap ) = NULL;
+
 void command_response_handler( int fd, int msgid, void* buf, size_t len );
 void cleanup_connection( int fd, int msgid );
+
+void zimr_event( int evt, ... ) {
+	if ( event_handler ) {
+		va_list ap;
+		va_start( ap, evt );
+		event_handler( evt, ap );
+		va_end( ap );
+	}
+}
 
 const char* zimr_version() {
 	return ZIMR_VERSION;
@@ -54,6 +65,8 @@ const char* zimr_build_date() {
 
 bool zimr_init() {
 	if ( initialized ) return true;
+
+	zimr_event( ZIMR_EVENT_INITIALIZING );
 
 	// call any needed library init functions
 	assert( userdir_init( getuid() ) );
@@ -92,13 +105,21 @@ void zimr_shutdown() {
 	zimr_close_request_log();
 }
 
+void zimr_register_event_handler( void (*handler)( int, va_list ap ) ) {
+	event_handler = handler;
+}
+
 int zimr_cnf_load( char* cnf_path ) {
+	zimr_event( ZIMR_EVENT_LOADING_CNF, cnf_path );
+
+	if ( access( cnf_path, F_OK ) == -1 ) return 0;
+
 	zcnf_app_t* cnf = zcnf_app_load( cnf_path );
 	if ( !cnf ) return 0;
 
-	zcnf_website_t* website_cnf = cnf->website_node;
-
-	while ( website_cnf ) {
+	int j = 0;
+	for ( ; j < list_size( &cnf->websites ); j++ ) {
+		zcnf_website_t* website_cnf = list_get_at( &cnf->websites, j );
 		int i;
 		if ( website_cnf->url ) {
 
@@ -131,7 +152,6 @@ int zimr_cnf_load( char* cnf_path ) {
 
 			zimr_website_enable( website );
 		}
-		website_cnf = website_cnf->next;
 	}
 
 	zcnf_app_free( cnf );
@@ -139,6 +159,7 @@ int zimr_cnf_load( char* cnf_path ) {
 }
 
 void zimr_start() {
+	zimr_event( ZIMR_EVENT_REGISTERING_WEBSITES, websites );
 
 	int i = 0;
 	website_t* website;
@@ -154,6 +175,8 @@ void zimr_start() {
 			zs_select();
 		} while ( msg_switch_need_select() || zs_need_select() );
 
+		int n_enabled = 0;
+
 		// Test and Start website proxies
 		for ( i = 0; i < list_size( &websites ); i++ ) {
 			website = list_get_at( &websites, i );
@@ -163,8 +186,11 @@ void zimr_start() {
 				/* connect to the Zimr Daemon Proxy for routing external
 				   requests or commands to this process. */
 				if ( !zimr_website_enable( website ) ) {
-					if ( website_data->conn_tries == 0 )
+					if ( website_data->conn_tries == 0 ) {
+						zimr_event( ZIMR_EVENT_WEBSITE_ENABLE_FAILED, website->full_url, website_data->proxy.ip, website_data->proxy.port,
+						"could not connect to proxy...will retry." );
 						dlog( stderr, "%s could not connect to proxy...will retry.", website->full_url );
+					}
 
 
 					// giving up ...
@@ -174,9 +200,14 @@ void zimr_start() {
 						zimr_website_destroy( website );
 					}*/
 				}
+			} else if ( website_data->status == WS_STATUS_ENABLED ) {
+				n_enabled++;
 			}
 
 		}
+
+		if ( n_enabled && n_enabled == list_size( &websites ) )
+			zimr_event( ZIMR_EVENT_ALL_WEBSITES_ENABLED );
 
 	} while ( list_size( &websites ) && zfd_select(2) );
 }
@@ -198,6 +229,7 @@ module_t* zimr_load_module( const char* module_name ) {
 	}
 
 	if ( !module ) {
+		zimr_event( ZIMR_EVENT_MODULE_LOADING, module_name );
 
 		char module_filename[ strlen( module_name ) + 6 ];
 		strcpy( module_filename, "mod" );
@@ -322,10 +354,12 @@ void command_response_handler( int fd, int msgid, void* buf, size_t len ) {
 				// Everything is good, start listening for requests.
 				website_data->status = WS_STATUS_ENABLED;
 
+				zimr_event( ZIMR_EVENT_WEBSITE_ENABLE_SUCCEEDED, website->full_url, website_data->proxy.ip, website_data->proxy.port );
 				dlog( stderr, "%s is enabled.", website->full_url );
 				website_data->conn_tries = 0;
 
 			} else {
+				zimr_event( ZIMR_EVENT_WEBSITE_ENABLE_FAILED, website->full_url, website_data->proxy.ip, website_data->proxy.port, buf + 5 );
 				dlog( stderr, "%s failed to enable:\n%s", website->full_url, buf + 5 );
 				// WS_START_CMD failed...close socket
 				//website_data->status = WS_STATUS_WANT_ENABLE;
@@ -996,6 +1030,7 @@ void zimr_file_handler( int fd, connection_t* connection ) {
 void zimr_website_load_module( website_t* website, module_t* module, int argc, char* argv[] ) {
 	website_data_t* website_data = website->udata;
 	module_website_data_t* module_data = malloc( sizeof( module_website_data_t ) );
+	zimr_event( ZIMR_EVENT_WEBSITE_MODULE_INIT, module->name, website->full_url );
 	list_append( &website_data->module_data, module_data );
 	module_data->module = module;
 	*(void **)(&modzimr_website_init) = dlsym( module->handle, "modzimr_website_init" );

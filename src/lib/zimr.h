@@ -48,6 +48,15 @@
 #define DAEMON_NAME ZM_APP_EXEC
 #define PAGE_HANDLER void (*)( connection_t*, const char*, void* )
 
+#define ZIMR_EVENT_INITIALIZING             1
+#define ZIMR_EVENT_MODULE_LOADING           2
+#define ZIMR_EVENT_WEBSITE_ENABLE_SUCCEEDED 3
+#define ZIMR_EVENT_WEBSITE_ENABLE_FAILED    4
+#define ZIMR_EVENT_WEBSITE_MODULE_INIT      5
+#define ZIMR_EVENT_ALL_WEBSITES_ENABLED     6
+#define ZIMR_EVENT_REGISTERING_WEBSITES     7
+#define ZIMR_EVENT_LOADING_CNF              8
+
 typedef struct {
 	int fd;
 	int range_start;
@@ -101,6 +110,7 @@ bool zimr_init();
 int  zimr_cnf_load( char* cnf_path );
 void zimr_start();
 void zimr_shutdown();
+void zimr_register_event_handler( void (*handler)( int, va_list ap ) );
 module_t* zimr_load_module( const char* module_name );
 module_t* (*zimr_get_module)( const char* module_name );
 void  zimr_unload_module( module_t* );

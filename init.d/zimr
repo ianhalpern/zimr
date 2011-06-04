@@ -19,18 +19,18 @@ exitval=0
 
 case "$1" in
 	start)
-		zimr start all users -ignore-disabled
+		zimr start all users -ignore-disabled -dont-wait-for-webapps
 	;;
 	restart)
-		zimr restart all users
+		zimr restart all users -dont-wait-for-webapps
 		#exitval=$?
 	;;
 	stop)
-		zimr stop all users -no-disable
+		zimr stop all users -no-disable -dont-wait-for-webapps
 		#exitval=$?
 	;;
 	remove)
-		zimr remove all users
+		zimr remove all users -dont-wait-for-webapps
 		#exitval=$?
 	;;
 	*)

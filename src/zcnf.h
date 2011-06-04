@@ -83,7 +83,7 @@ typedef struct zcnf_website {
 } zcnf_website_t;
 
 typedef struct {
-	zcnf_website_t* website_node;
+	list_t websites;
 	zcnf_proxy_t proxy;
 } zcnf_app_t;
 ///////////////////////////

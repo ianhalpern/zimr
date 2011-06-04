@@ -239,8 +239,7 @@ bool zcnf_load_websites( zcnf_app_t* cnf, yaml_document_t* document, int index )
 
 		}
 
-		website->next = cnf->website_node;
-		cnf->website_node = website;
+		list_append( &cnf->websites, website );
 	}
 
 	return 1;
@@ -382,6 +381,7 @@ zcnf_app_t* zcnf_app_load( char* cnf_path ) {
 
 	cnf = (zcnf_app_t*) malloc( sizeof( zcnf_app_t ) );
 	memset( cnf, 0, sizeof( zcnf_app_t ) );
+	list_init( &cnf->websites );
 
 	strcpy( cnf->proxy.ip, ZM_PROXY_DEFAULT_ADDR );
 	cnf->proxy.port = ZM_PROXY_DEFAULT_PORT;
@@ -590,8 +590,9 @@ void zcnf_state_save( zcnf_state_t* state ) {
 
 void zcnf_app_free( zcnf_app_t* cnf ) {
 	// TODO: free strdup'd website data
-	while ( cnf->website_node ) {
-		zcnf_website_t* website = cnf->website_node;
+	int i = 0;
+	for ( ; i < list_size( &cnf->websites ); i++ ) {
+		zcnf_website_t* website = list_get_at( &cnf->websites, i );
 		free( website->url );
 		free( website->redirect_url );
 		free( website->ip_address );
@@ -613,9 +614,9 @@ void zcnf_app_free( zcnf_app_t* cnf ) {
 			free( list_fetch( &website->ignore ) );
 		}
 		list_destroy( &website->ignore );
-		cnf->website_node = website->next;
 		free( website );
 	}
+	list_destroy( &cnf->websites );
 	free( cnf );
 }
 

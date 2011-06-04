@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
@@ -44,12 +45,15 @@
 
 #define CMDSTR(X) (X==ADD?"Adding":X==START?"Starting":X==STOP?"Stopping":X==RESTART?"Restarting":X==REMOVE?"Removing":X==STATUS?"Status":"Unknown")
 
-#define GETCNFARG(cnf_file) (strcmp( "/" ZM_APP_CNF_FILE, strrchr( cnf_path, '/' ) ) == 0 ? "" : " " ),(strcmp( "/" ZM_APP_CNF_FILE, strrchr( cnf_path, '/' ) ) == 0 ? "" : strrchr( cnf_path, '/' ) + 1 )
+#define GETCNFARG(cnf_path) (strcmp( "/" ZM_APP_CNF_FILE, strrchr( cnf_path, '/' ) ) == 0 ? "" : " " ),(strcmp( "/" ZM_APP_CNF_FILE, strrchr( cnf_path, '/' ) ) == 0 ? "" : strrchr( cnf_path, '/' ) + 1 )
 
 cli_cmd_t root_cmd;
+pid_t ppid = 0;
+bool wait_for_child = true;
+static verbose = true;
 
 void print_usage() {
-	printf( "Zimr " ZIMR_VERSION " (" BUILD_DATE ") - " ZIMR_WEBSITE "\n\n" );
+	printf( "Zimr v" ZIMR_VERSION " (" BUILD_DATE ") - " ZIMR_WEBSITE "\n\n" );
 	printf( "Commands:\n\n" );
 	cli_print( &root_cmd );
 }
@@ -58,13 +62,96 @@ void sigquit() {
 	//exit(0);
 }
 
+void sig_from_child() {
+	wait_for_child = false;
+}
+
 // Functions ////////////////////////////
 void application_shutdown() {
 	//puts( "shutdown" );
 	zimr_shutdown();
 }
 
+void event_handler_verbose( int event, va_list ap ) {
+
+	char* c1,* c2,* c3;
+	int i1;
+	list_t* l1;
+
+	switch ( event ) {
+		case ZIMR_EVENT_INITIALIZING:
+			printf( "Starting Zimr webapp (v" ZIMR_VERSION " - " ZIMR_WEBSITE ")...\n" );
+			break;
+		case ZIMR_EVENT_LOADING_CNF:
+			printf("[Loading webapp] %s\n", strrchr( va_arg( ap, char* ), '/') + 1 );
+			break;
+		case ZIMR_EVENT_MODULE_LOADING:
+			printf( "[Loading module] %s\n", va_arg( ap, char* ) );
+			break;
+		case ZIMR_EVENT_WEBSITE_ENABLE_SUCCEEDED:
+			c1 = va_arg( ap, char* );
+			c2 = va_arg( ap, char* );
+			i1 = va_arg( ap, int );
+			//printf( "Website enabled: %s (on proxy %s:%d)\n", c1, c2, i1 );
+			break;
+		case ZIMR_EVENT_WEBSITE_ENABLE_FAILED:
+			c1 = va_arg( ap, char* );
+			c2 = va_arg( ap, char* );
+			i1 = va_arg( ap, int );
+			c3 = va_arg( ap, char* );
+			printf( "[Url failed] %s (on proxy %s:%d): %s\n", c1, c2, i1, c3 );
+			if ( ppid && wait_for_child ) {
+			//	printf( "...Going to the background, goodbye.\n" );
+				kill( ppid, SIGCHLD );
+			}
+			break;
+		case ZIMR_EVENT_WEBSITE_MODULE_INIT:
+			c1 = va_arg( ap, char* );
+			c2 = va_arg( ap, char* );
+			//printf( "Initializing module %s for website %s\n", c1, c2 );
+			break;
+		case ZIMR_EVENT_ALL_WEBSITES_ENABLED:
+			printf( "Service is now running.\n" );
+			zimr_register_event_handler( NULL );
+			if ( ppid && wait_for_child ) {
+			//	printf( "...Going to the background, goodbye.\n" );
+				kill( ppid, SIGCHLD );
+			}
+			//	puts("");
+			break;
+		case ZIMR_EVENT_REGISTERING_WEBSITES:
+			l1 = va_arg( ap, list_t* );
+			//printf("[Registering urls]\n");
+			for ( i1 = 0; i1 < list_size( &websites ); i1++ )
+				printf( "[Registering url] %s\n", ((website_t*)list_get_at( &websites, i1 ))->full_url );
+
+			break;
+	}
+
+}
+
+void event_handler_basic( int event, va_list ap ) {
+	switch ( event ) {
+		case ZIMR_EVENT_ALL_WEBSITES_ENABLED:
+			zimr_register_event_handler( NULL );
+			if ( ppid && wait_for_child ) {
+				kill( ppid, SIGCHLD );
+			}
+			break;
+		case ZIMR_EVENT_WEBSITE_ENABLE_FAILED:
+			zimr_register_event_handler( NULL );
+			if ( ppid && wait_for_child ) {
+			//	printf( "...Going to the background, goodbye.\n" );
+				kill( ppid, SIGCHLD );
+			}
+			break;
+	}
+}
+
 pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
+	if ( !nofork )
+		ppid = getpid();
+
 	pid_t pid = !nofork ? fork() : 0;
 	char dir[ PATH_MAX ],* ptr;
 
@@ -78,6 +165,14 @@ pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 		setuid( uid );
 		setgid( gid );
 
+		if ( verbose )
+			zimr_register_event_handler( event_handler_verbose );
+		else
+			zimr_register_event_handler( event_handler_basic );
+
+		if ( !verbose )
+			freopen( ZM_ERR_LOGFILE, "a", stderr );
+
 		zimr_init();
 
 		signal( SIGTERM, sigquit );
@@ -88,7 +183,8 @@ pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 		atexit( application_shutdown );
 
 		//freopen( ZM_OUT_LOGFILE, "w", stdout );
-		freopen( ZM_ERR_LOGFILE, "a", stderr );
+		if ( verbose )
+			freopen( ZM_ERR_LOGFILE, "a", stderr );
 
 		zimr_start();
 
@@ -97,10 +193,13 @@ pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 		// still in parent, but there is no child
 		puts( "parent error: no child" );
 		return -1;
-	} else {
-		sleep( 1 );
+	} else if ( wait_for_child ) {
+		signal( SIGCHLD, sig_from_child );
+		//sleep( 1 );
 		//int exitstat;
-		//waitpid( pid, &exitstat, WIFEXITED );
+		while ( wait_for_child )
+			sleep(1);
+		wait_for_child = true;
 		/*if ( exitstat ) {
 			//waitpid( pid, &exitstat, 0 );
 			return -1;
@@ -111,21 +210,31 @@ pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 }
 
 bool application_kill( pid_t pid, bool force ) {
-	if ( !pid ) return true;
+	if (verbose) {
+		printf( "Stopping webapp service..." );
+		fflush(stdout);
+	}
+	if ( !pid ) goto success;
+
 	if ( force ) {
 		if ( !killproc( pid ) && errno != ESRCH )
-			return false;
-		return true;
+			goto fail;
 	}
 
-	if ( !stopproc( pid ) && errno != ESRCH ) {
-		return false;
+	else if ( !stopproc( pid ) && errno != ESRCH ) {
+		goto fail;
 	}
+
+success:
+	if (verbose) printf( "Stopped.\n" );
 	return true;
+fail:
+	if (verbose) printf("\n");
+	return false;
 }
 
 bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool force, bool allow_disable ) {
-	printf( " * %s %s\n", CMDSTR( type ), cnf_path ); //fflush( stdout );
+	//printf( " * %s %s\n", CMDSTR( type ), cnf_path ); //fflush( stdout );
 
 	userdir_init( uid );
 	zcnf_state_t* state = zcnf_state_load( uid );
@@ -139,12 +248,12 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 
 	zcnf_state_app_t* app = NULL;
 
-	int i;
+	int i, j;
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
 		app = list_get_at( &state->apps, i );
 		if ( strcmp( app->path, cnf_path ) == 0 ) {
 			if ( type == ADD ) {
-				puts( "   Failed: Already added" );
+				printf( "Failed: already added. To start the webapp run 'zimr start%s%s'\n", GETCNFARG( cnf_path ) );
 				retval = false;
 				goto quit;
 			}
@@ -154,7 +263,10 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 	}
 
 	if ( type != ADD && !app ) {
-		printf( " * Failed: webapp does not exist. Run 'zimr add%s%s' to add the webapp\n", GETCNFARG( cnf_path ) );
+		if ( type == REMOVE )
+			printf( "Nothing to do, webapp has already been removed\n" );
+		else
+			printf( "Failed: webapp does not exist. Run 'zimr add%s%s' to add the webapp\n", GETCNFARG( cnf_path ) );
 		retval = false;
 		goto quit;
 	}
@@ -163,70 +275,100 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 		pid_t pid;
 		switch ( type ) {
 			case ADD:
-				printf( " * Success. To start the webapp run 'zimr start%s%s'\n", GETCNFARG( cnf_path ) );
+				printf( "Zimr webapp added. To start the webapp run 'zimr start%s%s'\n", GETCNFARG( cnf_path ) );
 				zcnf_state_set_app( state, cnf_path, 0, true );
 				break;
 			case START:
+
+				if ( !verbose ) {
+					printf( "[Starting] %s...", cnf_path );
+					fflush(stdout);
+				}
+
 				if ( !app->stopped && app->pid && kill( app->pid, 0 ) != -1 ) { // process still running, not dead
 					retval = false;
-					printf( " * Failed: already running, try 'zimr restart%s%s' instead.\n", GETCNFARG( cnf_path ) );
+					printf( "Failed: already running, try 'zimr restart%s%s' instead.\n", GETCNFARG( cnf_path ) );
 					goto quit;
 				}
 				if ( ( pid = application_exec( uid, gid, cnf_path, false ) ) == -1 ) {
 					retval = false;
-					printf( " * Failed\n" );
+					printf( "Failed\n" );
 					goto quit;
 				}
-				printf( " * Success.\n" );
+
+				if ( !verbose ) printf("Started.\n");
+
 				zcnf_state_set_app( state, cnf_path, pid, false );
 				break;
 			case RESTART:
 				if ( app->stopped ) {
 					retval = false;
-					printf( " * Failed: Webapp is not running. To start a webapp run 'zimr start%s%s'\n", GETCNFARG( cnf_path ) );
+					printf( "Failed: webapp is not running. To start a webapp run 'zimr start%s%s'\n", GETCNFARG( cnf_path ) );
 					goto quit;
+				}
+
+				if ( !verbose ) {
+					printf( "[Restaring] %s...", cnf_path );
+					fflush(stdout);
 				}
 
 				if ( !application_kill( app->pid, force ) ) {
 					retval = false;
-					printf( " * Failed: %s\n", strerror( errno ) );
+					printf( "Failed: %s\n", strerror( errno ) );
 					goto quit;
-				} else if ( ( pid = application_exec( uid, gid, app->path, false ) ) == -1 ) {
+				}
+
+				if ( verbose ) printf("\n");
+
+				if ( ( pid = application_exec( uid, gid, app->path, false ) ) == -1 ) {
 					retval = false;
-					printf( " * Failed\n" );
+					printf( "Failed\n" );
 					//print_errors( app->path );
 					goto quit;
 				}
-				printf( " * Success.\n" );
+
+				if ( !verbose ) printf("Restarted.\n");
+
 				//print_errors( app->path );
 				zcnf_state_set_app( state, app->path, pid, !retval );
 				break;
 			case STOP:
-				if ( !application_kill( app->pid, force ) ) {
+				if ( !verbose ) {
+					printf( "[Stopping] %s...", cnf_path );
+					fflush(stdout);
+				}
+				if ( !app->pid ) {
+					printf( "Nothing to do, webapp is not running\n" );
+				} else if ( !application_kill( app->pid, force ) ) {
 					retval = false;
-					//printf( "Failed: %s\n", strerror( errno ) );
+					printf( "Failed: %s\n", strerror( errno ) );
 					goto quit;
 				}
-				printf( " * Success.\n" );
+
+				if ( !verbose ) printf("Stopped.\n");
+
 				zcnf_state_set_app( state, app->path, 0, allow_disable );
 				break;
 			case REMOVE:
-				if ( !application_kill( app->pid, force ) ) {
+				if ( app->pid && !application_kill( app->pid, force ) ) {
 					retval = false;
-					printf( " * Failed: %s\n", strerror( errno ) );
+					printf( "Failed: %s\n", strerror( errno ) );
 					//print_errors( cnf_path );
 					goto quit;
 				}
-				printf( " * Success.\n" );
+				printf( "Zimr webapp removed.\n" );
 				list_delete_at( &state->apps, i );
 				zcnf_state_app_free( app );
 				break;
 			case STATUS:
 				if ( app->stopped )
-					printf( " * Stopped" );
+					printf( "[Disabled] %s\n", cnf_path );
 				else if ( !app->pid || kill( app->pid, 0 ) == -1 ) // process still running, not dead
-					printf( " * Error: Not Running" );
+					printf( "[Not Running] %s\n", cnf_path );
 				else {
+					printf( "[Running] %s\n", cnf_path );
+
+					if ( !verbose ) break;
 					///////////////////// Proc Info /////////////////////////
 					// TODO: calculate CPU usage: http://stackoverflow.com/questions/1420426/calculating-cpu-usage-of-a-process-in-linux
 					FILE* kstat = fopen( "/proc/stat", "r" );
@@ -252,7 +394,7 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 					int minutes = ( timediff - hours * 3600 ) / 60;
 					int seconds = ( timediff - hours * 3600 - minutes * 60 );
 
-					printf( " * Running  pid: %d  mem: %li  run time: %02d:%02d:%02d  num threads: %d",
+					printf( "  pid: %d  mem: %li  run time: %02d:%02d:%02d  num threads: %d\n",
 					  app->pid, proc->size /*+ proc->share*/, hours, minutes, seconds, proc->nlwp );
 
 					freeproc( proc );
@@ -262,10 +404,9 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 					zcnf_app_t* cnf = zcnf_app_load( cnf_path );
 					assert( cnf );
 
-					zcnf_website_t* website_cnf = cnf->website_node;
-
-					while ( website_cnf ) {
-						printf( "\n * Url  " );
+					for ( i = 0; i < list_size( &cnf->websites ); i++ ) {
+						zcnf_website_t* website_cnf = list_get_at( &cnf->websites, i );
+						printf( "  Url: " );
 						if ( !startswith( website_cnf->url, "https://" ) && !startswith( website_cnf->url, "http://" ) )
 							printf( "http://" );
 
@@ -276,16 +417,15 @@ bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool
 
 						if ( list_size( &website_cnf->modules ) ) {
 							printf( "  Modules:" );
-							for ( i = 0; i < list_size( &website_cnf->modules ); i++ ) {
-								zcnf_module_t* module_cnf = list_get_at( &website_cnf->modules, i );
+							for ( j = 0; j < list_size( &website_cnf->modules ); j++ ) {
+								zcnf_module_t* module_cnf = list_get_at( &website_cnf->modules, j );
 								printf( " %s", module_cnf->name );
 							}
 						}
-						website_cnf = website_cnf->next;
+						puts("");
 					}
 				}
 
-				printf( "\n" );
 				break;
 		}
 	}
@@ -297,11 +437,34 @@ quit:
 	return retval;
 }
 
+int state_apps_status_sort( const zcnf_state_app_t* a, const zcnf_state_app_t* b ) {
+	int as, bs;
+
+	if ( a->stopped ) as = 3; // stopped
+	else if ( !a->pid || kill( a->pid, 0 ) == -1 ) as = 2; // not running
+	else as = 1; // running
+
+	if ( b->stopped ) bs = 3;
+	else if ( !b->pid || kill( b->pid, 0 ) == -1 ) bs = 2;
+	else bs = 1;
+
+	return as > bs ? -1 : ( as == bs ? 0 : 1 );
+}
+
 bool state_function( uid_t uid, gid_t gid, char type, int optc, char* optv[] ) {
 	zcnf_state_t* state = zcnf_state_load( uid );
+	list_attributes_comparator( &state->apps, state_apps_status_sort );
+
+	verbose = false;
+
 	if ( !state ) {
 		puts( "failed to load state" );
 		return false;
+	}
+
+	if ( type == STATUS ) {
+		if ( list_sort( &state->apps, 1 ) )
+			puts("error sorting");
 	}
 
 	bool retval = true;
@@ -309,23 +472,34 @@ bool state_function( uid_t uid, gid_t gid, char type, int optc, char* optv[] ) {
 	zcnf_state_app_t* app;
 
 	int i;
+	bool allow_disable = true;
+	bool ignore_disabled = false;
+
+	for ( i = 0; i < optc; i++ ) {
+		if ( strcmp( optv[i], "-ignore-disabled" ) == 0 )
+			ignore_disabled = true;
+		else if ( strcmp( optv[i], "-no-disable" ) == 0 )
+			allow_disable = false;
+		else if ( strcmp( optv[i], "-dont-wait-for-webapps" ) == 0 )
+			wait_for_child = false;
+	}
+
 	for ( i = 0; i < list_size( &state->apps ); i++ ) {
-		bool allow_disable = true;
 
 		app = list_get_at( &state->apps, i );
 
-		if ( i ) printf( "\n" );
+		//if ( i ) printf( "\n" );
 
 		if ( type == START ) {
-			if ( optc && strcmp( optv[0], "-ignore-disabled" ) == 0 && app->stopped ) continue;
+			if ( optc && ignore_disabled && app->stopped ) continue;
 			else if ( app->pid && kill( app->pid, 0 ) != -1 ) {
-				printf( " * Starting %s\n * Skipping: Already started.\n", app->path );
+			//	printf( " * Starting %s\n * Skipping: Already started.\n", app->path );
 				continue;
 			}
 		} else if ( type == STOP ) {
 			if ( app->stopped ) continue;
-			if ( optc && strcmp( optv[0], "-no-disable" ) == 0 )
-				allow_disable = false;
+		} else if ( type == RESTART ) {
+			if ( app->stopped ) continue;
 		}
 
 		if ( !application_function( uid, gid, app->path, type, false, allow_disable ) ) {
@@ -398,7 +572,6 @@ void application_start_cmd( int optc, char* optv[] ) {
 	getcwd( cnf_path, sizeof( cnf_path ) );
 	strcat( cnf_path, "/" ZM_APP_CNF_FILE );
 
-
 	bool nostate = false;
 	int i;
 	for ( i = 0; i < optc; i++ ) {
@@ -455,9 +628,9 @@ void application_restart_cmd( int optc, char* optv[] ) {
 	for ( i = 0; i < optc; i++ ) {
 		if ( strcmp( optv[i], "-force" ) == 0 ) {
 			force = true;
-		} else if ( !i )
+		} else if ( !i ) {
 			realpath( optv[i], cnf_path );
-		else {
+		} else {
 			print_usage();
 			return;
 		}
@@ -477,9 +650,9 @@ void application_remove_cmd( int optc, char* optv[] ) {
 	for ( i = 0; i < optc; i++ ) {
 		if ( strcmp( optv[i], "-force" ) == 0 ) {
 			force = true;
-		} else if ( !i )
+		} else if ( !i ) {
 			realpath( optv[i], cnf_path );
-		else {
+		} else {
 			print_usage();
 			return;
 		}
@@ -598,7 +771,7 @@ void proxy_status_cmd( int optc, char* optv[] ) {
 int main( int argc, char* argv[] ) {
 
 	cli_cmd_t stop_all_commands[] = {
-		{ "users", "Stop all users' webapps. [ -no-disable ]\n", NULL, &state_stop_all_cmd },
+		{ "users", "Stop all users' webapps. [ -no-disable, -dont-wait-for-webapps ]\n", NULL, &state_stop_all_cmd },
 		{ NULL }
 	};
 
@@ -608,7 +781,7 @@ int main( int argc, char* argv[] ) {
 	};
 
 	cli_cmd_t start_all_commands[] = {
-		{ "users", "Start all users' stopped webapps. [ -ignore-disabled ]\n", NULL, &state_start_all_cmd },
+		{ "users", "Start all users' stopped webapps. [ -ignore-disabled, -dont-wait-for-webapps ]\n", NULL, &state_start_all_cmd },
 		{ NULL }
 	};
 
@@ -618,7 +791,7 @@ int main( int argc, char* argv[] ) {
 	};
 
 	cli_cmd_t restart_all_commands[] = {
-		{ "users", "Restart all users' running webapps.\n", NULL, &state_restart_all_cmd },
+		{ "users", "Restart all users' running webapps. [ -dont-wait-for-webapps ]\n", NULL, &state_restart_all_cmd },
 		{ NULL }
 	};
 
@@ -628,7 +801,7 @@ int main( int argc, char* argv[] ) {
 	};
 
 	cli_cmd_t remove_all_commands[] = {
-		{ "users", "Remove all users' webapps.\n", NULL, &state_remove_all_cmd },
+		{ "users", "Remove all users' webapps. [ -dont-wait-for-webapps ]\n", NULL, &state_remove_all_cmd },
 		{ NULL }
 	};
 
@@ -638,7 +811,7 @@ int main( int argc, char* argv[] ) {
 	};
 
 	cli_cmd_t status_all_commands[] = {
-		{ "users", "View the status of all users' webapps.\n", NULL, &state_status_all_cmd },
+		{ "users", "View the status of all users' webapps. [ -dont-wait-for-webapps ]\n", NULL, &state_status_all_cmd },
 		{ NULL }
 	};
 
