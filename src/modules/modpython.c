@@ -96,7 +96,7 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 
 	if ( !argc ) {
-		filepath = strdup( "main.py" );
+		filepath = strdup( "webapp.py" );
 		fd = fopen( filepath, "r" );
 	}
 

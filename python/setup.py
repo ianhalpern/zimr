@@ -2,7 +2,7 @@
 import sys
 zimr_version = sys.argv.pop(1)
 python_version = sys.argv.pop(1)
-from distutils.core import setup
+from distutils.core import setup, Extension
 
 setup(
 	name         = 'zimr',
@@ -19,6 +19,6 @@ setup(
 	),
 	data_files   = (
 		# TODO: this is a hack!
-		('/usr/local/lib/python%s/dist-packages/zimr/' % python_version, ['zimr/__init__.so']),
+		('/usr/local/lib/python%s/dist-packages/zimr/' % python_version, ['zimr/czimr.so']),
 	)
 )
