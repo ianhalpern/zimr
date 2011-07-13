@@ -88,6 +88,10 @@ void event_handler_verbose( int event, va_list ap ) {
 		case ZIMR_EVENT_MODULE_LOADING:
 			printf( "[Loading module] %s\n", va_arg( ap, char* ) );
 			break;
+		case ZIMR_EVENT_MODULE_LOAD_FAILED:
+		case ZIMR_EVENT_WEBSITE_MODULE_INIT_FAILED:
+			printf( "[error] %s failed to load\n", va_arg( ap, char* ) );
+			goto kill;
 		case ZIMR_EVENT_WEBSITE_ENABLE_SUCCEEDED:
 			c1 = va_arg( ap, char* );
 			c2 = va_arg( ap, char* );
@@ -100,11 +104,7 @@ void event_handler_verbose( int event, va_list ap ) {
 			i1 = va_arg( ap, int );
 			c3 = va_arg( ap, char* );
 			printf( "[Url failed] %s (on proxy %s:%d): %s\n", c1, c2, i1, c3 );
-			if ( ppid && wait_for_child ) {
-			//	printf( "...Going to the background, goodbye.\n" );
-				kill( ppid, SIGCHLD );
-			}
-			break;
+			goto kill;
 		case ZIMR_EVENT_WEBSITE_MODULE_INIT:
 			c1 = va_arg( ap, char* );
 			c2 = va_arg( ap, char* );
@@ -112,12 +112,7 @@ void event_handler_verbose( int event, va_list ap ) {
 			break;
 		case ZIMR_EVENT_ALL_WEBSITES_ENABLED:
 			printf( "Service is now running.\n" );
-			zimr_register_event_handler( NULL );
-			if ( ppid && wait_for_child ) {
-			//	printf( "...Going to the background, goodbye.\n" );
-				kill( ppid, SIGCHLD );
-			}
-			//	puts("");
+			goto background;
 			break;
 		case ZIMR_EVENT_REGISTERING_WEBSITES:
 			l1 = va_arg( ap, list_t* );
@@ -128,23 +123,39 @@ void event_handler_verbose( int event, va_list ap ) {
 			break;
 	}
 
+	return;
+
+background:
+	zimr_register_event_handler( NULL );
+	if ( ppid && wait_for_child ) {
+		kill( ppid, SIGCHLD );
+	}
+	return;
+
+kill:
+	printf( "Stopping webapp service...\n" );
+	exit(EXIT_FAILURE);
+	//zimr_register_event_handler( NULL );
+	//if ( ppid && wait_for_child ) {
+	//	kill( ppid, SIGINT );
+	//}
+	return;
 }
 
 void event_handler_basic( int event, va_list ap ) {
 	switch ( event ) {
 		case ZIMR_EVENT_ALL_WEBSITES_ENABLED:
-			zimr_register_event_handler( NULL );
-			if ( ppid && wait_for_child ) {
-				kill( ppid, SIGCHLD );
-			}
+			goto background;
 			break;
 		case ZIMR_EVENT_WEBSITE_ENABLE_FAILED:
-			zimr_register_event_handler( NULL );
-			if ( ppid && wait_for_child ) {
-			//	printf( "...Going to the background, goodbye.\n" );
-				kill( ppid, SIGCHLD );
-			}
+			goto background;
 			break;
+	}
+
+background:
+	zimr_register_event_handler( NULL );
+	if ( ppid && wait_for_child ) {
+		kill( ppid, SIGCHLD );
 	}
 }
 

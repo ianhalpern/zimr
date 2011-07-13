@@ -39,6 +39,7 @@ static void* (*modzimr_website_init)( website_t*, int, char** );
 static void  (*modzimr_website_destroy)( website_t*, void* );
 static void  (*modzimr_connection_new)( connection_t*, void* );
 static void  (*modzimr_connection_closed)( connection_t*, void* );
+static bool  (*modzimr_err_occured)();
 /////////////////////////////////////////////////
 
 static void (*event_handler)( int, va_list ap ) = NULL;
@@ -257,7 +258,14 @@ module_t* zimr_load_module( const char* module_name ) {
 		list_append( &loaded_modules, module );
 
 		*(void**) (&modzimr_init) = dlsym( module->handle, "modzimr_init" );
-		if ( modzimr_init ) (*modzimr_init)();
+		*(bool**) (&modzimr_err_occured) = dlsym( module->handle, "modzimr_err_occured" );
+		if ( modzimr_init ) {
+			(*modzimr_init)();
+			if ( modzimr_err_occured && (*modzimr_err_occured)() ) {
+				zimr_event( ZIMR_EVENT_MODULE_LOAD_FAILED, module_name );
+				return NULL;
+			}
+		}
 	}
 
 	return module;
@@ -1035,7 +1043,14 @@ void zimr_website_load_module( website_t* website, module_t* module, int argc, c
 	list_append( &website_data->module_data, module_data );
 	module_data->module = module;
 	*(void **)(&modzimr_website_init) = dlsym( module->handle, "modzimr_website_init" );
-	if ( modzimr_website_init ) module_data->udata = (*modzimr_website_init)( website, argc, argv );
+	*(bool**) (&modzimr_err_occured) = dlsym( module->handle, "modzimr_err_occured" );
+	if ( modzimr_website_init ) {
+		module_data->udata = (*modzimr_website_init)( website, argc, argv );
+		if ( modzimr_err_occured && (*modzimr_err_occured)() ) {
+			zimr_event( ZIMR_EVENT_WEBSITE_MODULE_INIT_FAILED, module->name );
+			return NULL;
+		}
+	}
 	else module_data->udata = NULL;
 }
 

@@ -1253,7 +1253,7 @@ static PyMethodDef pyzimr_methods[] = {
 	{ NULL }		/* Sentinel */
 };
 
-PyMODINIT_FUNC initzimr( void ) {
+PyMODINIT_FUNC initczimr( void ) {
 	/*PyEval_InitThreads();
 	mainstate = PyThreadState_Swap(NULL);
 	PyEval_ReleaseLock();
@@ -1271,7 +1271,7 @@ PyMODINIT_FUNC initzimr( void ) {
 	)
 		return;
 
-	m = Py_InitModule( "zimr", pyzimr_methods );
+	m = Py_InitModule( "czimr", pyzimr_methods );
 	if ( m == NULL )
 		return;
 

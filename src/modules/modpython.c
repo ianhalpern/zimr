@@ -30,6 +30,14 @@
 
 static PyThreadState* mainstate;
 
+static bool err_occured = false;
+
+bool modzimr_err_occured() {
+	bool ret = err_occured;
+	err_occured = false;
+	return ret;
+}
+
 void modzimr_init() {
 
 	// initialize thread support
@@ -44,18 +52,24 @@ void modzimr_init() {
 	PyThreadState_Swap( mainstate );
 //	PyGILState_STATE gstate = PyGILState_Ensure();
 
-	PyObject* local_path = PyString_FromString( "" );
-	PyObject* sys_path   = PySys_GetObject( "path" );
+	PyObject* local_path,* sys_path;
 
-	PyList_Insert( sys_path, 0, local_path );
-	Py_DECREF( local_path );
+	if ( ( local_path = PyString_FromString( "" ) )
+	&& ( sys_path   = PySys_GetObject( "path" ) ) ) {
+
+		PyList_Insert( sys_path, 0, local_path );
+		Py_DECREF( local_path );
+
+	}
 
 	char argv[][1] = { { "" } };
 
 	PySys_SetArgv( 0, (char**) argv );
 
-	if ( PyErr_Occurred() )
+	if ( PyErr_Occurred() ) {
 		PyErr_PrintEx(0);
+		err_occured = true;
+	}
 
 	/*if ( !PyRun_SimpleString(
 		"import zimr\n"
@@ -250,8 +264,12 @@ quit:
 
 	if ( filepath ) free( filepath );
 
-	if ( PyErr_Occurred() )
+	if ( PyErr_Occurred() ) {
+		puts("");
 		PyErr_PrintEx(0);
+		puts("");
+		err_occured = true;
+	}
 
 	PyEval_ReleaseLock();
 //	PyGILState_Release( gstate );
