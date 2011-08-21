@@ -129,8 +129,11 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 	zimr_website_insert_ignored_regex( website, "psp_cache" );
 
-	if ( !(webapp_module = PyImport_ImportModule( modulename ) ) )
+	if ( !(webapp_module = PyImport_ImportModule( modulename ) ) ) {
+		if ( PyErr_GivenExceptionMatches(PyErr_Occurred(), PyExc_ImportError ) && strcmp( modulename, "webapp" ) == 0 )
+			PyErr_Clear();
 		goto quit;
+	}
 
 	//PyObject_SetAttrString( PyObject_GetAttrString( zimr_module, "czimr" ), "webapp_module", webapp_module );
 
