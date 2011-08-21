@@ -106,6 +106,10 @@ void zimr_shutdown() {
 	zimr_close_request_log();
 }
 
+void zimr_restart() {
+	zimr_event( ZIMR_EVENT_RESTART_REQUEST );
+}
+
 void zimr_register_event_handler( void (*handler)( int, va_list ap ) ) {
 	event_handler = handler;
 }
@@ -211,6 +215,7 @@ void zimr_start() {
 			zimr_event( ZIMR_EVENT_ALL_WEBSITES_ENABLED );
 
 	} while ( list_size( &websites ) && zfd_select(2) );
+
 }
 
 module_t* zimr_load_module( const char* module_name ) {

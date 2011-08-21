@@ -94,13 +94,11 @@ void modzimr_destroy() {
 }
 
 void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
-	char* filepath;
-	FILE* fd;
-	struct stat file_stat;
+	char* modulename;
 
 	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
 	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
-	  * func1_ret = NULL,* func2_ret = NULL,* pyfilename = NULL,* module_path = NULL;
+	  * func1_ret = NULL,* func2_ret = NULL,* pyfilename = NULL,* module_path = NULL,* webapp_module;
 
 	PyEval_AcquireLock();
 	PyThreadState_Swap( mainstate );
@@ -109,92 +107,11 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 //	Py_BLOCK_THREADS
 
 
-	if ( !argc ) {
-		filepath = strdup( "webapp.py" );
-		fd = fopen( filepath, "r" );
-	}
+	if ( !argc )
+		modulename = strdup( "webapp" );
 
-	else {
-		filepath = NULL;
-		if ( !( fd = fopen( argv[0], "r" ) ) ) {
-			PyObject* imp_module = NULL,* find_module_func = NULL,* ret = NULL,* path = NULL;
-
-			if (
-			  !( imp_module = PyImport_ImportModule( "imp" ) ) ||
-			  !( find_module_func = PyObject_GetAttrString( imp_module, "find_module" ) )
-			)
-				goto quit;
-
-			path = PySys_GetObject( "path" );
-			Py_INCREF( path );
-
-			char* ptr = argv[0],* ptr2 = NULL;
-			bool last = false;
-
-			while ( 1 ) {
-				ptr2 = strchr( ptr, '.' );
-				if ( !ptr2 ) {
-					last = true;
-					ptr2 = ptr + strlen( ptr );
-				}
-
-				*ptr2 = 0;
-
-				if (
-				  !( ret = PyObject_CallFunction( find_module_func, "sO", ptr, path ) ) ||
-				  !( module_path = PyTuple_GetItem( ret, 1 ) ) ||
-				  last
-				)
-					break;
-
-				Py_DECREF( path );
-
-				path = PyList_New(1);
-				Py_INCREF( module_path );
-				PyList_SetItem( path, 0, module_path );
-				module_path = NULL;
-
-				ptr = ptr2+1;
-			}
-
-			if ( module_path ) {
-				filepath = strdup( PyString_AsString( module_path ) );
-			}
-
-			Py_XDECREF( imp_module );
-			Py_XDECREF( find_module_func );
-			Py_XDECREF( ret );
-			Py_XDECREF( path );
-
-		//	if ( !filepath || !( fd = fopen( filepath, "r" ) ) ) {
-			if ( !filepath || stat( filepath, &file_stat ) ) {
-				fprintf( stderr, "Error: modpython could not open file or find module %s.\n", ptr );
-				goto quit;
-			}
-
-			if ( S_ISDIR( file_stat.st_mode ) ) {
-				char* tmp = filepath;
-				filepath = malloc( strlen( tmp ) + 12 );
-				strcpy( filepath, tmp );
-				strcat( filepath, "/__init__.so" );
-				free( tmp );
-
-				if ( stat( filepath, &file_stat ) ) {
-					strcpy( filepath + ( strlen( filepath ) - 2 ), "py" );
-					if ( stat( filepath, &file_stat ) ) {
-						fprintf( stderr, "Error: modpython could not open file or find module %s.\n", ptr );
-						goto quit;
-					}
-				}
-			}
-
-			if ( !filepath || !( fd = fopen( filepath, "r" ) ) ) {
-				fprintf( stderr, "Error: modpython could not open file or find module %s.\n", ptr );
-				goto quit;
-			}
-
-		} else filepath = strdup(argv[0]);
-	}
+	else
+		modulename = strdup( argv[0] );
 
 	if (
 	  !( zimr_module     = PyImport_ImportModule( "zimr" ) ) ||
@@ -212,39 +129,19 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 	zimr_website_insert_ignored_regex( website, "psp_cache" );
 
-	/*
-	 website_type    = PyObject_GetAttrString( zimr_module, "website" );
-	PyObject* website_obj     = PyObject_CallFunction( website_type, "s", website->url );
-
-	PyObject* psp_module      = PyImport_ImportModule( "zimr.page_handlers.psp" );
-	PyObject* psp_render_func = PyObject_GetAttrString( psp_module, "render" );
-	PyObject* website_register_page_handler_func = PyObject_GetAttrString( website_obj, "registerPageHandler" );
-	PyObject_CallFunction( website_register_page_handler_func, "sO", "psp", psp_render_func );
-	PyObject* website_insert_default_page_func = PyObject_GetAttrString( website_obj, "insertDefaultPage" );
-	PyObject_CallFunction( website_insert_default_page_func, "s", "default.psp" );
-	*/
-	if ( !fd ) goto quit;
-
-	PyObject* main_module = PyImport_AddModule( "__main__" );
-	PyObject* main_dict = PyModule_GetDict( main_module );
-
-	if ( !( pyfilename = PyString_FromString( filepath ) ) || PyDict_SetItemString( main_dict, "__file__", pyfilename ) == -1 ) {
-		//Py_XDECREF( pyfilename ); // Only DECREF if error, else main_dict takes the reference...maybe?
+	if ( !(webapp_module = PyImport_ImportModule( modulename ) ) )
 		goto quit;
-	}
 
-	if ( !PyRun_File( fd, filepath, Py_file_input, main_dict, main_dict ) ) {
-		goto quit;
-	}
+	//PyObject_SetAttrString( PyObject_GetAttrString( zimr_module, "czimr" ), "webapp_module", webapp_module );
 
-	if ( PyObject_HasAttrString( main_module, "connection_handler" ) ) {
-		PyObject* connection_handler = PyObject_GetAttrString( main_module, "connection_handler" );
+	if ( PyObject_HasAttrString( webapp_module, "connection_handler" ) ) {
+		PyObject* connection_handler = PyObject_GetAttrString( webapp_module, "connection_handler" );
 		PyObject_SetAttrString( website_obj, "connection_handler", connection_handler );
 		Py_DECREF( connection_handler );
 	}
 
-	if ( PyObject_HasAttrString( main_module, "error_handler" ) ) {
-		PyObject* error_handler = PyObject_GetAttrString( main_module, "error_handler" );
+	if ( PyObject_HasAttrString( webapp_module, "error_handler" ) ) {
+		PyObject* error_handler = PyObject_GetAttrString( webapp_module, "error_handler" );
 		PyObject_SetAttrString( website_obj, "error_handler", error_handler );
 		Py_DECREF( error_handler );
 	}
@@ -261,8 +158,9 @@ quit:
 	Py_XDECREF( func2_ret );
 	Py_XDECREF( module_path );
 	Py_XDECREF( pyfilename );
+	Py_XDECREF( webapp_module );
 
-	if ( filepath ) free( filepath );
+	if ( modulename ) free( modulename );
 
 	if ( PyErr_Occurred() ) {
 		puts("");

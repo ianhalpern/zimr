@@ -58,6 +58,7 @@
 #define ZIMR_EVENT_ALL_WEBSITES_ENABLED       8
 #define ZIMR_EVENT_REGISTERING_WEBSITES       9
 #define ZIMR_EVENT_LOADING_CNF                10
+#define ZIMR_EVENT_RESTART_REQUEST            11
 
 typedef struct {
 	int fd;
@@ -112,6 +113,7 @@ bool zimr_init();
 int  zimr_cnf_load( char* cnf_path );
 void zimr_start();
 void zimr_shutdown();
+void zimr_restart();
 void zimr_register_event_handler( void (*handler)( int, va_list ap ) );
 module_t* zimr_load_module( const char* module_name );
 module_t* (*zimr_get_module)( const char* module_name );

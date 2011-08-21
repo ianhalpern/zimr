@@ -51,6 +51,9 @@ cli_cmd_t root_cmd;
 pid_t ppid = 0;
 bool wait_for_child = true;
 static verbose = true;
+static bool on_shutdown_restart = false;
+
+bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool force, bool allow_disable );
 
 void print_usage() {
 	printf( "Zimr v" ZIMR_VERSION " (" BUILD_DATE ") - " ZIMR_WEBSITE "\n\n" );
@@ -70,6 +73,18 @@ void sig_from_child() {
 void application_shutdown() {
 	//puts( "shutdown" );
 	zimr_shutdown();
+}
+
+void event_handler_when_in_background( int event, va_list ap ) {
+	switch ( event ) {
+		case ZIMR_EVENT_RESTART_REQUEST:
+			on_shutdown_restart = true;
+			exit( EXIT_SUCCESS );
+			break;
+	}
+
+	return;
+
 }
 
 void event_handler_verbose( int event, va_list ap ) {
@@ -126,7 +141,7 @@ void event_handler_verbose( int event, va_list ap ) {
 	return;
 
 background:
-	zimr_register_event_handler( NULL );
+	zimr_register_event_handler( event_handler_when_in_background );
 	if ( ppid && wait_for_child ) {
 		kill( ppid, SIGCHLD );
 	}
@@ -153,7 +168,7 @@ void event_handler_basic( int event, va_list ap ) {
 	}
 
 background:
-	zimr_register_event_handler( NULL );
+	zimr_register_event_handler( event_handler_when_in_background );
 	if ( ppid && wait_for_child ) {
 		kill( ppid, SIGCHLD );
 	}
@@ -198,6 +213,17 @@ pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 			freopen( ZM_ERR_LOGFILE, "a", stderr );
 
 		zimr_start();
+
+		if ( on_shutdown_restart ) {
+			int ret;
+			pid = fork();
+			if ( pid == 0 ) {
+				char *cmd[] = { "zimr", "restart", path, 0 };
+				ret = execvp( cmd[0], cmd );
+				if ( ret == -1 )
+					printf( "%s: %d\n", strerror( errno ), errno );
+			}
+		}
 
 		exit( EXIT_SUCCESS );
 	} else if ( pid == (pid_t) -1 ) {

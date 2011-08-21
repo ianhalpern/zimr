@@ -833,6 +833,13 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 //	PyEval_AcquireLock();
 //	PyThreadState_Swap( mainstate );
 
+	// Reload webapp module if exists
+	/*if ( PyObject_HasAttrString( m, "webapp_module" ) ) {
+		puts("reload webapp module" );
+		PyImport_ReloadModule( PyObject_GetAttrString( m, "webapp_module" ) );
+	} else puts("no webapp module" );*/
+	//
+
 	pyzimr_website_t* website = (pyzimr_website_t*) ( (website_data_t*) _connection->website->udata )->udata;
 
 	pyzimr_connection_t* connection = (pyzimr_connection_t*) pyzimr_connection_type.tp_new( &pyzimr_connection_type, NULL, NULL );
@@ -1170,6 +1177,10 @@ static PyObject* pyzimr_start() {
 	Py_RETURN_NONE;
 }
 
+static PyObject* pyzimr_restart() {
+	zimr_restart();
+}
+
 static PyObject* pyzimr_default_connection_handler( PyObject* self, PyObject* args, PyObject* kwargs ) {
 	pyzimr_connection_t* connection;
 
@@ -1250,6 +1261,7 @@ static PyMethodDef pyzimr_methods[] = {
 	{ "start", (PyCFunction) pyzimr_start, METH_NOARGS, "Starts the zimr mainloop." },
 	{ "log", (PyCFunction) pyzimr_log, METH_VARARGS, "Write message to zimr.log." },
 	{ "defaultConnectionHandler", (PyCFunction) pyzimr_default_connection_handler, METH_VARARGS, "The zimr default connection handler." },
+	{ "restart", (PyCFunction) pyzimr_restart, METH_NOARGS, "Trigger a zimr webapp restart." },
 	{ NULL }		/* Sentinel */
 };
 
