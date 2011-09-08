@@ -92,14 +92,11 @@ void zimr_shutdown() {
 
 	initialized = false;
 
-	int i;
-	while ( list_size( &websites ) ) {
+	while ( list_size( &websites ) )
 		zimr_website_destroy( list_get_at( &websites, 0 ) );
-	}
 
-	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
-		zimr_unload_module( list_get_at( &loaded_modules, i ) );
-	}
+	while ( list_size( &loaded_modules ) )
+		zimr_unload_module( list_get_at( &loaded_modules, 0 ) );
 
 	list_destroy( &websites );
 	list_destroy( &loaded_modules );
@@ -280,12 +277,54 @@ module_t* (*zimr_get_module)( const char* module_name ) = zimr_load_module;
 
 void zimr_unload_module( module_t* module ) {
 
+	int i;
+	for ( i = 0; i < list_size( &loaded_modules ); i++ ) {
+		if ( strcmp( module->name, ((module_t*)list_get_at( &loaded_modules, i ))->name ) == 0 ) {
+			list_extract_at( &loaded_modules, i );
+			break;
+		}
+	}
+
 	*(void**) (&modzimr_destroy) = dlsym( module->handle, "modzimr_destroy" );
 	if ( modzimr_destroy ) (*modzimr_destroy)();
 
-	//TODO: locate module in loaded_modules and remove
 	dlclose( module->handle );
 	free( module );
+}
+
+void zimr_reload_module( const char* module_name ) {
+	int i, j, k = 0;
+	website_t* module_websites[10];
+	module_website_data_t* module_data_list[10];
+
+	for ( i = 0; i < list_size( &websites ); i++ ) {
+
+		website_t* website = list_get_at( &websites, i );
+		website_data_t* website_data = website->udata;
+
+		for ( j = 0; j < list_size( &website_data->module_data ); j++ ) {
+			module_website_data_t* module_data = list_get_at( &website_data->module_data, j );
+			if ( strcmp( module_data->module->name, module_name ) == 0 ) {
+				list_extract_at( &website_data->module_data, j );
+				*(void **)(&modzimr_website_destroy) = dlsym( module_data->module->handle, "modzimr_website_destroy" );
+				if ( modzimr_website_destroy ) (*modzimr_website_destroy)( website, module_data->udata );
+				module_data_list[k] = module_data;
+				module_websites[k++] = website;
+				break;
+			}
+		}
+	}
+
+	zimr_unload_module( zimr_get_module( module_name ) );
+
+	module_t* module = zimr_load_module( module_name );
+
+	for ( i = 0; i < k; i++ ) {
+		// TODO: store and pass argc, argv
+		zimr_website_load_module( module_websites[i], module, module_data_list[i]->argc, module_data_list[i]->argv );
+		for ( j = 0; j < module_data_list[i]->argc; j++ )
+			free( module_data_list[i]->argv[j] );
+	}
 }
 
 int ignored_regex_check( const char* path, regex_t* ignored_regex ) {
@@ -341,6 +380,9 @@ void zimr_website_destroy( website_t* website ) {
 		module_website_data_t* module_data = list_fetch( &website_data->module_data );
 		*(void **)(&modzimr_website_destroy) = dlsym( module_data->module->handle, "modzimr_website_destroy" );
 		if ( modzimr_website_destroy ) (*modzimr_website_destroy)( website, module_data->udata );
+		int j;
+		for ( j = 0; j < module_data->argc; j++ )
+			free( module_data->argv[j] );
 		free( module_data );
 	}
 	list_destroy( &website_data->module_data );
@@ -1047,13 +1089,19 @@ void zimr_website_load_module( website_t* website, module_t* module, int argc, c
 	zimr_event( ZIMR_EVENT_WEBSITE_MODULE_INIT, module->name, website->full_url );
 	list_append( &website_data->module_data, module_data );
 	module_data->module = module;
+	module_data->argc = argc;
+
+	int i;
+	for ( i = 0; i < module_data->argc; i++ )
+		module_data->argv[i] = strdup( argv[i] );
+
 	*(void **)(&modzimr_website_init) = dlsym( module->handle, "modzimr_website_init" );
 	*(bool**) (&modzimr_err_occured) = dlsym( module->handle, "modzimr_err_occured" );
+
 	if ( modzimr_website_init ) {
-		module_data->udata = (*modzimr_website_init)( website, argc, argv );
+		module_data->udata = (*modzimr_website_init)( website, module_data->argc, module_data->argv );
 		if ( modzimr_err_occured && (*modzimr_err_occured)() ) {
 			zimr_event( ZIMR_EVENT_WEBSITE_MODULE_INIT_FAILED, module->name );
-			return NULL;
 		}
 	}
 	else module_data->udata = NULL;

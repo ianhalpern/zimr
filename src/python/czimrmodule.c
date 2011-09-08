@@ -30,6 +30,7 @@
 //PyThreadState* _save = NULL;
 static PyObject* m;
 static void pyzimr_page_handler( connection_t* connection, const char* filepath, void* udata );
+static bool _py_want_reload = false;
 
 static void pyzimr_error_print( connection_t* connection ) {
 	char error_message[ 8192 ] = "";
@@ -894,6 +895,12 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 //	PyEval_ReleaseLock();
 	PyGILState_Release( gstate );
 //	Py_UNBLOCK_THREADS
+	if ( _py_want_reload ) {
+		_py_want_reload = false;
+		zimr_reload_module( "python" );
+		if ( !zimr_website_connection_sent( website->_website->sockfd, connfd ) )
+			pyzimr_website_connection_handler( _connection );
+	}
 }
 
 static void pyzimr_website_error_handler( connection_t* _connection, int error_code, char* message, size_t len ) {
@@ -1179,6 +1186,12 @@ static PyObject* pyzimr_start() {
 
 static PyObject* pyzimr_restart() {
 	zimr_restart();
+	Py_RETURN_NONE;
+}
+
+static PyObject* pyzimr_reload() {
+	_py_want_reload = true;
+	Py_RETURN_NONE;
 }
 
 static PyObject* pyzimr_default_connection_handler( PyObject* self, PyObject* args, PyObject* kwargs ) {
@@ -1262,6 +1275,7 @@ static PyMethodDef pyzimr_methods[] = {
 	{ "log", (PyCFunction) pyzimr_log, METH_VARARGS, "Write message to zimr.log." },
 	{ "defaultConnectionHandler", (PyCFunction) pyzimr_default_connection_handler, METH_VARARGS, "The zimr default connection handler." },
 	{ "restart", (PyCFunction) pyzimr_restart, METH_NOARGS, "Trigger a zimr webapp restart." },
+	{ "modpythonReload", (PyCFunction) pyzimr_reload, METH_NOARGS, "Reload the zimr python module." },
 	{ NULL }		/* Sentinel */
 };
 
@@ -1308,7 +1322,7 @@ PyMODINIT_FUNC initczimr( void ) {
 	Py_INCREF( &pyzimr_response_type );
 	PyModule_AddObject( m, "response", (PyObject*) &pyzimr_response_type );
 
-	Py_AtExit( &zimr_shutdown );
+	//Py_AtExit( &zimr_shutdown );
 
 	zimr_init( "" );
 	//PyEval_ReleaseLock();

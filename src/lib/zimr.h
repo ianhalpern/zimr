@@ -104,6 +104,8 @@ typedef struct {
 typedef struct {
 	void* udata;
 	module_t* module;
+	int argc;
+	char* argv[ ZM_MODULE_MAX_ARGS ];
 } module_website_data_t;
 
 const char* zimr_version();
@@ -118,6 +120,7 @@ void zimr_register_event_handler( void (*handler)( int, va_list ap ) );
 module_t* zimr_load_module( const char* module_name );
 module_t* (*zimr_get_module)( const char* module_name );
 void  zimr_unload_module( module_t* );
+void  zimr_reload_module( const char* module_name );
 
 bool zimr_connection_handler( website_t* website, int msgid, void* buf, size_t len );
 void zimr_file_handler( int fd, connection_t* connection );

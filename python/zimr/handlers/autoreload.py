@@ -1,27 +1,14 @@
 import os
 import sys
 import time
-import signal
-import threading
-import atexit
-import Queue
 import zimr
 
 _interval = 1.0
 _times = {}
 _files = []
 
-_running = False
-_queue = Queue.Queue()
-_lock = threading.Lock()
 _needs_restart = False
 
-def _restart():
-    _queue.put(True)
-    #prefix = 'monitor (pid=%d):' % os.getpid()
-    #print >> sys.stderr, '%s Change detected to \'%s\'.' % (prefix, path)
-    #print >> sys.stderr, '%s Triggering process restart.' % prefix
-    zimr.restart()
 
 def _modified(path):
     try:
@@ -79,55 +66,14 @@ def check():
 			return True
 	return False
 
-def _monitor():
-	global _needs_restart
-
-	while 1:
-		# Go to sleep for specified interval.
-		if not _needs_restart:
-			try:
-				return _queue.get(timeout=_interval)
-			except:
-				pass
-		else:
-			_needs_restart = False
-			# Check modification times on all files in sys.modules.
-			return _restart()
-
-_thread = threading.Thread(target=_monitor)
-_thread.setDaemon(True)
-
-def _exiting():
-    try:
-        _queue.put(True)
-    except:
-        pass
-    _thread.join()
-
-atexit.register(_exiting)
-
 def track(path):
     if not path in _files:
         _files.append(path)
 
-def start(interval=1.0):
-    global _interval
-    if interval < _interval:
-        _interval = interval
-
-    global _running
-    _lock.acquire()
-    if not _running:
-        #prefix = 'monitor (pid=%d):' % os.getpid()
-        #print >> sys.stderr, '%s Starting change monitor.' % prefix
-        _running = True
-        _thread.start()
-    _lock.release()
-
 def wrapper( func ):
 	def connection_handler( connection ):
 		if check():
-			connection.send( "Reloading the webapp...please try again in a few seconds" )
+			zimr.modpythonReload()
 		else:
 			func( connection )
 	return connection_handler
@@ -135,5 +81,3 @@ def wrapper( func ):
 @wrapper
 def connection_handler( connection ):
 	connection.sendFile()
-
-start()
