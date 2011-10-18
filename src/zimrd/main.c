@@ -145,8 +145,8 @@ int main( int argc, char* argv[ ] ) {
 		}
 	}
 
-	zcnf_proxies_t* proxy_cnf = zcnf_proxy_load();
-	if ( !proxy_cnf ) {
+	zcnf_daemon_t* daemon_cnf = zcnf_daemon_load();
+	if ( !daemon_cnf ) {
 		fprintf( stderr, "failed to load config.\n" );
 		exit( EXIT_FAILURE );
 	}
@@ -156,20 +156,20 @@ int main( int argc, char* argv[ ] ) {
 
 	// call any needed library init functions
 	website_init();
-	zs_init();
+	zs_init( daemon_cnf->ssl_cert_path, daemon_cnf->ssl_key_path );
 
 	memset( connections, 0, sizeof( connections ) );
 
-	for ( i = 0; i < proxy_cnf->n; i++ ) {
-		int sockfd = zsocket( inet_addr( proxy_cnf->proxies[ i ].ip ), proxy_cnf->proxies[ i ].port, ZSOCK_LISTEN, insock_event_hdlr, false );
+	for ( i = 0; i < daemon_cnf->n; i++ ) {
+		int sockfd = zsocket( inet_addr( daemon_cnf->proxies[ i ].ip ), daemon_cnf->proxies[ i ].port, ZSOCK_LISTEN, insock_event_hdlr, false );
 		if ( sockfd == -1 ) {
 			ret = EXIT_FAILURE;
-			fprintf( stderr, "Proxy failed on %s:%d\n", proxy_cnf->proxies[ i ].ip, proxy_cnf->proxies[ i ].port );
+			fprintf( stderr, "Proxy failed on %s:%d\n", daemon_cnf->proxies[ i ].ip, daemon_cnf->proxies[ i ].port );
 			goto quit;
 		}
 
 		zs_set_read( sockfd );
-		printf( " * started listening on %s:%d\n", proxy_cnf->proxies[ i ].ip, proxy_cnf->proxies[ i ].port );
+		printf( " * started listening on %s:%d\n", daemon_cnf->proxies[ i ].ip, daemon_cnf->proxies[ i ].port );
 	}
 
 	FL_SET( daemon_flags, D_KEEPSTDIO );
@@ -209,6 +209,8 @@ int main( int argc, char* argv[ ] ) {
 
 quit:
 	// cleanup
+
+	zcnf_daemon_free( daemon_cnf );
 
 	if ( ret == EXIT_FAILURE ) {
 		syslog( LOG_INFO, "exit: failure" );

@@ -127,7 +127,7 @@ typedef struct {
 
 zsocket_t* zsockets[ FD_SETSIZE ];
 
-void zs_init();
+void zs_init( char* ssl_cert_path, char* ssl_key_path );
 int  zsocket( in_addr_t addr, int portno, int type, void (*zs_event_hdlr)( int fd, int event ), bool ssl );
 
 int     zs_accept( int fd );

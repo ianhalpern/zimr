@@ -72,7 +72,7 @@ bool zimr_init() {
 	// call any needed library init functions
 	assert( userdir_init( getuid() ) );
 	website_init();
-	zs_init();
+	zs_init( NULL, NULL );
 
 	list_init( &loaded_modules );
 

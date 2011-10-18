@@ -416,9 +416,9 @@ quit:
 	return cnf;
 }
 
-zcnf_proxies_t* zcnf_proxy_load() {
+zcnf_daemon_t* zcnf_daemon_load() {
 	char cnf_path[] = ZM_PROXY_CNF_FILE;
-	zcnf_proxies_t* cnf = NULL;
+	zcnf_daemon_t* cnf = NULL;
 	yaml_document_t document;
 	int i, j;
 
@@ -432,15 +432,15 @@ zcnf_proxies_t* zcnf_proxy_load() {
 		goto quit;
 	}
 
-	cnf = (zcnf_proxies_t*) malloc( sizeof( zcnf_proxies_t ) );
-	memset( cnf, 0, sizeof( zcnf_proxies_t ) );
+	cnf = (zcnf_daemon_t*) malloc( sizeof( zcnf_daemon_t ) );
+	memset( cnf, 0, sizeof( zcnf_daemon_t ) );
 
 	bool default_proxy = true;
 	for ( i = 0; i < root->data.mapping.pairs.top - root->data.mapping.pairs.start; i++ ) {
 		yaml_node_t* node = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].key );
 
 		if ( ! node || node->type != YAML_SCALAR_NODE ) {
-			zcnf_proxies_free( cnf );
+			zcnf_daemon_free( cnf );
 			cnf = NULL;
 			break;
 		}
@@ -471,6 +471,24 @@ zcnf_proxies_t* zcnf_proxy_load() {
 				if ( ++cnf->n == ZM_PROXY_MAX_PROXIES - 1 )
 					break;
 			}
+		}
+
+		else if ( strcmp( "ssl cert path", (char*) node->data.scalar.value ) == 0 ) {
+			yaml_node_t* ssl_cert_path = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].value );
+
+			if ( !ssl_cert_path || ssl_cert_path->type != YAML_SCALAR_NODE )
+				continue;
+
+			cnf->ssl_cert_path = strdup( ssl_cert_path );
+		}
+
+		else if ( strcmp( "ssl key path", (char*) node->data.scalar.value ) == 0 ) {
+			yaml_node_t* ssl_key_path = yaml_document_get_node( &document, root->data.mapping.pairs.start[ i ].value );
+
+			if ( !ssl_key_path || ssl_key_path->type != YAML_SCALAR_NODE )
+				continue;
+
+			cnf->ssl_key_path = strdup( ssl_key_path );
 		}
 	}
 
@@ -635,6 +653,8 @@ void zcnf_state_free( zcnf_state_t* state ) {
 	free( state );
 }
 
-void zcnf_proxies_free( zcnf_proxies_t* proxies ) {
-	free( proxies );
+void zcnf_daemon_free( zcnf_daemon_t* daemon ) {
+	if ( daemon->ssl_cert_path ) free( daemon->ssl_cert_path );
+	if ( daemon->ssl_key_path ) free( daemon->ssl_key_path );
+	free( daemon );
 }

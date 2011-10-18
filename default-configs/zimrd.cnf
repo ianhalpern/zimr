@@ -1,3 +1,7 @@
 default proxy: on
 
 other proxies:
+
+ssl cert path: "server.crt"
+
+ssl key path: "server.key"

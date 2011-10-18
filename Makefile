@@ -111,6 +111,7 @@ czimr.so: $(PYMOD_DEPENDS) libzimr.so
 ##### MODULES #####
 
 $(MODULES): $(MOD_DEPENDS)
+	mkdir -p modules/
 	$(EXEC_COMPILE) $(SHARED) $(MODULE_CC_ARGS)
 
 ##### TESTS #####

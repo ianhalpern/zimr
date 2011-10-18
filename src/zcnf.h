@@ -106,12 +106,14 @@ typedef struct {
 typedef struct {
 	int n;
 	zcnf_proxy_t proxies[ ZM_PROXY_MAX_PROXIES ];
-} zcnf_proxies_t;
+	char* ssl_cert_path;
+	char* ssl_key_path;
+} zcnf_daemon_t;
 ///////////////////////////
 
 zcnf_state_t* zcnf_state_load( uid_t uid );
 zcnf_app_t* zcnf_app_load( char* path );
-zcnf_proxies_t* zcnf_proxy_load();
+zcnf_daemon_t* zcnf_daemon_load();
 bool zcnf_state_app_is_running( zcnf_state_t* state, const char* cwd );
 void zcnf_state_set_app( zcnf_state_t* state, const char* cwd, pid_t pid, bool stopped );
 void zcnf_state_save( zcnf_state_t* state );
@@ -119,6 +121,6 @@ void zcnf_state_save( zcnf_state_t* state );
 void zcnf_app_free( zcnf_app_t* cnf );
 void zcnf_state_app_free( zcnf_state_app_t* app );
 void zcnf_state_free( zcnf_state_t* state );
-void zcnf_proxies_free( zcnf_proxies_t* proxies );
+void zcnf_daemon_free( zcnf_daemon_t* daemon );
 
 #endif

@@ -35,12 +35,15 @@ static fd_hash_t active_hash;
 static bool initialized = false;
 static SSL_CTX* client_ctx;
 
+static char ssl_cert_path[ PATH_MAX ] = RSA_SERVER_CERT;
+static char ssl_key_path[ PATH_MAX ] = RSA_SERVER_KEY;
+
 //static void zsocket_fire_event( int fd, unsigned int type, ... );
 static int zs_new( struct sockaddr_in* addr, int portno, int type );
 static void zs_update_fd_state( int fd, void* udata );
 static void zs_connecter( int fd, void* udata );
 
-void zs_init() {
+void zs_init( char* _ssl_cert_path, char* _ssl_key_path) {
 	assert( !initialized );
 	initialized = true;
 
@@ -52,6 +55,12 @@ void zs_init() {
 		ERR_print_errors_fp(stderr);
 		abort();
 	}
+
+	if ( _ssl_cert_path )
+		strcpy( ssl_cert_path, _ssl_cert_path );
+
+	if ( _ssl_key_path )
+		strcpy( ssl_key_path, _ssl_key_path );
 
 	memset( zsockets, 0, sizeof( zsockets ) );
 	FD_ZERO( &active_read_fd_set );
@@ -95,8 +104,8 @@ static zsocket_t* zs_type_init( int fd, int type, struct sockaddr_in* addr, int 
 			// Load the server certificate into the SSL_CTX structure
 			// Load the private-key corresponding to the server certificate
 			if ( !p->listen.ssl_ctx
-			  || SSL_CTX_use_certificate_chain_file( p->listen.ssl_ctx, RSA_SERVER_CERT ) <= 0
-			  || SSL_CTX_use_PrivateKey_file( p->listen.ssl_ctx, RSA_SERVER_KEY, SSL_FILETYPE_PEM ) <= 0 ) {
+			  || SSL_CTX_use_certificate_chain_file( p->listen.ssl_ctx, ssl_cert_path ) <= 0
+			  || SSL_CTX_use_PrivateKey_file( p->listen.ssl_ctx, ssl_key_path, SSL_FILETYPE_PEM ) <= 0 ) {
 				ERR_print_errors_fp( stderr );
 				free( p );
 				return NULL;
