@@ -157,7 +157,6 @@ int main( int argc, char* argv[ ] ) {
 	// call any needed library init functions
 	website_init();
 	zs_init( daemon_cnf->ssl_cert_path, daemon_cnf->ssl_key_path );
-
 	memset( connections, 0, sizeof( connections ) );
 
 	for ( i = 0; i < daemon_cnf->n; i++ ) {

@@ -479,7 +479,7 @@ zcnf_daemon_t* zcnf_daemon_load() {
 			if ( !ssl_cert_path || ssl_cert_path->type != YAML_SCALAR_NODE )
 				continue;
 
-			cnf->ssl_cert_path = strdup( ssl_cert_path );
+			cnf->ssl_cert_path = strdup( (char*) ssl_cert_path->data.scalar.value );
 		}
 
 		else if ( strcmp( "ssl key path", (char*) node->data.scalar.value ) == 0 ) {
@@ -488,7 +488,7 @@ zcnf_daemon_t* zcnf_daemon_load() {
 			if ( !ssl_key_path || ssl_key_path->type != YAML_SCALAR_NODE )
 				continue;
 
-			cnf->ssl_key_path = strdup( ssl_key_path );
+			cnf->ssl_key_path = strdup( (char*) ssl_key_path->data.scalar.value );
 		}
 	}
 
