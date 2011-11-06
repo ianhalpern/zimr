@@ -56,6 +56,8 @@ typedef struct {
 	int request_type;
 	size_t postlen;
 	int is_https;
+	char* buffer;
+	int bufferlen;
 } conn_data_t;
 
 conn_data_t* connections[ FD_SETSIZE ];
@@ -452,6 +454,8 @@ void exsock_event_hdlr( int fd, int event ) {
 			connections[ newfd ]->postlen = 0;
 			connections[ newfd ]->msgid = 0;
 			connections[ newfd ]->is_https = zs_is_ssl( connections[ newfd ]->exlisnfd );
+			connections[ newfd ]->buffer = NULL;
+			connections[ newfd ]->bufferlen = 0;
 
 			zs_set_read( newfd );
 			//msg_start( inconnfd, event.data.conn.fd );
@@ -472,17 +476,24 @@ void cleanup_connection( int sockfd ) {
 	  && msg_exists( connections[ sockfd ]->website_sockfd, connections[ sockfd ]->msgid ) )
 		msg_close( connections[ sockfd ]->website_sockfd, connections[ sockfd ]->msgid );
 	zs_close( sockfd );
+	if ( connections[ sockfd ]->buffer ) free( connections[ sockfd ]->buffer );
 	free( connections[ sockfd ] );
 	connections[ sockfd ] = NULL;
 }
 
 void exread( int sockfd ) {
-	char buffer[PACK_DATA_SIZE];
 	void* ptr;
 	conn_data_t* conn_data = connections[ sockfd ];
+
+	if ( !conn_data->buffer ) {
+		conn_data->buffer = malloc(PACK_DATA_SIZE);
+		conn_data->bufferlen = 0;
+		memset( conn_data->buffer, 0, PACK_DATA_SIZE );
+	}
+
 	website_t* website;
 
-	ssize_t len = zs_read( sockfd, buffer, sizeof( buffer ) );
+	ssize_t len = zs_read( sockfd, conn_data->buffer + conn_data->bufferlen, PACK_DATA_SIZE - conn_data->bufferlen );
 
 	// TODO: wait for entire header before looking up website
 	if ( len <= 0 ) {
@@ -495,11 +506,10 @@ cleanup:
 	if ( conn_data->postlen == -1 ) /* if we have received all the data already, ignore */
 		return;
 
+	conn_data->bufferlen += len;
 	//printf( "%d: read %zu\n", sockfd, len );
 
-	memset( buffer + len, 0, sizeof( buffer ) - len );
-
-	ptr = buffer;
+	ptr = conn_data->buffer;
 
 	if ( conn_data->website_sockfd == -1 ) {
 		/* If req_info is NULL this is the start of a request and the
@@ -507,10 +517,25 @@ cleanup:
 		struct hostent* hp;
 		hp = NULL;//gethostbyaddr( (char*) &conn_data->addr, sizeof( conn_data->addr ), AF_INET );
 
+		char* endofhdrs;
+		if ( !( endofhdrs = strstr( conn_data->buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
+			if ( conn_data->bufferlen == PACK_DATA_SIZE ) {
+				/* If the end of the headers was not found the request was either
+				   malformatted or too long, DO NOT send to website. */
+				zs_write( sockfd, html_error_414, sizeof( html_error_414 ) );
+				syslog( LOG_WARNING, "exread: headers to long" );
+				goto cleanup;
+			}
+			// Have not received the full header yet, wait
+			zs_set_read( sockfd );
+			return;
+		}
+		endofhdrs += sizeof( HTTP_HDR_ENDL HTTP_HDR_ENDL ) - 1;
+
 		/* Get HTTP request type */
-		if ( startswith( buffer, HTTP_GET ) )
+		if ( startswith( conn_data->buffer, HTTP_GET ) )
 			conn_data->request_type = HTTP_GET_TYPE;
-		else if ( startswith( buffer, HTTP_POST ) )
+		else if ( startswith( conn_data->buffer, HTTP_POST ) )
 			conn_data->request_type = HTTP_POST_TYPE;
 		else {
 			zs_write( sockfd, html_error_400, sizeof( html_error_400 ) );
@@ -519,7 +544,7 @@ cleanup:
 
 		/* Find website for request from HTTP header */
 		char urlbuf[ PACK_DATA_SIZE ];
-		if ( !get_url_from_http_header( buffer, urlbuf, sizeof( urlbuf ) ) ) {
+		if ( !get_url_from_http_header( conn_data->buffer, urlbuf, sizeof( urlbuf ) ) ) {
 			//syslog( LOG_WARNING, "exread: no url found in http request headers: %s %s",
 			//  inet_ntoa( conn_data->addr.sin_addr ), hp ? hp->h_name : "" );
 			zs_write( sockfd, html_error_400, sizeof( html_error_400 ) );
@@ -548,16 +573,6 @@ cleanup:
 			zs_write( sockfd, html_error_404, sizeof( html_error_404 ) );
 			goto cleanup;
 		}
-
-		char* endofhdrs;
-		if ( !( endofhdrs = strstr( buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
-			/* If the end of the headers was not found the request was either
-			   malformatted or too long, DO NOT send to website. */
-			zs_write( sockfd, html_error_414, sizeof( html_error_414 ) );
-			syslog( LOG_WARNING, "exread: headers to long for %s", website->url );
-			goto cleanup;
-		}
-		endofhdrs += sizeof( HTTP_HDR_ENDL HTTP_HDR_ENDL ) - 1;
 		//printf( "%s\n", buffer );
 
 		/* Create a new message to send the request to the corresponding
@@ -569,13 +584,13 @@ cleanup:
 		// If request_type is POST check if there is content after the HTTP header
 		char postlenbuf[ 32 ];
 		memset( postlenbuf, 0, sizeof( postlenbuf ) );
-		if ( conn_data->request_type == HTTP_POST_TYPE && ( ptr = strstr( buffer, "Content-Length: " ) ) ) {
+		if ( conn_data->request_type == HTTP_POST_TYPE && ( ptr = strstr( conn_data->buffer, "Content-Length: " ) ) ) {
 			memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
 			conn_data->postlen = strtoumax( postlenbuf, NULL, 0 );
 		}
 
 		// Write the message length
-		size_t msglen = ( endofhdrs - buffer ) + conn_data->postlen + sizeof( conn_data->addr.sin_addr ) + 1;
+		size_t msglen = ( endofhdrs - conn_data->buffer ) + conn_data->postlen + sizeof( conn_data->addr.sin_addr ) + 1;
 		if ( hp ) msglen += strlen( hp->h_name );
 		if ( msg_write( website->sockfd, conn_data->msgid, (void*) &msglen, sizeof( size_t ) ) == -1 ) {
 			zs_write( sockfd, html_error_502, sizeof( html_error_502 ) );
@@ -591,7 +606,7 @@ cleanup:
 		}
 
 		// Send the whole header to the website
-		if ( msg_write( website->sockfd, conn_data->msgid, (void*) buffer, ( endofhdrs - buffer ) ) == -1 ) {
+		if ( msg_write( website->sockfd, conn_data->msgid, (void*) conn_data->buffer, ( endofhdrs - conn_data->buffer ) ) == -1 ) {
 			zs_write( sockfd, html_error_502, sizeof( html_error_502 ) );
 			goto cleanup;
 		}
@@ -608,7 +623,7 @@ cleanup:
 	}
 
 	if ( conn_data->request_type == HTTP_POST_TYPE && conn_data->postlen ) {
-		int left = len - ( ptr - (void*)buffer );
+		int left = len - ( ptr - (void*)conn_data->buffer );
 
 		if ( left > conn_data->postlen )
 			conn_data->postlen = left;
@@ -631,6 +646,8 @@ cleanup:
 	} else
 		msg_set_write( website->sockfd, conn_data->msgid );
 
+	free( conn_data->buffer );
+	conn_data->buffer = NULL;
 	//printf( "%d: still needs %d post data\n", sockfd, conn_data->postlen );
 }
 

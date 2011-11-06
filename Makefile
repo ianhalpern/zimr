@@ -39,8 +39,8 @@ INSTALL_PYDIR   = /usr/lib/python$(PYVERSION)
 INSTALL_MODDIR  = /usr/lib/zimr
 INSTALL_CNFDIR  = /etc/zimr
 
-VERSION    = $$( ( L=`bzr tags | tail -n 1` && echo `echo $$L | sed 's/ .*//g'`.$$(expr `bzr revno` - `echo $$L | sed 's/.* //g'`) ) || cat VERSION )
-VERSION_1  = $$( ( L=`bzr tags | tail -n 1` && echo `echo $$L | sed 's/ .*//g'`.$$(expr `bzr revno` - `echo $$L | sed 's/.* //g'` + 1 ) ) || cat VERSION )
+VERSION    = $$( git describe --tags || cat VERSION )
+VERSION_1  = $$( git describe --tags || cat VERSION )
 
 OBJ_DEPENDS        = %.o: $(SRCDIR)/%.c $(SRCDIR)/%.h $(SRCDIR)/config.h
 EXEC_DEPENDS       = %: $(SRCDIR)/%/main.c $(SRCDIR)/config.h

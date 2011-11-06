@@ -869,7 +869,7 @@ void zimr_connection_send_redirect( connection_t* connection, char* url ) {
 
 	headers_set_header( &connection->response.headers, "Location", url );
 
-	response_set_status( &connection->response, 302 );
+	response_set_status( &connection->response, 301 );
 	zimr_connection_send_status( connection );
 	zimr_connection_send_headers( connection );
 
