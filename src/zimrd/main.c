@@ -518,7 +518,7 @@ cleanup:
 		hp = NULL;//gethostbyaddr( (char*) &conn_data->addr, sizeof( conn_data->addr ), AF_INET );
 
 		char* endofhdrs;
-		if ( !( endofhdrs = strstr( conn_data->buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) {
+		if ( !( endofhdrs = strnstr( conn_data->buffer, HTTP_HDR_ENDL HTTP_HDR_ENDL, PACK_DATA_SIZE ) ) ) {
 			if ( conn_data->bufferlen == PACK_DATA_SIZE ) {
 				/* If the end of the headers was not found the request was either
 				   malformatted or too long, DO NOT send to website. */
@@ -531,7 +531,6 @@ cleanup:
 			return;
 		}
 		endofhdrs += sizeof( HTTP_HDR_ENDL HTTP_HDR_ENDL ) - 1;
-
 		/* Get HTTP request type */
 		if ( startswith( conn_data->buffer, HTTP_GET ) )
 			conn_data->request_type = HTTP_GET_TYPE;
@@ -584,8 +583,8 @@ cleanup:
 		// If request_type is POST check if there is content after the HTTP header
 		char postlenbuf[ 32 ];
 		memset( postlenbuf, 0, sizeof( postlenbuf ) );
-		if ( conn_data->request_type == HTTP_POST_TYPE && ( ptr = strstr( conn_data->buffer, "Content-Length: " ) ) ) {
-			memcpy( postlenbuf, ptr + 16, (long) strstr( ptr + 16, HTTP_HDR_ENDL ) - (long) ( ptr + 16 ) );
+		if ( conn_data->request_type == HTTP_POST_TYPE && ( ptr = strnstr( conn_data->buffer, "Content-Length: ", PACK_DATA_SIZE ) ) ) {
+			memcpy( postlenbuf, ptr + 16, (long) strnstr( ptr + 16, HTTP_HDR_ENDL, PACK_DATA_SIZE - ( (long)ptr + 16 - (long)conn_data->buffer ) ) - (long) ( ptr + 16 ) );
 			conn_data->postlen = strtoumax( postlenbuf, NULL, 0 );
 		}
 
@@ -623,7 +622,7 @@ cleanup:
 	}
 
 	if ( conn_data->request_type == HTTP_POST_TYPE && conn_data->postlen ) {
-		int left = len - ( ptr - (void*)conn_data->buffer );
+		int left = conn_data->bufferlen - ( ptr - (void*)conn_data->buffer );
 
 		if ( left > conn_data->postlen )
 			conn_data->postlen = left;
