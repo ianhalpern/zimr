@@ -149,7 +149,7 @@ char* cookies_to_string( cookies_t* cookies, char* cookies_str, int size ) {
 			if ( cookie->max_age ) {
 				char max_age[ COOKIE_EXPIRES_MAX_LEN ] = "";
 				strncat( cookies_str, "; Max-Age=", size ); size -= 10; if ( size < 0 ) break;
-				strftime( max_age, sizeof( max_age ), "%d", max_age );
+				sprintf( max_age, "%d", max_age );
 				strncat( cookies_str, max_age, size ); size -= strlen( max_age ); if ( size < 0 ) break;
 			}
 

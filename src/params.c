@@ -28,7 +28,7 @@ list_t params_create() {
 	return params;
 }
 
-void params_parse_qs( list_t* params, char* raw, int size ) {
+void params_parse_qs( list_t* params, char* raw, int size, int type ) {
 	param_t* param;
 	int len;
 
@@ -85,6 +85,7 @@ void params_parse_qs( list_t* params, char* raw, int size ) {
 		strcpy( param->name, name );
 		param->value = value;
 		param->value_len = len;
+		param->type = type;
 		list_append( params, param );
 	}
 }

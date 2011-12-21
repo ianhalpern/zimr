@@ -257,6 +257,7 @@ static PyTypeObject pyzimr_response_type = {
 typedef struct {
 	PyObject_HEAD
 	params_t* _params;
+	int type;
 } pyzimr_params_t;
 
 static PyObject* pyzimr_params_keys( pyzimr_params_t* self ) {
@@ -265,6 +266,7 @@ static PyObject* pyzimr_params_keys( pyzimr_params_t* self ) {
 	int i;
 	for ( i = 0; i < list_size( (list_t*)self->_params ); i++ ) {
 		param_t* param = list_get_at( (list_t*)self->_params, i );
+		if ( self->type && self->type != param->type ) continue;
 		PyTuple_SetItem( keys, i, PyString_FromString( param->name ) );
 	}
 
@@ -277,6 +279,7 @@ static PyObject* pyzimr_params_items( pyzimr_params_t* self ) {
 	int i;
 	for ( i = 0; i < list_size( (list_t*)self->_params ); i++ ) {
 		param_t* param = list_get_at( (list_t*)self->_params, i );
+		if ( self->type && self->type != param->type ) continue;
 		PyObject* key_val = PyTuple_New( 2 );
 		PyTuple_SetItem( key_val, 0, PyString_FromString( param->name ) );
 		PyTuple_SetItem( key_val, 1, PyString_FromString( param->value ) );
@@ -287,7 +290,17 @@ static PyObject* pyzimr_params_items( pyzimr_params_t* self ) {
 }
 
 static int pyzimr_params__maplen__( pyzimr_params_t* self ) {
-	return list_size( self->_params );
+	size_t s = 0;
+	if ( !self->type )
+		s = list_size( self->_params );
+	else {
+		int i;
+		for ( i = 0; i < list_size( (list_t*)self->_params ); i++ ) {
+			param_t* param = list_get_at( (list_t*)self->_params, i );
+			if ( self->type == param->type ) s++;
+		}
+	}
+	return s;
 }
 
 static PyObject* pyzimr_params__mapget__( pyzimr_params_t* self, PyObject* key ) {
@@ -363,12 +376,16 @@ static PyTypeObject pyzimr_params_type = {
 typedef struct {
 	PyObject_HEAD
 	PyObject* params;
+	PyObject* get;
+	PyObject* post;
 	PyObject* headers;
 	request_t* _request;
 } pyzimr_request_t;
 
 static void pyzimr_request_dealloc( pyzimr_request_t* self ) {
 	Py_DECREF( self->params );
+	Py_DECREF( self->get );
+	Py_DECREF( self->post );
 	Py_DECREF( self->headers );
 	//connection_free( self->_connection );
 	self->ob_type->tp_free( (PyObject*) self );
@@ -426,7 +443,9 @@ static PyObject* pyzimr_request_get_method( pyzimr_request_t* self, void* closur
 
 static PyMemberDef pyzimr_request_members[] = {
 	{ "params", T_OBJECT_EX, offsetof( pyzimr_request_t, params ), RO, "params object for the request" },
-	{ "headers", T_OBJECT_EX, offsetof( pyzimr_request_t, headers ), RO, "params object for the request" },
+	{ "get", T_OBJECT_EX, offsetof( pyzimr_request_t, get ), RO, "get params object for the request" },
+	{ "post", T_OBJECT_EX, offsetof( pyzimr_request_t, post ), RO, "post params object for the request" },
+	{ "headers", T_OBJECT_EX, offsetof( pyzimr_request_t, headers ), RO, "headers object for the request" },
 	{ NULL }  /* Sentinel */
 };
 
@@ -715,18 +734,18 @@ static PyObject* pyzimr_connection_get_cookie( pyzimr_connection_t* self, PyObje
 }
 
 static PyObject* pyzimr_connection_set_cookie( pyzimr_connection_t* self, PyObject* args, PyObject* kwargs ) {
-	static char* kwlist[] = { "name", "value", "expires", "max_age", "domain", "path", "secure", "http_only", NULL };
+	static char* kwlist[] = { "name", "value", "expires", "max_age", "domain", "path", "http_only", "secure", NULL };
 	const char* cookie_name,* cookie_value,* cookie_domain = "",* cookie_path = "";
 	time_t expires = 0;
-	int max_age;
-	bool secure, http_only;
+	int max_age = 0;
+	bool secure = false, http_only = false;
 
-	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|siss", kwlist, &cookie_name, &cookie_value, &expires, &max_age, &cookie_domain, &cookie_path, &secure, &http_only ) ) {
+	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|siissbb", kwlist, &cookie_name, &cookie_value, &expires, &max_age, &cookie_domain, &cookie_path, &http_only, &secure ) ) {
 		PyErr_SetString( PyExc_TypeError, "the cookie_name must be passes" );
 		return NULL;
 	}
 
-	cookies_set_cookie( &self->_connection->cookies, cookie_name, cookie_value, expires, max_age, cookie_domain, cookie_path, secure, http_only );
+	cookies_set_cookie( &self->_connection->cookies, cookie_name, cookie_value, expires, max_age, cookie_domain, cookie_path, http_only, secure );
 
 	Py_RETURN_NONE;
 }
@@ -854,6 +873,15 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 
 	pyzimr_params_t* params = (pyzimr_params_t*) pyzimr_params_type.tp_new( &pyzimr_params_type, NULL, NULL );
 	params->_params = &_connection->request.params;
+	params->type = 0;
+
+	pyzimr_params_t* get_params = (pyzimr_params_t*) pyzimr_params_type.tp_new( &pyzimr_params_type, NULL, NULL );
+	get_params->_params = &_connection->request.params;
+	get_params->type = PARAM_TYPE_GET;
+
+	pyzimr_params_t* post_params = (pyzimr_params_t*) pyzimr_params_type.tp_new( &pyzimr_params_type, NULL, NULL );
+	post_params->_params = &_connection->request.params;
+	post_params->type = PARAM_TYPE_POST;
 
 	pyzimr_headers_t* request_headers = (pyzimr_headers_t*) pyzimr_headers_type.tp_new( &pyzimr_headers_type, NULL, NULL );
 	request_headers->_headers = &_connection->request.headers;
@@ -869,6 +897,8 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 
 	connection->request  = (PyObject*) request;
 	request->params      = (PyObject*) params;
+	request->get         = (PyObject*) get_params;
+	request->post        = (PyObject*) post_params;
 	request->headers     = (PyObject*) request_headers;
 	connection->response = (PyObject*) response;
 	response->headers    = (PyObject*) response_headers;
