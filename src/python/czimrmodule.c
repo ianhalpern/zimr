@@ -535,7 +535,7 @@ static int pyzimr_cookies___mapset__( pyzimr_cookies_t* self, PyObject* key, PyO
 	if ( !value )
 		cookies_del_cookie( self->_cookies, PyString_AsString( key ) );
 	else
-		cookies_set_cookie( self->_cookies, PyString_AsString( key ), PyString_AsString( value ), 0, NULL, NULL );
+		cookies_set_cookie( self->_cookies, PyString_AsString( key ), PyString_AsString( value ), 0, 0, NULL, NULL, 0, 0 );
 	return 0;
 }
 
@@ -715,16 +715,18 @@ static PyObject* pyzimr_connection_get_cookie( pyzimr_connection_t* self, PyObje
 }
 
 static PyObject* pyzimr_connection_set_cookie( pyzimr_connection_t* self, PyObject* args, PyObject* kwargs ) {
-	static char* kwlist[] = { "name", "value", "expires", "domain", "path", NULL };
+	static char* kwlist[] = { "name", "value", "expires", "max_age", "domain", "path", "secure", "http_only", NULL };
 	const char* cookie_name,* cookie_value,* cookie_domain = "",* cookie_path = "";
 	time_t expires = 0;
+	int max_age;
+	bool secure, http_only;
 
-	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|siss", kwlist, &cookie_name, &cookie_value, &expires, &cookie_domain, &cookie_path ) ) {
+	if ( !PyArg_ParseTupleAndKeywords( args, kwargs, "s|siss", kwlist, &cookie_name, &cookie_value, &expires, &max_age, &cookie_domain, &cookie_path, &secure, &http_only ) ) {
 		PyErr_SetString( PyExc_TypeError, "the cookie_name must be passes" );
 		return NULL;
 	}
 
-	cookies_set_cookie( &self->_connection->cookies, cookie_name, cookie_value, expires, cookie_domain, cookie_path );
+	cookies_set_cookie( &self->_connection->cookies, cookie_name, cookie_value, expires, max_age, cookie_domain, cookie_path, secure, http_only );
 
 	Py_RETURN_NONE;
 }

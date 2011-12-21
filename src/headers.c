@@ -84,7 +84,7 @@ char* headers_to_string( headers_t* headers, char* headers_str ) {
 header_t* headers_set_header( headers_t* headers, const char* name, const char* value ) {
 	header_t* header = headers_get_header( headers, name );
 
-	if ( !header ) {
+	if ( !header || strcmp( header->name, "Set-Cookie" ) == 0 ) {
 		header = &headers->list[ headers->num++ ];
 		strcpy( header->name, name );
 		header_formatname( strtolower( header->name ) );

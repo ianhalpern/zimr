@@ -67,7 +67,7 @@ static cookie_t* _cookies_get_cookie( cookies_t* cookies, const char* name ) {
 	return NULL;
 }
 
-void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t expires, const char* domain, const char* path ) {
+void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t expires, int max_age, const char* domain, const char* path, bool http_only, bool secure ) {
 	cookie_t* cookie = _cookies_get_cookie( cookies, name );
 
 	if ( !cookie ) {
@@ -83,6 +83,11 @@ void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value
 		cookie->updated = 1;
 	}
 
+	if ( max_age && cookie->max_age != max_age ) {
+		cookie->max_age = max_age;
+		cookie->updated = 1;
+	}
+
 	if ( domain && strcmp( cookie->domain, domain ) != 0 ) {
 		strncpy( cookie->domain, domain, sizeof( cookie->domain ) - 1 );
 		cookie->domain[ sizeof( cookie->domain ) - 1 ] = '\0';
@@ -92,6 +97,16 @@ void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value
 	if ( path && strcmp( cookie->path, path ) != 0 ) {
 		strncpy( cookie->path, path, sizeof( cookie->path ) - 1 );
 		cookie->path[ sizeof( cookie->path ) - 1 ] = '\0';
+		cookie->updated = 1;
+	}
+
+	if ( http_only && cookie->http_only != http_only ) {
+		cookie->http_only = http_only;
+		cookie->updated = 1;
+	}
+
+	if ( secure && cookie->secure != secure ) {
+		cookie->secure = secure;
 		cookie->updated = 1;
 	}
 
@@ -109,7 +124,7 @@ cookie_t* cookies_get_cookie( cookies_t* cookies, const char* name ) {
 }
 
 void cookies_del_cookie( cookies_t* cookies, const char* name ) {
-	cookies_set_cookie( cookies, name, NULL, time( NULL ) - 31536001, NULL, NULL );
+	cookies_set_cookie( cookies, name, NULL, time( NULL ) - 31536001, 0, NULL, NULL, false, false );
 }
 
 char* cookies_to_string( cookies_t* cookies, char* cookies_str, int size ) {
@@ -126,19 +141,34 @@ char* cookies_to_string( cookies_t* cookies, char* cookies_str, int size ) {
 
 			if ( cookie->expires ) {
 				char expires[ COOKIE_EXPIRES_MAX_LEN ] = "";
-				strncat( cookies_str, "; expires=", size ); size -= 10; if ( size < 0 ) break;
+				strncat( cookies_str, "; Expires=", size ); size -= 10; if ( size < 0 ) break;
 				strftime( expires, sizeof( expires ), "%a, %d-%b-%Y %I:%M:%S %Z", localtime( &cookie->expires ) );
 				strncat( cookies_str, expires, size ); size -= strlen( expires ); if ( size < 0 ) break;
 			}
 
+			if ( cookie->max_age ) {
+				char max_age[ COOKIE_EXPIRES_MAX_LEN ] = "";
+				strncat( cookies_str, "; Max-Age=", size ); size -= 10; if ( size < 0 ) break;
+				strftime( max_age, sizeof( max_age ), "%d", max_age );
+				strncat( cookies_str, max_age, size ); size -= strlen( max_age ); if ( size < 0 ) break;
+			}
+
 			if ( strlen( cookie->path ) ) {
-				strncat( cookies_str, "; path=", size ); size -= 7; if ( size < 0 ) break;
+				strncat( cookies_str, "; Path=", size ); size -= 7; if ( size < 0 ) break;
 				strncat( cookies_str, cookie->path, size ); size -= strlen( cookie->path ); if ( size < 0 ) break;
 			}
 
 			if ( strlen( cookie->domain ) ) {
-				strncat( cookies_str, "; domain=", size ); size -= 9; if ( size < 0 ) break;
+				strncat( cookies_str, "; Domain=", size ); size -= 9; if ( size < 0 ) break;
 				strncat( cookies_str, cookie->domain, size ); size -= strlen( cookie->domain ); if ( size < 0 ) break;
+			}
+
+			if ( cookie->secure ) {
+				strncat( cookies_str, "; Secure", size ); size -= 8; if ( size < 0 ) break;
+			}
+
+			if ( cookie->http_only ) {
+				strncat( cookies_str, "; HttpOnly", size ); size -= 10; if ( size < 0 ) break;
 			}
 		}
 	}

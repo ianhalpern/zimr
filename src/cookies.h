@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <stdbool.h>
 
 #include "config.h"
 
@@ -35,6 +36,9 @@ typedef struct {
 	char domain[ COOKIE_DOMAIN_MAX_LEN ];
 	char path[ COOKIE_PATH_MAX_LEN ];
 	time_t expires;
+	int max_age;
+	bool http_only;
+	bool secure;
 	char updated;
 } cookie_t;
 
@@ -45,7 +49,7 @@ typedef struct {
 } cookies_t;
 
 cookies_t cookies_parse( char* raw );
-void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t expires, const char* domain, const char* path );
+void cookies_set_cookie( cookies_t* cookies, const char* name, const char* value, time_t expires, int max_age, const char* domain, const char* path, bool http_only, bool secure );
 void cookies_del_cookie( cookies_t* cookies, const char* name );
 cookie_t* cookies_get_cookie( cookies_t* cookies, const char* name );
 char* cookies_to_string( cookies_t* cookies, char* cookies_str, int size );

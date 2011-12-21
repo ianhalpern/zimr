@@ -584,8 +584,17 @@ cleanup:
 		char postlenbuf[ 32 ];
 		memset( postlenbuf, 0, sizeof( postlenbuf ) );
 		if ( conn_data->request_type == HTTP_POST_TYPE && ( ptr = strnstr( conn_data->buffer, "Content-Length: ", PACK_DATA_SIZE ) ) ) {
-			memcpy( postlenbuf, ptr + 16, (long) strnstr( ptr + 16, HTTP_HDR_ENDL, PACK_DATA_SIZE - ( (long)ptr + 16 - (long)conn_data->buffer ) ) - (long) ( ptr + 16 ) );
+			char* tmp = strnstr( ptr + 16, HTTP_HDR_ENDL, PACK_DATA_SIZE - ( (long)ptr + 16 - (long)conn_data->buffer ) );
+			if ( !tmp ) {
+				zs_write( sockfd, html_error_400, sizeof( html_error_400 ) );
+				goto cleanup;
+			}
+			memcpy( postlenbuf, ptr + 16, (long) tmp - (long) ( ptr + 16 ) );
 			conn_data->postlen = strtoumax( postlenbuf, NULL, 0 );
+			if ( conn_data->postlen < 0 ) {
+				zs_write( sockfd, html_error_400, sizeof( html_error_400 ) );
+				goto cleanup;
+			}
 		}
 
 		// Write the message length
