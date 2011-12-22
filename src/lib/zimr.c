@@ -1156,7 +1156,7 @@ void zimr_website_insert_pubdir( website_t* website, char* pubdir, int pos ) {
 
 	if ( !pubdir ) return;
 
-	list_insert_at( &website_data->pubdirs, malloc( strlen( pubdir + 2 ) ), pos );
+	list_insert_at( &website_data->pubdirs, malloc( strlen( pubdir ) + 2 ), pos );
 	strcpy( list_get_at( &website_data->pubdirs, pos ), pubdir );
 	pubdir = list_get_at( &website_data->pubdirs, pos );
 
