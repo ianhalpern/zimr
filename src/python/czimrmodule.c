@@ -260,35 +260,6 @@ typedef struct {
 	int type;
 } pyzimr_params_t;
 
-static PyObject* pyzimr_params_keys( pyzimr_params_t* self ) {
-	PyObject* keys = PyTuple_New( list_size( (list_t*)self->_params ) );
-
-	int i;
-	for ( i = 0; i < list_size( (list_t*)self->_params ); i++ ) {
-		param_t* param = list_get_at( (list_t*)self->_params, i );
-		if ( self->type && self->type != param->type ) continue;
-		PyTuple_SetItem( keys, i, PyString_FromString( param->name ) );
-	}
-
-	return keys;
-}
-
-static PyObject* pyzimr_params_items( pyzimr_params_t* self ) {
-	PyObject* items = PyTuple_New( list_size( (list_t*)self->_params ) );
-
-	int i;
-	for ( i = 0; i < list_size( (list_t*)self->_params ); i++ ) {
-		param_t* param = list_get_at( (list_t*)self->_params, i );
-		if ( self->type && self->type != param->type ) continue;
-		PyObject* key_val = PyTuple_New( 2 );
-		PyTuple_SetItem( key_val, 0, PyString_FromString( param->name ) );
-		PyTuple_SetItem( key_val, 1, PyString_FromString( param->value ) );
-		PyTuple_SetItem( items, i, key_val );
-	}
-
-	return items;
-}
-
 static int pyzimr_params__maplen__( pyzimr_params_t* self ) {
 	size_t s = 0;
 	if ( !self->type )
@@ -301,6 +272,35 @@ static int pyzimr_params__maplen__( pyzimr_params_t* self ) {
 		}
 	}
 	return s;
+}
+
+static PyObject* pyzimr_params_keys( pyzimr_params_t* self ) {
+	PyObject* keys = PyTuple_New( pyzimr_params__maplen__( self ) );
+
+	int i;
+	for ( i = 0; i < list_size( (list_t*)self->_params ); i++ ) {
+		param_t* param = list_get_at( (list_t*)self->_params, i );
+		if ( self->type && self->type != param->type ) continue;
+		PyTuple_SetItem( keys, i, PyString_FromString( param->name ) );
+	}
+
+	return keys;
+}
+
+static PyObject* pyzimr_params_items( pyzimr_params_t* self ) {
+	PyObject* items = PyTuple_New( pyzimr_params__maplen__( self ) );
+
+	int i;
+	for ( i = 0; i < list_size( (list_t*)self->_params ); i++ ) {
+		param_t* param = list_get_at( (list_t*)self->_params, i );
+		if ( self->type && self->type != param->type ) continue;
+		PyObject* key_val = PyTuple_New( 2 );
+		PyTuple_SetItem( key_val, 0, PyString_FromString( param->name ) );
+		PyTuple_SetItem( key_val, 1, PyString_FromString( param->value ) );
+		PyTuple_SetItem( items, i, key_val );
+	}
+
+	return items;
 }
 
 static PyObject* pyzimr_params__mapget__( pyzimr_params_t* self, PyObject* key ) {
@@ -376,16 +376,16 @@ static PyTypeObject pyzimr_params_type = {
 typedef struct {
 	PyObject_HEAD
 	PyObject* params;
-	PyObject* get;
-	PyObject* post;
+	PyObject* get_params;
+	PyObject* post_params;
 	PyObject* headers;
 	request_t* _request;
 } pyzimr_request_t;
 
 static void pyzimr_request_dealloc( pyzimr_request_t* self ) {
 	Py_DECREF( self->params );
-	Py_DECREF( self->get );
-	Py_DECREF( self->post );
+	Py_DECREF( self->get_params );
+	Py_DECREF( self->post_params );
 	Py_DECREF( self->headers );
 	//connection_free( self->_connection );
 	self->ob_type->tp_free( (PyObject*) self );
@@ -443,8 +443,8 @@ static PyObject* pyzimr_request_get_method( pyzimr_request_t* self, void* closur
 
 static PyMemberDef pyzimr_request_members[] = {
 	{ "params", T_OBJECT_EX, offsetof( pyzimr_request_t, params ), RO, "params object for the request" },
-	{ "get", T_OBJECT_EX, offsetof( pyzimr_request_t, get ), RO, "get params object for the request" },
-	{ "post", T_OBJECT_EX, offsetof( pyzimr_request_t, post ), RO, "post params object for the request" },
+	{ "get_params", T_OBJECT_EX, offsetof( pyzimr_request_t, get_params ), RO, "get params object for the request" },
+	{ "post_params", T_OBJECT_EX, offsetof( pyzimr_request_t, post_params ), RO, "post params object for the request" },
 	{ "headers", T_OBJECT_EX, offsetof( pyzimr_request_t, headers ), RO, "headers object for the request" },
 	{ NULL }  /* Sentinel */
 };
@@ -897,8 +897,8 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 
 	connection->request  = (PyObject*) request;
 	request->params      = (PyObject*) params;
-	request->get         = (PyObject*) get_params;
-	request->post        = (PyObject*) post_params;
+	request->get_params  = (PyObject*) get_params;
+	request->post_params = (PyObject*) post_params;
 	request->headers     = (PyObject*) request_headers;
 	connection->response = (PyObject*) response;
 	response->headers    = (PyObject*) response_headers;

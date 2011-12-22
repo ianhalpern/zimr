@@ -129,8 +129,8 @@ int zimr_cnf_load( char* cnf_path ) {
 
 			zimr_website_set_proxy( website, cnf->proxy.ip, cnf->proxy.port );
 
-			if ( list_size( &website_cnf->pubdirs ) )
-				zimr_website_insert_pubdir( website, NULL, 0 );
+			//if ( list_size( &website_cnf->pubdirs ) )
+				//zimr_website_insert_pubdir( website, NULL, 0 );
 
 			for ( i = 0; i < list_size( &website_cnf->pubdirs ); i++ )
 				zimr_website_insert_pubdir( website, list_get_at( &website_cnf->pubdirs, i ), i );
@@ -388,9 +388,7 @@ void zimr_website_destroy( website_t* website ) {
 	list_destroy( &website_data->module_data );
 
 	while ( list_size( &website_data->pubdirs ) )
-		if ( list_get_at( &website_data->pubdirs, 0 ) )
-			free( list_fetch( &website_data->pubdirs ) );
-		else list_fetch( &website_data->pubdirs );
+		free( list_fetch( &website_data->pubdirs ) );
 
 	// TODO: free memory before destroying
 	list_destroy( &website_data->default_pages );
@@ -1143,19 +1141,20 @@ void zimr_website_insert_pubdir( website_t* website, char* pubdir, int pos ) {
 	website_data_t* website_data = (website_data_t*) website->udata;
 
 	if ( pos < 0 )
-		pos = list_size( &website_data->default_pages ) + pos + 1;
+		pos = list_size( &website_data->pubdirs ) + pos + 1;
 
-	if ( pos > list_size( &website_data->default_pages ) )
-		pos = list_size( &website_data->default_pages );
+	if ( pos > list_size( &website_data->pubdirs ) )
+		pos = list_size( &website_data->pubdirs );
 	else if ( pos < 0 )
 		pos = 0;
 
-	if ( !pubdir ) {
-		if ( list_get_at( &website_data->pubdirs, pos ) )
-			free( list_get_at( &website_data->pubdirs, pos ) );
-		list_delete_at( &website_data->pubdirs, pos );
-		return;
-	}
+	if ( list_get_at( &website_data->pubdirs, pos ) )
+		free( list_extract_at( &website_data->pubdirs, pos ) );
+
+	if ( pos > list_size( &website_data->pubdirs ) )
+		pos = list_size( &website_data->pubdirs );
+
+	if ( !pubdir ) return;
 
 	list_insert_at( &website_data->pubdirs, malloc( strlen( pubdir + 2 ) ), pos );
 	strcpy( list_get_at( &website_data->pubdirs, pos ), pubdir );
