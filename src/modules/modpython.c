@@ -42,15 +42,12 @@ void modzimr_init() {
 
 	// initialize thread support
 	PyEval_InitThreads();
-//	PyEval_ReleaseLock();
 
 	Py_Initialize();
 	mainstate = PyThreadState_Swap(NULL);
 	PyEval_ReleaseLock();
 
-	PyEval_AcquireLock();
-	PyThreadState_Swap( mainstate );
-//	PyGILState_STATE gstate = PyGILState_Ensure();
+	PyGILState_STATE gstate = PyGILState_Ensure();
 
 	PyObject* local_path,* sys_path;
 
@@ -79,17 +76,13 @@ void modzimr_init() {
 		PyErr_Print();
 	}*/
 
-//	PyGILState_Release( gstate );
-	PyEval_ReleaseLock();
-//	Py_UNBLOCK_THREADS
+	PyGILState_Release( gstate );
 }
 
 void modzimr_destroy() {
 	PyEval_AcquireLock();
 	PyThreadState_Swap( mainstate );
 
-//	Py_BLOCK_THREADS
-//	PyEval_AcquireLock();
 	Py_Finalize();
 }
 
@@ -100,12 +93,7 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
 	  * func1_ret = NULL,* func2_ret = NULL,* pyfilename = NULL,* module_path = NULL,* webapp_module;
 
-	PyEval_AcquireLock();
-	PyThreadState_Swap( mainstate );
-//	PyGILState_STATE gstate = PyGILState_Ensure();
-//	PyEval_AcquireLock();
-//	Py_BLOCK_THREADS
-
+	PyGILState_STATE gstate = PyGILState_Ensure();
 
 	if ( !argc )
 		modulename = strdup( "webapp" );
@@ -172,9 +160,7 @@ quit:
 		err_occured = true;
 	}
 
-	PyEval_ReleaseLock();
-//	PyGILState_Release( gstate );
-//	Py_UNBLOCK_THREADS
+	PyGILState_Release( gstate );
 
 	return NULL;
 }
