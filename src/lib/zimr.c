@@ -1093,8 +1093,8 @@ void zimr_website_load_module( website_t* website, module_t* module, int argc, c
 	for ( i = 0; i < module_data->argc; i++ )
 		module_data->argv[i] = strdup( argv[i] );
 
-	*(void **)(&modzimr_website_init) = dlsym( module->handle, "modzimr_website_init" );
-	*(bool**) (&modzimr_err_occured) = dlsym( module->handle, "modzimr_err_occured" );
+	*(void**) (&modzimr_website_init) = dlsym( module->handle, "modzimr_website_init" );
+	*(bool**) (&modzimr_err_occured)  = dlsym( module->handle, "modzimr_err_occured" );
 
 	if ( modzimr_website_init ) {
 		module_data->udata = (*modzimr_website_init)( website, module_data->argc, module_data->argv );

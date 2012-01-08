@@ -92,7 +92,7 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
 	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
-	  * func1_ret = NULL,* func2_ret = NULL,* pyfilename = NULL,* module_path = NULL,* webapp_module;
+	  * func1_ret = NULL,* func2_ret = NULL,* pyfilename = NULL,* module_path = NULL,* webapp_module = NULL;
 
 	PyGILState_STATE gstate = PyGILState_Ensure();
 
@@ -165,6 +165,5 @@ quit:
 	}
 
 	PyGILState_Release( gstate );
-
 	return NULL;
 }
