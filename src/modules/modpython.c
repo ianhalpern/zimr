@@ -87,7 +87,8 @@ void modzimr_destroy() {
 }
 
 void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
-	char* modulename;
+	char* modulename = NULL;
+	struct stat   buffer;
 
 	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
 	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
@@ -95,11 +96,11 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 	PyGILState_STATE gstate = PyGILState_Ensure();
 
-	if ( !argc )
-		modulename = strdup( "webapp" );
-
-	else
+	if ( argc )
 		modulename = strdup( argv[0] );
+
+	else if ( stat ("webapp.py", &buffer) == 0 )
+		modulename = strdup( "webapp" );
 
 	if (
 	  !( zimr_module     = PyImport_ImportModule( "zimr" ) ) ||
@@ -117,9 +118,12 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 	zimr_website_insert_ignored_regex( website, "psp_cache" );
 
+	if ( !modulename )
+		goto quit;
+
 	if ( !(webapp_module = PyImport_ImportModule( modulename ) ) ) {
-		if ( PyErr_GivenExceptionMatches(PyErr_Occurred(), PyExc_ImportError ) && strcmp( modulename, "webapp" ) == 0 )
-			PyErr_Clear();
+		//if ( PyErr_GivenExceptionMatches(PyErr_Occurred(), PyExc_ImportError ) )
+		//	PyErr_Clear();
 		goto quit;
 	}
 
