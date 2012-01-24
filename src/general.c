@@ -24,7 +24,7 @@
 
 static int srand_called = 0;
 
-int randkey( ) {
+int randkey() {
 	int key;
 
 	if ( !srand_called ) {
@@ -32,7 +32,7 @@ int randkey( ) {
 		srand_called = 1;
 	}
 
-	key = rand( );
+	key = rand();
 	//TODO: bitshift only temporary, remember to change it back
 	return key >> 24;
 }
@@ -72,37 +72,35 @@ int startswith( const char* s1, const char* s2 ) {
 	return 1;
 }
 
-char* normalize( char* normpath, const char* path ) {
-	char patharr[ 100 ][ PATH_MAX ],* ptr;
-	int i = 0, j, len;
-	normpath[ 0 ] = '\0';
+#define MAX_PATH_INDECIES 100
+char* normalize_path( char* normpath, const char* path ) {
+	char* ptr;
+	int i = 0, pathindcies[ MAX_PATH_INDECIES ];
 
-	while ( ( ptr = strstr( path, "/" ) ) || ( ptr = (char*) path + strlen( path ) ) ) {
-		len = ptr - path;
-		if ( len > PATH_MAX - 1 ) len = PATH_MAX - 1;
+	normpath[0]  = 0;
+	pathindcies[0] = 0;
 
-		if ( i > 1 && patharr[ i - 1 ][ 0 ] == '\0' )
-			i--;
+	while ( ( ptr = strchr( path, '/' ) ) || ( ptr = (char*) path + strlen( path ) ) ) {
+		bool is_part = true;
+		if ( ptr - path == 1 && path[0] == '.' )
+			is_part = false;
+		else if ( ptr - path == 2 && path[0] == '.' && path[1] == '.' ) {
+			if (i) i--;
+			is_part = false;
+		} else if ( ptr - path == 0 )
+			is_part = false;
 
-		strncpy( patharr[ i ], path, len );
-		patharr[ i ][ len ] = '\0';
+		if ( ptr[0] == '/' ) ptr++;
 
-		if ( strcmp( patharr[ i ], "." ) != 0 && strcmp( patharr[ i ], ".." ) != 0 ) {
-			i++;
-		} else if ( strcmp( patharr[ i ], ".." ) == 0 ) {
-			if ( !i || strcmp( patharr[ i - 1 ], ".." ) == 0 )
-				i++;
-			else i--;
+		if ( is_part ) {
+			strncpy( normpath + pathindcies[i], path, ptr - path );
+			pathindcies[++i] = pathindcies[i-1] + ( ptr - path );
 		}
 
-		if ( ptr[ 0 ] == '\0' )
-			break;
-		path = ptr + 1;
-	}
+		*(normpath + pathindcies[i]) = 0;
+		if ( !ptr[0] || i == MAX_PATH_INDECIES ) break;
 
-	for ( j = 0; j < i; j++ ) {
-		if ( j ) strcat( normpath, "/" );
-		strcat( normpath, patharr[ j ] );
+		path = ptr;
 	}
 
 	return normpath;

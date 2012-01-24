@@ -38,11 +38,11 @@
 
 #include "config.h"
 
-int randkey( );
+int randkey();
 int url2int( const char* );
-void wait_for_kill( );
+void wait_for_kill();
 int startswith( const char*, const char* );
-char* normalize( char* normpath, const char* path );
+char* normalize_path( char* normpath, const char* path );
 int xtoi( const char* xs, unsigned int* result );
 char* expand_tilde( char* path, char* buffer, int size, uid_t uid );
 char* expand_tilde_with( char* path, char* buffer, int size, char* home );

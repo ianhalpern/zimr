@@ -90,7 +90,7 @@ void msg_event_handler( int fd, int msgid, int event ) {
 
 int main( int argc, char* argv[] ) {
 	memset( conn_data, 0, sizeof( conn_data ) );
-	zs_init();
+	zs_init( NULL, NULL );
 
 	sockfd = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_CONNECT, NULL, false );
 	puts( "connected to server" );

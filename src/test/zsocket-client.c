@@ -94,7 +94,7 @@ void zsocket_event_hdlr( int fd, int event ) {
 int main( int argc, char **argv ) {
 	fprintf( stderr, "Hello World, I'm a client.\n" );
 
-	zs_init();
+	zs_init( NULL, NULL );
 
 	int fd = zsocket( inet_addr( "127.0.0.1" ), 8080, ZSOCK_CONNECT, zsocket_event_hdlr, true );
 	if ( fd < 0 ) {

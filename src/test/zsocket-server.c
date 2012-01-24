@@ -94,7 +94,7 @@ void zsocket_event_hdlr( int fd, int event ) {
 
 int main( int argc, char **argv ) {
 	memset( conn_data, 0, sizeof( conn_data ) );
-	zs_init();
+	zs_init( NULL, NULL );
 
 	connfd = zsocket( INADDR_ANY, 8080, ZSOCK_LISTEN, zsocket_event_hdlr, false );
 	zs_set_read( connfd );

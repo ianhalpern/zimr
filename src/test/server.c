@@ -187,7 +187,7 @@ void exsock_event_hdlr( int fd, int event ) {
 
 int main( int argc, char* argv[] ) {
 	memset( conn_data, 0, sizeof( conn_data ) );
-	zs_init();
+	zs_init( NULL, NULL );
 
 	int insock = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), ZM_PROXY_DEFAULT_PORT + 1, ZSOCK_LISTEN, insock_event_hdlr, false );
 	int exsock = zsocket( inet_addr( ZM_PROXY_DEFAULT_ADDR ), 8080, ZSOCK_LISTEN, exsock_event_hdlr, true );

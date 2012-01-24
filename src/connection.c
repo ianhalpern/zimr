@@ -79,6 +79,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	connection->request.params = params_create();
 	connection->response.headers.num = 0;
 	connection->sending_error = false;
+	memset( &connection->request.full_url, 0, sizeof(connection->request.full_url) );
 
 	memcpy( &connection->ip, raw, sizeof( connection->ip ) );
 	raw += sizeof( connection->ip );
@@ -105,7 +106,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 		goto fail;
 
 	url_decode( urlbuf, raw, ptr - raw );
-	normalize( connection->request.full_url, urlbuf );
+	normalize_path( connection->request.full_url, urlbuf );
 
 	while ( startswith( connection->request.full_url, "../" ) ) {
 		strcpy( urlbuf, connection->request.full_url + 3 );

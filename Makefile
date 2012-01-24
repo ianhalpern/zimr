@@ -20,7 +20,7 @@ OBJS        = general.o website.o zfildes.o zsocket.o connection.o\
 			  simclist.o msg_switch.o userdir.o cli.o dlog.o md5.o fd_hash.o trace.o
 
 EXECS       = zimrd zimr #zimr-app
-TEST_EXECS  = test-zsocket-client test-zsocket-server test-strnstr test-client test-server test-fd-hash
+TEST_EXECS  = test-normpath test-zsocket-client test-zsocket-server test-strnstr test-client test-server test-fd-hash
 SHARED_OBJS = libzimr.so
 PYMOD_OBJS  = czimr.so
 MODULE_NAMES= modpython modtest modauth
@@ -119,19 +119,22 @@ $(MODULES): $(MOD_DEPENDS)
 test-strnstr: $(TEST_DEPENDS) general.o
 	$(EXEC_COMPILE)
 
-test-client: $(TEST_DEPENDS) msg_switch.o zsocket.o zfildes.o general.o simclist.o
+test-client: $(TEST_DEPENDS) msg_switch.o zsocket.o zfildes.o general.o simclist.o fd_hash.o trace.o
 	$(EXEC_COMPILE) -lssl
 
-test-server: $(TEST_DEPENDS) msg_switch.o zsocket.o zfildes.o general.o simclist.o
+test-server: $(TEST_DEPENDS) msg_switch.o zsocket.o zfildes.o general.o simclist.o fd_hash.o trace.o
 	$(EXEC_COMPILE) -lssl
 
-test-zsocket-client: $(TEST_DEPENDS) zsocket.o zfildes.o simclist.o general.o
+test-zsocket-client: $(TEST_DEPENDS) zsocket.o zfildes.o simclist.o general.o fd_hash.o
 	$(EXEC_COMPILE) -lssl
 
-test-zsocket-server: $(TEST_DEPENDS) zsocket.o zfildes.o general.o simclist.o
+test-zsocket-server: $(TEST_DEPENDS) zsocket.o zfildes.o general.o simclist.o fd_hash.o
 	$(EXEC_COMPILE) -lssl
 
 test-fd-hash: $(TEST_DEPENDS) fd_hash.o
+	$(EXEC_COMPILE)
+
+test-normpath: $(TEST_DEPENDS) general.o
 	$(EXEC_COMPILE)
 
 ##### OBJS ######
