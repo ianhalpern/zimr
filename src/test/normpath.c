@@ -2,6 +2,9 @@
 
 int main( int argc, char* argv[] ) {
 	char normpath[PATH_MAX] = "";
+	puts( normalize_path( normpath, "/" ) );
+	puts( normalize_path( normpath, "a/" ) );
+	puts( normalize_path( normpath, "/a/" ) );
 	puts( normalize_path( normpath, "a" ) );
 	puts( normalize_path( normpath, "a/b" ) );
 	puts( normalize_path( normpath, "a/b/c" ) );

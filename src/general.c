@@ -87,7 +87,7 @@ char* normalize_path( char* normpath, const char* path ) {
 		else if ( ptr - path == 2 && path[0] == '.' && path[1] == '.' ) {
 			if (i) i--;
 			is_part = false;
-		} else if ( ptr - path == 0 )
+		} else if ( ptr - path == 0 && i != 0 )
 			is_part = false;
 
 		if ( ptr[0] == '/' ) ptr++;
