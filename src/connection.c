@@ -65,21 +65,20 @@ const char httpstatus[][ 40 ] = {
 "505 HTTP Version Not Supported"
 };
 
-connection_t* connection_create( website_t* website, int sockfd, char* raw, size_t size ) {
+static connection_t* connection_init() {
 	connection_t* connection = (connection_t*) malloc( sizeof( connection_t ) );
-	char* ptr,* tmp,* start = raw, urlbuf[ sizeof( connection->request.full_url ) ];
-
+	memset( connection, 0, sizeof( connection_t ) );
 	connection->status = CONN_STATUS_RECEIVED;
+	connection->request.params = params_create();
+	return connection;
+}
+
+connection_t* connection_create( website_t* website, int sockfd, char* raw, size_t size ) {
+	connection_t* connection = connection_init();
 	connection->website = website;
 	connection->sockfd  = sockfd;
-	connection->udata   = NULL;
-	connection->request.post_body = NULL;
-	connection->request.post_body_len = 0;
-	connection->request.charset = NULL;
-	connection->request.params = params_create();
-	connection->response.headers.num = 0;
-	connection->sending_error = false;
-	memset( &connection->request.full_url, 0, sizeof(connection->request.full_url) );
+
+	char* ptr,* tmp,* start = raw, urlbuf[ sizeof( connection->request.full_url ) ];
 
 	memcpy( &connection->ip, raw, sizeof( connection->ip ) );
 	raw += sizeof( connection->ip );
@@ -122,9 +121,8 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 	else
 		connection->request.url = connection->request.full_url;
 
-	if ( *connection->request.url == '/' ) {
+	if ( *connection->request.url == '/' )
 		connection->request.url++;
-	}
 	////////////////////////////////////////
 
 	// parse qstring params ////////////////
@@ -162,27 +160,66 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 		connection->cookies = cookies_parse( "" );
 	////////////////////////////////////////
 
+
 	// body ////////////////////////////////
-	if ( connection->request.type == HTTP_POST_TYPE
+	if ( ( connection->request.type == HTTP_POST_TYPE )
 	 && ( ptr = strstr( raw, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) != NULL ) {
 		ptr += strlen( HTTP_HDR_ENDL HTTP_HDR_ENDL );
-		connection->request.post_body_len = size - (long) ( ptr - start );
-		connection->request.post_body = (char*) malloc( connection->request.post_body_len + 1 );
-		memset( connection->request.post_body, 0, connection->request.post_body_len + 1 );
-		strncpy( connection->request.post_body, ptr, connection->request.post_body_len );
 		header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
-		if ( header && startswith( header->value, "application/x-www-form-urlencoded" ) ) {
-			params_parse_qs( &connection->request.params, connection->request.post_body, connection->request.post_body_len, PARAM_TYPE_POST );
+
+		char boundary[HEADER_VALUE_MAX_LEN] = "",* boundary_ptr = NULL;
+		puts( headers_get_header_attr( header, NULL ) );
+		puts( headers_get_header_attr( header, "boundary" ) );
+		if ( header && startswith( headers_get_header_attr( header, NULL ), "multipart" ) && ( boundary_ptr = headers_get_header_attr( header, "boundary" ) ) ) {
+			strcat( boundary, "--" );
+			strcat( boundary, boundary_ptr );
+			int i = -1;
+
+			if ( startswith( ptr, boundary ) ) {
+
+				ptr += strlen( boundary ) + strlen( HTTP_HDR_ENDL );
+
+				while ( ( boundary_ptr = strstr( ptr, boundary ) ) ) {
+
+					connection->multiparts[++i] = (request_t*) malloc( sizeof( request_t ) );
+					connection->multiparts[i]->headers = headers_parse( ptr );
+					connection->multiparts[i]->post_body = NULL;
+
+					if ( !( ptr = strstr( ptr, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) break;
+					ptr += sizeof( HTTP_HDR_ENDL HTTP_HDR_ENDL ) - 1;
+
+					connection->multiparts[i]->post_body_len = ( boundary_ptr - ptr ) - strlen( HTTP_HDR_ENDL );
+					connection->multiparts[i]->post_body = (char*) malloc( connection->multiparts[i]->post_body_len + 1 );
+					memset( connection->multiparts[i]->post_body, 0, connection->multiparts[i]->post_body_len + 1 );
+					strncpy(connection->multiparts[i]->post_body, ptr, connection->multiparts[i]->post_body_len );
+
+					ptr = boundary_ptr + strlen( boundary );
+					if ( startswith( ptr, "--" HTTP_HDR_ENDL ) || i >= CONN_MAX_HTTP_MULTIPART ) break;
+					ptr += strlen( HTTP_HDR_ENDL );
+				}
+
+				if ( header && strcmp( headers_get_header_attr( header, NULL ), "multipart/form-data" ) == 0 )
+					params_parse_multiparts( &connection->request.params, connection->multiparts, PARAM_TYPE_POST );
+			}
+		} else {
+
+			connection->request.post_body_len = size - (long) ( ptr - start );
+			connection->request.post_body = (char*) malloc( connection->request.post_body_len + 1 );
+			memset( connection->request.post_body, 0, connection->request.post_body_len + 1 );
+			strncpy( connection->request.post_body, ptr, connection->request.post_body_len );
+
+			if ( header && strcmp( headers_get_header_attr( header, NULL ), "application/x-www-form-urlencoded" ) )
+				params_parse_qs( &connection->request.params, connection->request.post_body, connection->request.post_body_len, PARAM_TYPE_POST );
+
 		}
 
 		char* charset;
-		if ( header && ( charset = strstr( header->value, "charset=" ) ) ) {
-			connection->request.charset = charset + 8;
-		//	printf( "charset=%s\n", connection->request.charset );
-		} else {
+		if ( header && ( charset = headers_get_header_attr( header, "charset" ) ) )
+			strcpy( connection->request.charset, charset );
+		else
 			// ISO-8859-1 is the default charset for http defined by RFC
-			connection->request.charset = "ISO-8859-1";
-		}
+			strcpy( connection->request.charset, "ISO-8859-1" );
+
 	}
 	////////////////////////////////////////
 
@@ -197,6 +234,12 @@ void connection_free( connection_t* connection ) {
 	params_free( &connection->request.params );
 	if ( connection->request.post_body )
 		free( connection->request.post_body );
+	int i = -1;
+	while ( connection->multiparts[++i] ) {
+		if ( connection->multiparts[i]->post_body )
+			free( connection->multiparts[i]->post_body );
+		free( connection->multiparts[i] );
+	}
 	free( connection );
 }
 

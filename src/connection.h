@@ -25,6 +25,8 @@
 
 #include <arpa/inet.h>
 
+typedef struct request request_t;
+
 #include "website.h"
 #include "headers.h"
 #include "params.h"
@@ -36,21 +38,24 @@
 #define CONN_STATUS_SENT_HEADERS 0x4
 #define CONN_STATUS_SENT         0x8
 
-typedef struct {
+#define CONN_MAX_HTTP_MULTIPART  100
+
+struct request {
 	char type;
 	char full_url[ PATH_MAX ];
 	char* url;
 	char* post_body;
 	size_t post_body_len;
-	char* charset;
+	char charset[100];
 	headers_t headers;
 	params_t params;
-} request_t;
+};
 
 typedef struct {
 	short http_status;
 	headers_t headers;
 } response_t;
+
 
 typedef struct {
 	int sockfd;
@@ -63,6 +68,7 @@ typedef struct {
 	response_t response;
 	cookies_t  cookies;
 	bool sending_error;
+	request_t* multiparts[CONN_MAX_HTTP_MULTIPART];
 	void* udata;
 } connection_t;
 

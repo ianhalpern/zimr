@@ -116,15 +116,43 @@ header_t* headers_get_header( headers_t* headers, const char* orig_name ) {
 
 void headers_header_range_parse( header_t* header, int* range_start, int* range_end ) {
 	*range_start = 0; *range_end = -1;
-	char* ptr1,* ptr2;
-	if ( !( ptr1 = strstr( header->value, "bytes=" ) ) ) return;
-	ptr1 += 6;
-	if ( !( ptr2 = strchr( ptr1, '-' ) ) ) return;
+	char* bytes = headers_get_header_attr( header, "bytes" ),* sep = NULL;
 
-	if ( ptr2 - ptr1 )
-		*range_start = strtol( ptr1, &ptr2, 10 );
+	if ( !bytes ) return;
+	if ( !( sep = strchr( bytes, '-' ) ) ) return;
 
-	ptr2++;
-	if ( *ptr2 )
-		*range_end = atoi( ptr2 );
+	if ( sep - bytes )
+		*range_start = strtol( bytes, &sep, 10 );
+
+	sep++;
+	if ( *sep )
+		*range_end = atoi( sep );
 }
+
+char* headers_get_header_attr( header_t* header, char* name ) {
+	char value[HEADER_VALUE_MAX_LEN] = "";
+	char* head = header->value,* tail = NULL;
+
+	if ( !name ) {
+		if( !( tail = strchr( head, ';' ) ) )
+			tail = head + strlen( head );
+	} else {
+		while ( ( head = strstr( head, name ) ) ) {
+			head += strlen( name );
+			if ( head[0] == '=' ) {
+				head++;
+				break;
+			}
+		}
+		if ( !head ) return NULL;
+
+		if ( head[0] != '"' || !( tail = strchr( head + 1, '"' ) ) ) {
+			if( !( tail = strchr( head, ';' ) ) )
+				tail = head + strlen( head );
+		} else head++;
+	}
+	strncat( value, head, tail - head );
+
+	return value;
+}
+

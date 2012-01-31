@@ -86,7 +86,31 @@ void params_parse_qs( list_t* params, char* raw, int size, int type ) {
 		param->value = value;
 		param->value_len = len;
 		param->type = type;
+		param->val_alloced = true;
 		list_append( params, param );
+	}
+}
+
+void params_parse_multiparts( list_t* params, request_t* multiparts[], int type ) {
+	param_t* param;
+	header_t* header;
+	int i = -1;
+
+	//Content-Disposition: form-data; name="fileField"; filename="file-upload.txt"
+	while ( multiparts[++i] ) {
+		header = headers_get_header( &multiparts[i]->headers, "Content-Disposition" );
+		if ( !header || strcmp( headers_get_header_attr( header, NULL ), "form-data" ) != 0 ) continue;
+
+		char* name = headers_get_header_attr( header, "name" );
+		if ( !name ) continue;
+
+		param = (param_t*) malloc( sizeof( param_t ) );
+		strcpy( param->name, name );
+		param->value = multiparts[i]->post_body;
+		param->value_len = multiparts[i]->post_body_len;
+		param->type = type;
+		list_append( params, param );
+		param->val_alloced = false;
 	}
 }
 
@@ -132,7 +156,8 @@ void params_free( list_t* params ) {
 	for ( i = 0; i < list_size( params ); i++ ) {
 		param = list_get_at( params, i );
 		//free( param->name );
-		free( param->value );
+		if ( param->val_alloced )
+			free( param->value );
 		free( param );
 	}
 
