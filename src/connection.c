@@ -168,9 +168,9 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 		header_t* header = headers_get_header( &connection->request.headers, "Content-Type" );
 
 		char boundary[HEADER_VALUE_MAX_LEN] = "",* boundary_ptr = NULL;
-		puts( headers_get_header_attr( header, NULL ) );
-		puts( headers_get_header_attr( header, "boundary" ) );
-		if ( header && startswith( headers_get_header_attr( header, NULL ), "multipart" ) && ( boundary_ptr = headers_get_header_attr( header, "boundary" ) ) ) {
+
+		if ( header && startswith( headers_get_header_attr( header, NULL ), "multipart" )
+		&& ( boundary_ptr = headers_get_header_attr( header, "boundary" ) ) ) {
 			strcat( boundary, "--" );
 			strcat( boundary, boundary_ptr );
 			int i = -1;
@@ -208,7 +208,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 			memset( connection->request.post_body, 0, connection->request.post_body_len + 1 );
 			strncpy( connection->request.post_body, ptr, connection->request.post_body_len );
 
-			if ( header && strcmp( headers_get_header_attr( header, NULL ), "application/x-www-form-urlencoded" ) )
+			if ( header && strcmp( headers_get_header_attr( header, NULL ), "application/x-www-form-urlencoded" ) == 0 )
 				params_parse_qs( &connection->request.params, connection->request.post_body, connection->request.post_body_len, PARAM_TYPE_POST );
 
 		}
