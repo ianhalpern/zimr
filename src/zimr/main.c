@@ -50,8 +50,11 @@
 cli_cmd_t root_cmd;
 pid_t ppid = 0;
 bool wait_for_child = true;
-static verbose = true;
+static bool verbose = true;
 static bool on_shutdown_restart = false;
+#ifdef DEBUG
+static bool on_shutdown_coredump = false;
+#endif
 
 bool application_function( uid_t uid, gid_t gid, char* cnf_path, char type, bool force, bool allow_disable );
 
@@ -59,6 +62,10 @@ void print_usage() {
 	printf( "Zimr v" ZIMR_VERSION " (" BUILD_DATE ") - " ZIMR_WEBSITE "\n\n" );
 	printf( "Commands:\n\n" );
 	cli_print( &root_cmd );
+#ifdef DEBUG
+	puts("\nDebugging options:\n");
+	puts("  The extra options \"-coredump\" is enabled for commands \"start\" and \"restart\"");
+#endif
 }
 
 void sigquit() {
@@ -224,6 +231,13 @@ pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {
 					printf( "%s: %d\n", strerror( errno ), errno );
 			}
 		}
+
+#ifdef DEBUG
+		if ( on_shutdown_coredump ) {
+			puts("Core dumped for debugging");
+			abort();
+		}
+#endif
 
 		exit( EXIT_SUCCESS );
 	} else if ( pid == (pid_t) -1 ) {
@@ -614,9 +628,16 @@ void application_start_cmd( int optc, char* optv[] ) {
 	for ( i = 0; i < optc; i++ ) {
 		if ( strcmp( optv[i], "-in-foreground" ) == 0 ) {
 			nostate = true;
-		} else if ( !i ) {
+		}
+#ifdef DEBUG
+		else if ( strcmp( optv[i], "-coredump" ) == 0 ) {
+			on_shutdown_coredump = true;
+		}
+#endif
+		else if ( !i ) {
 			realpath( optv[i], cnf_path );
-		} else {
+		}
+		else {
 			print_usage();
 			return;
 		}
@@ -665,9 +686,16 @@ void application_restart_cmd( int optc, char* optv[] ) {
 	for ( i = 0; i < optc; i++ ) {
 		if ( strcmp( optv[i], "-force" ) == 0 ) {
 			force = true;
-		} else if ( !i ) {
+		}
+#ifdef DEBUG
+		else if ( strcmp( optv[i], "-coredump" ) == 0 ) {
+			on_shutdown_coredump = true;
+		}
+#endif
+		else if ( !i ) {
 			realpath( optv[i], cnf_path );
-		} else {
+		}
+		else {
 			print_usage();
 			return;
 		}
