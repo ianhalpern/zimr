@@ -181,17 +181,17 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 
 				while ( ( boundary_ptr = strstr( ptr, boundary ) ) ) {
 
-					connection->multiparts[++i] = (request_t*) malloc( sizeof( request_t ) );
-					connection->multiparts[i]->headers = headers_parse( ptr );
-					connection->multiparts[i]->post_body = NULL;
+					connection->request.parts[++i] = (request_t*) malloc( sizeof( request_t ) );
+					connection->request.parts[i]->headers = headers_parse( ptr );
+					connection->request.parts[i]->post_body = NULL;
 
 					if ( !( ptr = strstr( ptr, HTTP_HDR_ENDL HTTP_HDR_ENDL ) ) ) break;
 					ptr += sizeof( HTTP_HDR_ENDL HTTP_HDR_ENDL ) - 1;
 
-					connection->multiparts[i]->post_body_len = ( boundary_ptr - ptr ) - strlen( HTTP_HDR_ENDL );
-					connection->multiparts[i]->post_body = (char*) malloc( connection->multiparts[i]->post_body_len + 1 );
-					memset( connection->multiparts[i]->post_body, 0, connection->multiparts[i]->post_body_len + 1 );
-					strncpy(connection->multiparts[i]->post_body, ptr, connection->multiparts[i]->post_body_len );
+					connection->request.parts[i]->post_body_len = ( boundary_ptr - ptr ) - strlen( HTTP_HDR_ENDL );
+					connection->request.parts[i]->post_body = (char*) malloc( connection->request.parts[i]->post_body_len + 1 );
+					memset( connection->request.parts[i]->post_body, 0, connection->request.parts[i]->post_body_len + 1 );
+					strncpy(connection->request.parts[i]->post_body, ptr, connection->request.parts[i]->post_body_len );
 
 					ptr = boundary_ptr + strlen( boundary );
 					if ( startswith( ptr, "--" HTTP_HDR_ENDL ) || i >= CONN_MAX_HTTP_MULTIPART ) break;
@@ -199,7 +199,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 				}
 
 				if ( header && strcmp( headers_get_header_attr( header, NULL ), "multipart/form-data" ) == 0 )
-					params_parse_multiparts( &connection->request.params, connection->multiparts, PARAM_TYPE_POST );
+					params_parse_multiparts( &connection->request.params, connection->request.parts, PARAM_TYPE_POST );
 			}
 		} else {
 
@@ -235,10 +235,10 @@ void connection_free( connection_t* connection ) {
 	if ( connection->request.post_body )
 		free( connection->request.post_body );
 	int i = -1;
-	while ( connection->multiparts[++i] ) {
-		if ( connection->multiparts[i]->post_body )
-			free( connection->multiparts[i]->post_body );
-		free( connection->multiparts[i] );
+	while ( connection->request.parts[++i] ) {
+		if ( connection->request.parts[i]->post_body )
+			free( connection->request.parts[i]->post_body );
+		free( connection->request.parts[i] );
 	}
 	free( connection );
 }

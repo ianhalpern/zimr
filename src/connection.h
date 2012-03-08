@@ -49,6 +49,7 @@ struct request {
 	char charset[100];
 	headers_t headers;
 	params_t params;
+	request_t* parts[CONN_MAX_HTTP_MULTIPART];
 };
 
 typedef struct {
@@ -68,7 +69,6 @@ typedef struct {
 	response_t response;
 	cookies_t  cookies;
 	bool sending_error;
-	request_t* multiparts[CONN_MAX_HTTP_MULTIPART];
 	void* udata;
 } connection_t;
 
