@@ -78,6 +78,14 @@ typedef struct {
 	headers_t* _headers;
 } pyzimr_headers_t;
 
+static PyTypeObject pyzimr_headers_type;
+
+static pyzimr_headers_t* pyzimr_headers_create( headers_t* _headers ) {
+	pyzimr_headers_t* headers = (pyzimr_headers_t*) pyzimr_headers_type.tp_new( &pyzimr_headers_type, NULL, NULL );
+	headers->_headers = _headers;
+	return headers;
+}
+
 static PyObject* pyzimr_headers_keys( pyzimr_headers_t* self ) {
 	PyObject* keys = PyTuple_New( self->_headers->num );
 
@@ -167,6 +175,17 @@ typedef struct {
 	PyObject* headers;
 	response_t* _response;
 } pyzimr_response_t;
+
+static PyTypeObject pyzimr_response_type;
+
+static pyzimr_response_t* pyzimr_response_create( response_t* _response ) {
+	pyzimr_response_t* response = (pyzimr_response_t*) pyzimr_response_type.tp_new( &pyzimr_response_type, NULL, NULL );
+
+	response->headers = (PyObject*) pyzimr_headers_create( &_response->headers );
+	response->_response = _response;
+
+	return response;
+}
 
 static void pyzimr_response_dealloc( pyzimr_response_t* self ) {
 	Py_DECREF( self->headers );
@@ -259,6 +278,15 @@ typedef struct {
 	params_t* _params;
 	int type;
 } pyzimr_params_t;
+
+static PyTypeObject pyzimr_params_type;
+
+static pyzimr_params_t* pyzimr_params_create( params_t* _params, int type ) {
+	pyzimr_params_t* params = (pyzimr_params_t*) pyzimr_params_type.tp_new( &pyzimr_params_type, NULL, NULL );
+	params->_params = _params;
+	params->type = type;
+	return params;
+}
 
 static int pyzimr_params__maplen__( pyzimr_params_t* self ) {
 	size_t s = 0;
@@ -379,14 +407,47 @@ typedef struct {
 	PyObject* get_params;
 	PyObject* post_params;
 	PyObject* headers;
+	PyObject* parts;
 	request_t* _request;
 } pyzimr_request_t;
+
+static PyTypeObject pyzimr_request_type;
+
+static pyzimr_request_t* pyzimr_request_create( request_t* _request ) {
+	pyzimr_request_t* self = (pyzimr_request_t*) pyzimr_request_type.tp_new( &pyzimr_request_type, NULL, NULL );
+
+	self->params      = (PyObject*) pyzimr_params_create( &_request->params, 0 );
+	self->get_params  = (PyObject*) pyzimr_params_create( &_request->params, PARAM_TYPE_GET );
+	self->post_params = (PyObject*) pyzimr_params_create( &_request->params, PARAM_TYPE_POST );
+	self->headers     = (PyObject*) pyzimr_headers_create( &_request->headers );
+
+	int i = -1;
+	while ( _request->parts[++i] );
+
+	self->parts = PyTuple_New(i);
+
+	for ( i=0; _request->parts[i]; i++ ) {
+		PyObject* part = (PyObject*) pyzimr_request_create( _request->parts[i] );
+		Py_INCREF( part );
+		PyTuple_SetItem( self->parts, i, part );
+	}
+
+	self->_request = _request;
+
+	return self;
+}
 
 static void pyzimr_request_dealloc( pyzimr_request_t* self ) {
 	Py_DECREF( self->params );
 	Py_DECREF( self->get_params );
 	Py_DECREF( self->post_params );
 	Py_DECREF( self->headers );
+
+	int i;
+	for ( i=0; i < PyTuple_Size( self->parts ); i++ )
+		Py_DECREF( PyTuple_GetItem( self->parts, i ) );
+
+	Py_DECREF( self->parts );
 	//connection_free( self->_connection );
 	self->ob_type->tp_free( (PyObject*) self );
 }
@@ -527,6 +588,14 @@ typedef struct {
 	cookies_t* _cookies;
 } pyzimr_cookies_t;
 
+static PyTypeObject pyzimr_cookies_type;
+
+static pyzimr_cookies_t* pyzimr_cookies_create( cookies_t* _cookies ) {
+	pyzimr_cookies_t* cookies = (pyzimr_cookies_t*) pyzimr_cookies_type.tp_new( &pyzimr_cookies_type, NULL, NULL );
+	cookies->_cookies = _cookies;
+	return cookies;
+}
+
 static PyObject* pyzimr_cookies_keys( pyzimr_cookies_t* self ) {
 	PyObject* keys = PyTuple_New( self->_cookies->num );
 
@@ -624,6 +693,23 @@ typedef struct {
 	PyObject* onClose;
 	connection_t* _connection;
 } pyzimr_connection_t;
+
+static PyTypeObject pyzimr_connection_type;
+
+static pyzimr_connection_t* pyzimr_connection_create( connection_t* _connection ) {
+	pyzimr_connection_t* connection = (pyzimr_connection_t*) pyzimr_connection_type.tp_new( &pyzimr_connection_type, NULL, NULL );
+
+	Py_INCREF( connection->client  = Py_None );
+	connection->response = (PyObject*) pyzimr_response_create( &_connection->response );
+	connection->request  = (PyObject*) pyzimr_request_create( &_connection->request );
+	Py_INCREF( connection->website = (PyObject*) ( (website_data_t*) _connection->website->udata )->udata );
+	connection->cookies  = (PyObject*) pyzimr_cookies_create( &_connection->cookies );
+	Py_INCREF( connection->onClose = Py_None );
+	connection->_connection = _connection;
+	connection->_connection->udata = connection;
+
+	return connection;
+}
 
 static void pyzimr_connection_dealloc( pyzimr_connection_t* self ) {
 	Py_DECREF( self->client );
@@ -848,12 +934,7 @@ typedef struct {
 } pyzimr_website_t;
 
 static void pyzimr_website_connection_handler( connection_t* _connection ) {
-//	if ( _save ) {
-//		Py_BLOCK_THREADS
-//	}
 	PyGILState_STATE gstate = PyGILState_Ensure();
-//	PyEval_AcquireLock();
-//	PyThreadState_Swap( mainstate );
 
 	// Reload webapp module if exists
 	/*if ( PyObject_HasAttrString( m, "webapp_module" ) ) {
@@ -862,75 +943,27 @@ static void pyzimr_website_connection_handler( connection_t* _connection ) {
 	} else puts("no webapp module" );*/
 	//
 
-	pyzimr_website_t* website = (pyzimr_website_t*) ( (website_data_t*) _connection->website->udata )->udata;
-
-	pyzimr_connection_t* connection = (pyzimr_connection_t*) pyzimr_connection_type.tp_new( &pyzimr_connection_type, NULL, NULL );
-	connection->_connection = _connection;
-	connection->_connection->udata = connection;
-
-	pyzimr_request_t* request = (pyzimr_request_t*) pyzimr_request_type.tp_new( &pyzimr_request_type, NULL, NULL );
-	request->_request = &_connection->request;
-
-	pyzimr_params_t* params = (pyzimr_params_t*) pyzimr_params_type.tp_new( &pyzimr_params_type, NULL, NULL );
-	params->_params = &_connection->request.params;
-	params->type = 0;
-
-	pyzimr_params_t* get_params = (pyzimr_params_t*) pyzimr_params_type.tp_new( &pyzimr_params_type, NULL, NULL );
-	get_params->_params = &_connection->request.params;
-	get_params->type = PARAM_TYPE_GET;
-
-	pyzimr_params_t* post_params = (pyzimr_params_t*) pyzimr_params_type.tp_new( &pyzimr_params_type, NULL, NULL );
-	post_params->_params = &_connection->request.params;
-	post_params->type = PARAM_TYPE_POST;
-
-	pyzimr_headers_t* request_headers = (pyzimr_headers_t*) pyzimr_headers_type.tp_new( &pyzimr_headers_type, NULL, NULL );
-	request_headers->_headers = &_connection->request.headers;
-
-	pyzimr_response_t* response = (pyzimr_response_t*) pyzimr_response_type.tp_new( &pyzimr_response_type, NULL, NULL );
-	response->_response = &_connection->response;
-
-	pyzimr_headers_t* response_headers = (pyzimr_headers_t*) pyzimr_headers_type.tp_new( &pyzimr_headers_type, NULL, NULL );
-	response_headers->_headers = &_connection->response.headers;
-
-	pyzimr_cookies_t* cookies = (pyzimr_cookies_t*) pyzimr_cookies_type.tp_new( &pyzimr_cookies_type, NULL, NULL );
-	cookies->_cookies = &_connection->cookies;
-
-	connection->request  = (PyObject*) request;
-	request->params      = (PyObject*) params;
-	request->get_params  = (PyObject*) get_params;
-	request->post_params = (PyObject*) post_params;
-	request->headers     = (PyObject*) request_headers;
-	connection->response = (PyObject*) response;
-	response->headers    = (PyObject*) response_headers;
-	connection->cookies  = (PyObject*) cookies;
-
-	Py_INCREF( Py_None );
-	Py_INCREF( Py_None );
-	connection->client   = Py_None;
-	connection->onClose  = Py_None;
+	pyzimr_connection_t* connection = pyzimr_connection_create( _connection );
 
 	Py_INCREF( connection );
 	zimr_connection_set_onclose_event( _connection, pyzimr_connection_onclose_event, connection );
 
-	Py_INCREF( website );
-	connection->website = (PyObject*) website;
-
 	int connfd = _connection->sockfd;
 
-	PyObject_CallFunctionObjArgs( website->connection_handler, connection, NULL );
+	PyObject_CallFunctionObjArgs( ((pyzimr_website_t*)connection->website)->connection_handler, connection, NULL );
 
 	Py_DECREF( connection );
 
 	if ( PyErr_Occurred() )
-		pyzimr_error_print( !zimr_website_connection_sent( website->_website->sockfd, connfd ) ? _connection : NULL );
+		pyzimr_error_print( !zimr_website_connection_sent(
+			((pyzimr_website_t*)connection->website)->_website->sockfd, connfd ) ? _connection : NULL );
 
-//	PyEval_ReleaseLock();
 	PyGILState_Release( gstate );
-//	Py_UNBLOCK_THREADS
+
 	if ( _py_want_reload ) {
 		_py_want_reload = false;
 		zimr_reload_module( "python" );
-		if ( !zimr_website_connection_sent( website->_website->sockfd, connfd ) )
+		if ( !zimr_website_connection_sent( ((pyzimr_website_t*)connection->website)->_website->sockfd, connfd ) )
 			pyzimr_website_connection_handler( _connection );
 	}
 }
