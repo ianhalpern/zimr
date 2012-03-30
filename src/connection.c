@@ -193,9 +193,19 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 					memset( connection->request.parts[i]->post_body, 0, connection->request.parts[i]->post_body_len + 1 );
 					strncpy(connection->request.parts[i]->post_body, ptr, connection->request.parts[i]->post_body_len );
 
+					char* charset;
+					header = headers_get_header( &connection->request.parts[i]->headers, "Content-Type" );
+					if ( header && ( charset = headers_get_header_attr( header, "charset" ) ) )
+						strcpy( connection->request.parts[i]->charset, charset );
+					else
+						// ISO-8859-1 is the default charset for http defined by RFC
+						strcpy( connection->request.parts[i]->charset, "ISO-8859-1" );
+
 					ptr = boundary_ptr + strlen( boundary );
 					if ( startswith( ptr, "--" HTTP_HDR_ENDL ) || i >= CONN_MAX_HTTP_MULTIPART ) break;
 					ptr += strlen( HTTP_HDR_ENDL );
+
+
 				}
 
 				if ( header && strcmp( headers_get_header_attr( header, NULL ), "multipart/form-data" ) == 0 )
@@ -214,6 +224,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 		}
 
 		char* charset;
+		header = headers_get_header( &connection->request.headers, "Content-Type" );
 		if ( header && ( charset = headers_get_header_attr( header, "charset" ) ) )
 			strcpy( connection->request.charset, charset );
 		else

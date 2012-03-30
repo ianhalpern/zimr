@@ -32,6 +32,13 @@ static PyObject* m;
 static void pyzimr_page_handler( connection_t* connection, const char* filepath, void* udata );
 static bool _py_want_reload = false;
 
+typedef struct {
+	PyObject_HEAD
+	PyObject* connection_handler;
+	PyObject* error_handler;
+	website_t* _website;
+} pyzimr_website_t;
+
 static void pyzimr_error_print( connection_t* connection ) {
 	char error_message[ 8192 ] = "";
 	size_t error_message_size = 0;
@@ -507,6 +514,7 @@ static PyMemberDef pyzimr_request_members[] = {
 	{ "get_params", T_OBJECT_EX, offsetof( pyzimr_request_t, get_params ), RO, "get params object for the request" },
 	{ "post_params", T_OBJECT_EX, offsetof( pyzimr_request_t, post_params ), RO, "post params object for the request" },
 	{ "headers", T_OBJECT_EX, offsetof( pyzimr_request_t, headers ), RO, "headers object for the request" },
+	{ "parts", T_OBJECT_EX, offsetof( pyzimr_request_t, parts ), RO, "request multiparts list" },
 	{ NULL }  /* Sentinel */
 };
 
@@ -692,6 +700,7 @@ typedef struct {
 	PyObject* cookies;
 	PyObject* onClose;
 	connection_t* _connection;
+	int connid;
 } pyzimr_connection_t;
 
 static PyTypeObject pyzimr_connection_type;
@@ -707,6 +716,7 @@ static pyzimr_connection_t* pyzimr_connection_create( connection_t* _connection 
 	Py_INCREF( connection->onClose = Py_None );
 	connection->_connection = _connection;
 	connection->_connection->udata = connection;
+	connection->connid = _connection->sockfd;
 
 	return connection;
 }
@@ -726,9 +736,8 @@ static void pyzimr_connection_dealloc( pyzimr_connection_t* self ) {
 static void pyzimr_connection_onclose_event( connection_t* _connection, pyzimr_connection_t* connection ) {
 	PyGILState_STATE gstate = PyGILState_Ensure();
 
-	if ( PyCallable_Check( connection->onClose ) ) {
+	if ( PyCallable_Check( connection->onClose ) )
 		PyObject_CallFunction( connection->onClose, "O", connection );
-	}
 		//PyObject_CallFunction( connection->onClose, NULL );
 
 	Py_DECREF( connection );
@@ -750,7 +759,8 @@ static PyObject* pyzimr_connection_send( pyzimr_connection_t* self, PyObject* ar
 		return NULL;
 	}
 
-	zimr_connection_send( self->_connection, message_ptr, message_len );
+	if ( !zimr_website_connection_sent( ((pyzimr_website_t*)self->website)->_website->sockfd, self->connid ) )
+		zimr_connection_send( self->_connection, message_ptr, message_len );
 
 	Py_RETURN_NONE;
 }
@@ -771,7 +781,8 @@ static PyObject* pyzimr_connection_send_error( pyzimr_connection_t* self, PyObje
 		return NULL;
 	}
 
-	zimr_connection_send_error( self->_connection, error_code, message_ptr, message_len );
+	if ( !zimr_website_connection_sent( ((pyzimr_website_t*)self->website)->_website->sockfd, self->connid ) )
+		zimr_connection_send_error( self->_connection, error_code, message_ptr, message_len );
 
 	Py_RETURN_NONE;
 }
@@ -785,7 +796,8 @@ static PyObject* pyzimr_connection_send_file( pyzimr_connection_t* self, PyObjec
 		return NULL;
 	}
 
-	zimr_connection_send_file( self->_connection, (char*) filename, use_pubdir );
+	if ( !zimr_website_connection_sent( ((pyzimr_website_t*)self->website)->_website->sockfd, self->connid ) )
+		zimr_connection_send_file( self->_connection, (char*) filename, use_pubdir );
 
 	Py_RETURN_NONE;
 }
@@ -797,7 +809,9 @@ static PyObject* pyzimr_connection_redirect( pyzimr_connection_t* self, PyObject
 		PyErr_SetString( PyExc_TypeError, "the redir_url paramater must be passed" );
 		return NULL;
 	}
-	zimr_connection_send_redirect( self->_connection, (char*) redir_url );
+
+	if ( !zimr_website_connection_sent( ((pyzimr_website_t*)self->website)->_website->sockfd, self->connid ) )
+		zimr_connection_send_redirect( self->_connection, (char*) redir_url );
 
 	Py_RETURN_NONE;
 }
@@ -926,12 +940,7 @@ static PyTypeObject pyzimr_connection_type = {
 /********** START OF pyzimr_website_t *******/
 /**********************************************/
 
-typedef struct {
-	PyObject_HEAD
-	PyObject* connection_handler;
-	PyObject* error_handler;
-	website_t* _website;
-} pyzimr_website_t;
+// struct at top of file
 
 static void pyzimr_website_connection_handler( connection_t* _connection ) {
 	PyGILState_STATE gstate = PyGILState_Ensure();

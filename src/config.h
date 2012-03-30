@@ -102,7 +102,7 @@
 
 #define HEADERS_MAX_NUM 32
 #define HEADER_NAME_MAX_LEN  128
-#define HEADER_VALUE_MAX_LEN 512
+#define HEADER_VALUE_MAX_LEN 2048
 
 /*************************/
 
