@@ -89,6 +89,7 @@ void modzimr_destroy() {
 void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	char* modulename = NULL;
 	struct stat   buffer;
+	int i;
 
 	PyObject* zimr_module = NULL,* website_type = NULL,* website_obj = NULL,* psp_module = NULL,
 	  * psp_render_func = NULL,* register_page_handler = NULL,* insert_default_page = NULL,
@@ -99,8 +100,26 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	if ( argc )
 		modulename = strdup( argv[0] );
 
-	else if ( stat ("webapp.py", &buffer) == 0 )
+	else if ( stat( "webapp.py", &buffer ) == 0 ) {
 		modulename = strdup( "webapp" );
+		argc = 1;
+	}
+
+	PyObject* pyarg,* sys_argv = PySys_GetObject( "argv" );
+
+	for ( i = 0; i < argc; i++ ) {
+		if ( !i ) {
+			if ( modulename ) {
+				pyarg = PyString_FromString( modulename );
+				PyList_SetItem( sys_argv, i, pyarg );
+			} else continue;
+		} else {
+			pyarg = PyString_FromString( argv[i] );
+			PyList_Append( sys_argv, pyarg );
+			Py_DECREF( pyarg );
+		}
+
+	}
 
 	if (
 	  !( zimr_module     = PyImport_ImportModule( "zimr" ) ) ||
