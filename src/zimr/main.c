@@ -176,9 +176,8 @@ void event_handler_basic( int event, va_list ap ) {
 
 background:
 	zimr_register_event_handler( event_handler_when_in_background );
-	if ( ppid && wait_for_child ) {
+	if ( ppid && wait_for_child )
 		kill( ppid, SIGCHLD );
-	}
 }
 
 pid_t application_exec( uid_t uid, gid_t gid, char* path, bool nofork ) {

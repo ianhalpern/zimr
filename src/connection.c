@@ -182,6 +182,7 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 				while ( ( boundary_ptr = strstr( ptr, boundary ) ) ) {
 
 					connection->request.parts[++i] = (request_t*) malloc( sizeof( request_t ) );
+					memset( connection->request.parts[i], 0, sizeof( request_t ) );
 					connection->request.parts[i]->headers = headers_parse( ptr );
 					connection->request.parts[i]->post_body = NULL;
 
