@@ -121,6 +121,11 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 	}
 
+	if ( modulename )
+		webapp_module = PyImport_ImportModule( modulename );
+
+	website_options_reset( website );
+
 	if (
 	  !( zimr_module     = PyImport_ImportModule( "zimr" ) ) ||
 	  !( website_type    = PyObject_GetAttrString( zimr_module, "website" ) ) ||
@@ -137,27 +142,20 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 
 	zimr_website_insert_ignored_regex( website, "psp_cache" );
 
-	if ( !modulename )
-		goto quit;
-
-	if ( !(webapp_module = PyImport_ImportModule( modulename ) ) ) {
-		//if ( PyErr_GivenExceptionMatches(PyErr_Occurred(), PyExc_ImportError ) )
-		//	PyErr_Clear();
-		goto quit;
-	}
-
+	if ( webapp_module ) {
 	//PyObject_SetAttrString( PyObject_GetAttrString( zimr_module, "czimr" ), "webapp_module", webapp_module );
 
-	if ( PyObject_HasAttrString( webapp_module, "connection_handler" ) ) {
-		PyObject* connection_handler = PyObject_GetAttrString( webapp_module, "connection_handler" );
-		PyObject_SetAttrString( website_obj, "connection_handler", connection_handler );
-		Py_DECREF( connection_handler );
-	}
+		if ( PyObject_HasAttrString( webapp_module, "connection_handler" ) ) {
+			PyObject* connection_handler = PyObject_GetAttrString( webapp_module, "connection_handler" );
+			PyObject_SetAttrString( website_obj, "connection_handler", connection_handler );
+			Py_DECREF( connection_handler );
+		}
 
-	if ( PyObject_HasAttrString( webapp_module, "error_handler" ) ) {
-		PyObject* error_handler = PyObject_GetAttrString( webapp_module, "error_handler" );
-		PyObject_SetAttrString( website_obj, "error_handler", error_handler );
-		Py_DECREF( error_handler );
+		if ( PyObject_HasAttrString( webapp_module, "error_handler" ) ) {
+			PyObject* error_handler = PyObject_GetAttrString( webapp_module, "error_handler" );
+			PyObject_SetAttrString( website_obj, "error_handler", error_handler );
+			Py_DECREF( error_handler );
+		}
 	}
 
 quit:

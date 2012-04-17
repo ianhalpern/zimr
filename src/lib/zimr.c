@@ -148,9 +148,8 @@ int zimr_cnf_load( char* cnf_path ) {
 				zimr_website_load_module( website, module, module_cnf->argc, module_cnf->argv );
 			}
 
-			for ( i = 0; i < list_size( &website_cnf->ignore ); i++ ) {
+			for ( i = 0; i < list_size( &website_cnf->ignore ); i++ )
 				zimr_website_insert_ignored_regex( website, list_get_at( &website_cnf->ignore, i ) );
-			}
 
 			zimr_website_enable( website );
 		}

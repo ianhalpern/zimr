@@ -33,12 +33,15 @@
 #define WS_STATUS_DISABLED      0x03
 #define WS_STATUS_ENABLING      0x04
 
+#define WS_OPTION_PARSE_MULTIPARTS  0x01
+
 typedef struct website {
 	char* url;
 	char* full_url;
 	char* path;
 	int sockfd;
 	char ip[16];
+	unsigned int options;
 	void* udata;
 } website_t;
 
@@ -51,4 +54,8 @@ website_t* website_get_by_full_url( char* url, char* ip );
 website_t* website_get_by_sockfd( int );
 website_t* website_find( char* url, char* protocol, char* ip );
 const char* website_protocol( website_t* );
+void website_options_set(  website_t*, unsigned int, bool );
+bool website_options_get( website_t*, unsigned int );
+void website_options_reset( website_t* );
+
 #endif

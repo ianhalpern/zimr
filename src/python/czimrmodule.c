@@ -77,6 +77,108 @@ static void pyzimr_error_print( connection_t* connection ) {
 	Py_XDECREF( str_join );
 }
 
+/********** START OF pyzimr_website_options_t *******/
+/**********************************************/
+
+typedef struct {
+	PyObject_HEAD
+	website_t* _website;
+	bool (*_get)( website_t*, unsigned int );
+	void (*_set)( website_t*, unsigned int, bool );
+} pyzimr_website_options_t;
+
+static PyTypeObject pyzimr_website_options_type;
+
+static pyzimr_website_options_t* pyzimr_website_options_create( website_t* _website,
+ bool (*_get)( website_t*, unsigned int ),
+ void (*_set)( website_t*, unsigned int, bool ) ) {
+
+	pyzimr_website_options_t* options = (pyzimr_website_options_t*) pyzimr_website_options_type.tp_new( &pyzimr_website_options_type, NULL, NULL );
+	options->_website = _website;
+	options->_get = _get;
+	options->_set = _set;
+	return options;
+}
+
+/*static int pyzimr_website_options__maplen__( pyzimr_website_options_t* self ) {
+	return list_size( (list_t*)self->_headers );
+}*/
+
+static unsigned int pyzimr_website_options_get_option_from_name( char* option ) {
+	if ( strcmp( option, "PARSE_MULTIPART" ) == 0 )
+		return WS_OPTION_PARSE_MULTIPARTS;
+	return 0;
+}
+
+static PyObject* pyzimr_website_options__mapget__( pyzimr_website_options_t* self, PyObject* key ) {
+	char* option = PyString_AsString( key );
+	return PyBool_FromLong( self->_get( self->_website, pyzimr_website_options_get_option_from_name( option ) ) );
+}
+
+static int pyzimr_website_options__mapset__( pyzimr_website_options_t* self, PyObject* key, PyObject* value ) {
+	char* option = PyString_AsString( key );
+
+	if ( !PyBool_Check( value ) ) {
+		PyErr_SetString( PyExc_TypeError, "value must be boolean" );
+		return 0;
+	}
+
+	self->_set( self->_website, pyzimr_website_options_get_option_from_name( option ), PyInt_AsLong( value ) );
+	return 0;
+}
+
+static PyMappingMethods pyzimr_website_options_as_map = {
+	(inquiry)       NULL, //pyzimr_website_options__maplen__, /*mp_length*/
+	(binaryfunc)    pyzimr_website_options__mapget__, /*mp_subscript*/
+	(objobjargproc) pyzimr_website_options__mapset__, /*mp_ass_subscript*/
+};
+
+static PyMethodDef pyzimr_website_options_methods[] = {
+	{ NULL }  /* Sentinel */
+};
+
+static PyTypeObject pyzimr_website_options_type = {
+	PyObject_HEAD_INIT( NULL )
+	0,                         /*ob_size*/
+	"zimr.website_options",             /*tp_name*/
+	sizeof( pyzimr_website_options_t ),             /*tp_basicsize*/
+	0,                         /*tp_itemsize*/
+	0,//(destructor) pyzimr_website_dealloc, /*tp_dealloc*/
+	0,                         /*tp_print*/
+	0,                         /*tp_getattr*/
+	0,                         /*tp_setattr*/
+	0,                         /*tp_compare*/
+	0,                         /*tp_repr*/
+	0,                         /*tp_as_number*/
+	0,                         /*tp_as_sequence*/
+	&pyzimr_website_options_as_map,     /*tp_as_mapping*/
+	0,                         /*tp_hash */
+	0,                         /*tp_call*/
+	0,                         /*tp_str*/
+	0,                         /*tp_getattro*/
+	0,                         /*tp_setattro*/
+	0,                         /*tp_as_buffer*/
+	Py_TPFLAGS_DEFAULT, /*tp_flags*/
+	"zimr website options",           /* tp_doc */
+	0,		               /* tp_traverse */
+	0,		               /* tp_clear */
+	0,		               /* tp_richcompare */
+	0,		               /* tp_weaklistoffset */
+	0,		               /* tp_iter */
+	0,		               /* tp_iternext */
+	pyzimr_website_options_methods,             /* tp_methods */
+	0,             /* tp_members */
+	0,           /* tp_getset */
+	0,                         /* tp_base */
+	0,                         /* tp_dict */
+	0,                         /* tp_descr_get */
+	0,                         /* tp_descr_set */
+	0,                         /* tp_dictoffset */
+	0,//(initproc) pyzimr_website_init,      /* tp_init */
+	0,                         /* tp_alloc */
+	PyType_GenericNew,                 /* tp_new */
+};
+
 /********** START OF pyzimr_headers_t *******/
 /**********************************************/
 
@@ -1009,7 +1111,6 @@ static void pyzimr_website_dealloc( pyzimr_website_t* self ) {
 
 static PyObject* pyzimr_website_new( PyTypeObject* type, PyObject* args, PyObject* kwargs ) {
 	pyzimr_website_t* self = (pyzimr_website_t*) type->tp_alloc( type, 0 );
-
 	return (PyObject*) self;
 }
 
@@ -1165,6 +1266,7 @@ static PyMethodDef pyzimr_website_methods[] = {
 };
 
 static PyMemberDef pyzimr_website_members[] = {
+//	{ "OPTION_PARSE_MULTIPARTS", T_UINT, offsetof( pyzimr_website_t, OPTION_PARSE_MULTIPARTS ), RO, "allow zimr to parse multipart requests" },
 	{ NULL }  /* Sentinel */
 };
 
@@ -1350,6 +1452,7 @@ static PyMethodDef pyzimr_methods[] = {
 	{ "defaultConnectionHandler", (PyCFunction) pyzimr_default_connection_handler, METH_VARARGS, "The zimr default connection handler." },
 	{ "restart", (PyCFunction) pyzimr_restart, METH_NOARGS, "Trigger a zimr webapp restart." },
 	{ "modpythonReload", (PyCFunction) pyzimr_reload, METH_NOARGS, "Reload the zimr python module." },
+	{ "modpythonReload", (PyCFunction) pyzimr_reload, METH_NOARGS, "Reload the zimr python module." },
 	{ NULL }		/* Sentinel */
 };
 
@@ -1368,6 +1471,7 @@ PyMODINIT_FUNC initczimr( void ) {
 	  || PyType_Ready( &pyzimr_params_type ) < 0
 	  || PyType_Ready( &pyzimr_response_type ) < 0
 	  || PyType_Ready( &pyzimr_headers_type ) < 0
+	  || PyType_Ready( &pyzimr_website_options_type ) < 0
 	)
 		return;
 
@@ -1396,7 +1500,10 @@ PyMODINIT_FUNC initczimr( void ) {
 	Py_INCREF( &pyzimr_response_type );
 	PyModule_AddObject( m, "response", (PyObject*) &pyzimr_response_type );
 
-	//Py_AtExit( &zimr_shutdown );
+	Py_INCREF( &pyzimr_website_options_type );
+	PyModule_AddObject( m, "website_options", (PyObject*) &pyzimr_website_options_type );
+
+	PyModule_AddObject( m, "default_website_options", (PyObject*)pyzimr_website_options_create( NULL, &website_options_get, &website_options_set ) );
 
 	zimr_init( "" );
 	//PyEval_ReleaseLock();

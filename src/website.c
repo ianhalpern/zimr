@@ -23,6 +23,7 @@
 #include "website.h"
 
 static bool initialized = false;
+static unsigned int default_website_options = WS_OPTION_PARSE_MULTIPARTS;
 
 void website_init() {
 	assert( !initialized );
@@ -37,6 +38,7 @@ website_t* website_add( int sockfd, char* url, char* ip ) {
 
 	website_t* w = (website_t*) malloc( sizeof( website_t ) );
 
+	w->options = default_website_options;
 	w->sockfd = sockfd;
 	strcpy( w->ip, ip );
 
@@ -149,4 +151,21 @@ const char* website_protocol( website_t* w ) {
 	if ( startswith( w->full_url, "https://" ) )
 		return "https://";
 	return "http://";
+}
+
+void website_options_set(  website_t* website, unsigned int opt, bool val ) {
+	unsigned int* options = website ? &website->options : &default_website_options;
+	if ( val )
+		FL_SET( *(options), opt );
+	else
+		FL_CLR( *(options), opt );
+}
+
+bool website_options_get( website_t* website, unsigned int opt ) {
+	unsigned int* options = website ? &website->options : &default_website_options;
+	return FL_ISSET( *(options), opt );
+}
+
+void website_options_reset( website_t* website ) {
+	website->options = default_website_options;
 }

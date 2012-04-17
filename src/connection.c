@@ -169,8 +169,10 @@ connection_t* connection_create( website_t* website, int sockfd, char* raw, size
 
 		char boundary[HEADER_VALUE_MAX_LEN] = "",* boundary_ptr = NULL;
 
-		if ( header && startswith( headers_get_header_attr( header, NULL ), "multipart" )
+		if ( website_options_get( website, WS_OPTION_PARSE_MULTIPARTS )
+		&& header && startswith( headers_get_header_attr( header, NULL ), "multipart" )
 		&& ( boundary_ptr = headers_get_header_attr( header, "boundary" ) ) ) {
+			printf("parsing multiparts: %d\n", website->options );
 			strcat( boundary, "--" );
 			strcat( boundary, boundary_ptr );
 			int i = -1;
