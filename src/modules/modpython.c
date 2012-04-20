@@ -122,7 +122,8 @@ void* modzimr_website_init( website_t* website, int argc, char* argv[] ) {
 	}
 
 	if ( modulename )
-		webapp_module = PyImport_ImportModule( modulename );
+		if ( !( webapp_module = PyImport_ImportModule( modulename ) ) )
+			goto quit;
 
 	website_options_reset( website );
 
