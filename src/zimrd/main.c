@@ -315,9 +315,8 @@ int remove_website( int fd ) {
 	msg_switch_destroy( fd );
 	zs_close( fd );
 
-	if ( website_data->exlisnfd != -1 ) {
+	if ( website_data->exlisnfd != -1 )
 		zs_close( website_data->exlisnfd );
-	}
 
 	free( website_data );
 	website_remove( website );
@@ -330,9 +329,8 @@ const char* start_website( int fd, char* url, char* ip ) {
 	website_t* website;
 	website_data_t* website_data;
 
-	if ( ( website = website_get_by_full_url( url, ip ) ) ) {
+	if ( ( website = website_get_by_full_url( url, ip ) ) )
 		return "FAIL website already exists";
-	}
 
 	int exlisnfd = zsocket( inet_addr( ip ), get_port_from_url( url ), ZSOCK_LISTEN, exsock_event_hdlr, startswith( url, "https://" ) );
 	if ( exlisnfd == -1 ) {

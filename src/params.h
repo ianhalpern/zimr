@@ -36,6 +36,7 @@ typedef list_t params_t;
 
 #define PARAM_TYPE_GET  1
 #define PARAM_TYPE_POST 2
+#define PARAM_TYPE_CUSTOM 3
 
 
 typedef struct {
@@ -52,6 +53,7 @@ void params_parse_multiparts( params_t* params, request_t* multiparts[], int typ
 char* params_gen_qs( params_t* params, char* qs );
 size_t params_qs_len( list_t* params );
 param_t* params_get_param( params_t* params, const char* name );
+param_t* params_set_param( params_t* params, const char* name, char* value );
 void params_free( params_t* params );
 
 #endif

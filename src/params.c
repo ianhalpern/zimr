@@ -149,6 +149,32 @@ param_t* params_get_param( list_t* params, const char* name ) {
 	return NULL;
 }
 
+param_t* params_set_param( list_t* params, const char* name, char* value ) {
+	if ( value == NULL )
+		return NULL;
+	int i;
+	for( i = 0; i < list_size( params ); i++ ) {
+		param_t* param = list_get_at( params, i );
+		if ( strcmp( param->name, name ) == 0 ) {
+			if ( param->val_alloced )
+				free( param->value );
+			param->value = strdup( value );
+			param->val_alloced = true;
+			return param;
+		}
+	}
+
+	param_t* param = (param_t*) malloc( sizeof( param_t ) );
+	strcpy( param->name, name );
+	param->value = strdup( value );
+	param->value_len = strlen( value );
+	param->type = PARAM_TYPE_CUSTOM;
+	param->val_alloced = true;
+	list_append( params, param );
+
+	return param;
+}
+
 void params_free( list_t* params ) {
 	param_t* param;
 
@@ -156,10 +182,14 @@ void params_free( list_t* params ) {
 	for ( i = 0; i < list_size( params ); i++ ) {
 		param = list_get_at( params, i );
 		//free( param->name );
-		if ( param->val_alloced )
-			free( param->value );
-		free( param );
+		param_free( param );
 	}
 
 	list_destroy( params );
+}
+
+void param_free( param_t* param ) {
+	if ( param->val_alloced )
+		free( param->value );
+	free( param );
 }

@@ -411,6 +411,11 @@ static int pyzimr_params__maplen__( pyzimr_params_t* self ) {
 	return s;
 }
 
+static int pyzimr_params__mapset__( pyzimr_params_t* self, PyObject* key, PyObject* value ) {
+	params_set_param( self->_params, PyString_AsString( key ), PyString_AsString( PyObject_Str( value ) ) );
+	return 0;
+}
+
 static PyObject* pyzimr_params_keys( pyzimr_params_t* self ) {
 	PyObject* keys = PyTuple_New( pyzimr_params__maplen__( self ) );
 
@@ -456,7 +461,7 @@ static int pyzimr_params__mapset__( pyzimr_cookies_t* self, PyObject* key, PyObj
 static PyMappingMethods pyzimr_params_as_map = {
 	(inquiry)       pyzimr_params__maplen__, /*mp_length*/
 	(binaryfunc)    pyzimr_params__mapget__, /*mp_subscript*/
-	(objobjargproc) NULL //pyzimr_params__mapset__, /*mp_ass_subscript*/
+	(objobjargproc) pyzimr_params__mapset__, /*mp_ass_subscript*/
 };
 
 static PyMethodDef pyzimr_params_methods[] = {
